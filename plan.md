@@ -196,7 +196,7 @@ After all three streams return, the lead session runs `cargo nextest run --works
 - Validate the audit-class issues to be enforced at synthesis time per research §3 and §12:
   - `ContextRuleType::CallContract(Address)` matches only target address — function-allowlist is a *policy* responsibility, never a rule-level filter.
   - Signer-set divergence: any spec mutating signers must emit a joint threshold-update instruction.
-  - Sponsor `context_rule_ids` substitution: synthesizer must refuse to install onto smart accounts older than PR-#655. Determine the on-chain marker for "post-#655" — read `stellar-contracts` release notes for the marker (likely a constant in `smart_account/mod.rs` like a `PROTOCOL_VERSION` or a contract metadata flag); record it in `docs/oz-internal-shapes.md`.
+  - Sponsor `context_rule_ids` substitution: synthesizer must refuse to install onto smart accounts older than PR-#655. Per `docs/oz-internal-shapes.md` §8, no on-chain marker exists for distinguishing pre/post-PR-#655 smart accounts. Implement the install preflight using strategy 3 (user-asserted `--account-revision` flag) per the §8 recommendation; queue strategy 1 (WASM-hash whitelist) for v1.1 once a curated post-#655 WASM-hash corpus is built.
   - `spending_limit` under `Default` is rejected by `install` post-#649 — synthesizer must default to `CallContract(<target>)` whenever `spending_limit` is part of the spec.
 - Verify pollywallet's schema field-by-field by reading `kalepail/pollywallet/src/lib/policy-schema.ts` (line counts in research §5.2 confirm 452 LOC). Identify which constructs to keep verbatim, which to rename, and which to extend. The result is the `oz-policy-builder/v1` schema; do not rename for cosmetic reasons.
 
