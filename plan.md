@@ -17,7 +17,7 @@ All phases reference this section. Do not introduce versions not listed here wit
 ### Languages & Toolchains
 | Component | Version | Source / Reason |
 |---|---|---|
-| Rust toolchain | `1.83.0` minimum, channel = `stable` (pinned via `rust-toolchain.toml`) | `soroban-sdk` 25.3.0 MSRV per research §13; use latest stable release of the 1.83+ line at time of execution to maximize cargo + clippy bug fixes |
+| Rust toolchain | `1.89.0` stable, channel = `stable` (pinned via `rust-toolchain.toml`) | Local installed stable in our dev environment; satisfies `soroban-sdk 25.3.0` MSRV (1.84.0), `stellar-xdr 25.0.0` MSRV (1.84.0), `stellar-rpc-client 25.1.0` MSRV (1.85.0), and `rmcp 1.7.0` edition-2024 baseline (1.85+). Latest stable as of writing is 1.93+ but 1.89.0 is the frozen pin for this project. **Cargo-nextest 0.9.128** is the latest nextest compatible with rustc 1.89.0 (nextest 0.9.135 requires rustc >= 1.91). |
 | Cargo profile | `release` with `overflow-checks = true` | Blend security guidance verbatim per research §12; required for generated policies to safely manipulate `i128` amounts |
 | Node.js | `22.11.0` LTS ("Jod") | Latest LTS line in May 2026; required only by the wallet-adapter TypeScript package |
 | pnpm | `9.x` (use whatever `corepack enable` selects) | Matches pollywallet's package manager choice; isolates store, deterministic locks |
@@ -26,32 +26,32 @@ All phases reference this section. Do not introduce versions not listed here wit
 ### Stellar / Soroban Ecosystem
 | Crate / Tool | Version | Source / Reason |
 |---|---|---|
-| `stellar-accounts` | `=0.7.1` | Research §13 verbatim crates.io README pin. Phase 1 must reconcile the apparent discrepancy with GitHub tag `v0.7.0-rc.1` (commit 239a2a7); if crates.io publish is actually 0.7.0-rc.1, pin to that and amend this row. |
-| `soroban-sdk` | `=25.3.0` | Direct dependency of `stellar-accounts 0.7.1` per research §5.1; mismatching breaks the policy trait import. |
-| `soroban-env-host` | matches `soroban-sdk = 25.3.0` (typically same minor line) | Required for the in-process simulation harness in Phase 4. |
-| `stellar-rpc-client` (Rust) | TBD: verify latest stable from crates.io / `github.com/stellar/stellar-rpc-client` in Phase 1 | Recorder uses this; research §5 names but does not pin. |
-| `stellar-xdr` (Rust) | TBD: verify latest stable matching Protocol 23 from crates.io / `github.com/stellar/rs-stellar-xdr` in Phase 1 | XDR decoding; must be Protocol 23-compatible (CAP-0065/0066 already shipped per research §13). |
-| `stellar-cli` | TBD: verify latest stable from `github.com/stellar/stellar-cli/releases` in Phase 1; pin a specific tag in CI matrix | Used for `stellar contract build` and `stellar contract optimize` (wasm-opt). Version determines `wasm-opt` invocation surface. |
+| `stellar-accounts` | `=0.7.1` | Phase 1 confirmed: crates.io publish `0.7.1` (license: MIT) matches GitHub tag `v0.7.1` (released 2026-04-10). The earlier research-time discrepancy with `v0.7.0-rc.1` no longer applies — both v0.7.0 and v0.7.1 stable tags are now published. Workspace `Cargo.toml` at this tag pins `soroban-sdk = "25.3.0"`. **License: MIT** (NOT Apache-2.0 as previously assumed — see `docs/oz-internal-shapes.md` §Discrepancies). |
+| `soroban-sdk` | `=25.3.0` | Direct dependency of `stellar-accounts 0.7.1` (verified in `/tmp/stellar-contracts-clone/Cargo.toml` workspace block). Apache-2.0. MSRV 1.84.0. |
+| `soroban-env-host` | `=25.0.1` | Pinned in `soroban-sdk 25.3.0`'s workspace `Cargo.toml` (`https://github.com/stellar/rs-soroban-sdk/blob/v25.3.0/Cargo.toml`); the 25.x line tops out at 25.2.1 stable but the sdk pins exactly 25.0.1. Apache-2.0. Required for the in-process simulation harness in Phase 4. |
+| `stellar-rpc-client` (Rust) | `=25.1.0` | Latest stable on crates.io that builds on Rust 1.89.0. (`26.0.0` requires Rust 1.93.0 — incompatible with our toolchain pin; `26.0.0-rc.x` are pre-releases.) Supports Protocol 23 event structure. Apache-2.0. Source: `https://crates.io/crates/stellar-rpc-client/25.1.0`. |
+| `stellar-xdr` (Rust) | `=25.0.0` | Pinned by `soroban-sdk 25.3.0`'s workspace; aligning with the SDK avoids type-mismatch errors at the recorder<->codegen boundary. Apache-2.0. Protocol 23 ships post-Sept-2025; 25.0.0 carries the post-Protocol-23 XDR set. Local `stellar` CLI 25.1.0 reports `stellar-xdr 25.0.0`, confirming consistency. Source: `https://crates.io/crates/stellar-xdr/25.0.0`. NOTE: latest crates.io publish is `26.0.1` but adopting it would diverge from `soroban-sdk 25.3.0`'s pin. |
+| `stellar-cli` | `v25.1.0` (CI matrix pin) | Local install version; the same tag will be used in CI. Embeds `wasm-opt = 0.116.1` Rust crate (Binaryen v116) via the `additional-libs` feature. Verified in `cmd/soroban-cli/Cargo.toml` of `stellar-cli` at tag `v25.1.0`. Source: `https://github.com/stellar/stellar-cli/releases/tag/v25.1.0`. NOTE: latest release is `v26.0.0` (2026-04-13) but pinning to local-install version maintains parity between dev and CI. |
 | `@stellar/stellar-sdk` (JS) | `12.x` latest at Phase 7 | Wallet adapter only; do not use from Rust paths. |
-| `@stellar/freighter-api` | latest at Phase 7 (verify on npm) | SEP-43 implementation entry point for Freighter. |
-| `passkey-kit` | latest at Phase 7 (verify on `github.com/kalepail/passkey-kit` / npm) | Secondary wallet adapter, used for programmatic / headless flows; ensure Apache-2.0 license still applies. |
+| `@stellar/freighter-api` | `6.0.1` | Latest on npm (`npm view @stellar/freighter-api version`), Apache-2.0 (matches our toolkit). SEP-43 implementation entry point for Freighter. Source: `https://www.npmjs.com/package/@stellar/freighter-api`. |
+| `passkey-kit` | `0.12.0` (latest), **MIT-licensed** | Latest on npm (`npm view passkey-kit version`). License is **MIT**, NOT Apache-2.0 as the row originally implied. MIT is downstream-compatible with this toolkit's Apache-2.0 distribution (standard Rust dual-license pattern), but the discrepancy must be acknowledged in the LICENSE NOTICE for any released bundle that vendors passkey-kit. Source: `https://github.com/kalepail/passkey-kit` (verified `LICENSE` via GitHub API: SPDX MIT). |
 
 ### Codegen & MCP
 | Crate | Version | Source / Reason |
 |---|---|---|
-| `askama` | `0.13.x` (verify latest 0.13 patch on crates.io in Phase 1) | Compile-time-checked, byte-deterministic templating per research §6. Reasoning: `syn`/`quote` AST construction loses reviewer-readability; `askama`'s readable Rust output compensates with a sandbox compile gate. |
-| `rmcp` (modelcontextprotocol/rust-sdk) | TBD: verify latest tag supporting MCP spec **2025-11-25** on `github.com/modelcontextprotocol/rust-sdk`; pin exact crate version in Phase 1 | MCP spec revision 2025-11-25 must be supported per research §7. Research §16 flags rmcp parity as an open risk; if rmcp lags, fallback is the TypeScript SDK with FFI to the Rust synthesizer — but only after confirming this in Phase 1. |
+| `askama` | `=0.16.0` | Latest stable on crates.io as of 2026-05 (the 0.13.x line is superseded — 0.13 -> 0.14 -> 0.15 -> 0.16, all published 2026). Compile-time-checked, byte-deterministic templating per research §6. Reasoning: `syn`/`quote` AST construction loses reviewer-readability; `askama`'s readable Rust output compensates with a sandbox compile gate. Apache-2.0 OR MIT. Source: `https://crates.io/crates/askama/0.16.0`. |
+| `rmcp` (modelcontextprotocol/rust-sdk) | `=1.7.0` | Resolved in Phase 1: supports MCP spec revisions `2025-06-18` AND `2025-11-25` (PR #802 merged 2026-04-10, first published in `rmcp-v1.5.0`). STDIO and Streamable HTTP transports both supported. Apache-2.0. Edition 2024 (MSRV >= 1.85, satisfied by our 1.89.0 pin). The TypeScript-SDK-FFI fallback is NOT needed — see `docs/mcp-sdk-decision.md`. Source: `https://crates.io/crates/rmcp/1.7.0`. |
 | `serde` / `serde_json` | latest stable 1.x | Standard. |
-| `schemars` | `0.8.x` latest | Emit JSON Schema for the policy IR and for MCP tool input/output schemas. |
+| `schemars` | `=1.0` (current latest is `1.2.1`; pin major to match rmcp's dep) | Emit JSON Schema for the policy IR and for MCP tool input/output schemas. `rmcp 1.7.0` declares `schemars = "1.0"` so we follow the same major to avoid version-resolution conflicts. The plan's earlier `0.8.x` is stale (schemars hit 1.0 stable in 2026). MIT OR Apache-2.0. |
 
 ### Testing & Security
 | Tool | Version | Source / Reason |
 |---|---|---|
-| `proptest` | `1.5.x` (verify latest 1.x on crates.io in Phase 1) | Property-based deny-vector generation per research §9. Chosen over `quickcheck` because `stellar-contracts` test utilities integrate `proptest` and its strategy DSL fits typed `ScVal` generation. |
-| `cargo-nextest` | latest stable | Faster test runs, deterministic isolation; used in CI. |
-| `cargo-fuzz` | `0.12.x` latest (verify on crates.io in Phase 1) | libFuzzer harness over `enforce(ctx, signers, rule, smart_account)` per research §12. |
-| `cargo-deny` | latest stable | Supply-chain / advisory checks gated in CI. |
-| `cargo-audit` | latest stable | Continuous CVE checks against Cargo.lock. |
+| `proptest` | `=1.11.0` | Latest stable on crates.io (`cargo search proptest`). MIT OR Apache-2.0. Property-based deny-vector generation per research §9. Chosen over `quickcheck` because `stellar-contracts` test utilities integrate `proptest` and its strategy DSL fits typed `ScVal` generation. |
+| `cargo-nextest` | `=0.9.128` | Pinned: latest nextest compatible with rustc 1.89.0. Nextest 0.9.135 requires rustc >= 1.91, which exceeds our toolchain pin. Faster test runs, deterministic isolation; used in CI. Apache-2.0 OR MIT. |
+| `cargo-fuzz` | `=0.13.1` | Latest stable on crates.io. MIT OR Apache-2.0. libFuzzer harness over `enforce(ctx, signers, rule, smart_account)` per research §12. |
+| `cargo-deny` | `=0.19.6` | Latest stable on crates.io (`cargo search cargo-deny`). MIT OR Apache-2.0. Supply-chain / advisory checks gated in CI. |
+| `cargo-audit` | `=0.22.1` | Latest stable on crates.io (`cargo search cargo-audit`). Apache-2.0 OR MIT. Continuous CVE checks against Cargo.lock. |
 | `clippy` | bundled with pinned Rust toolchain; CI runs `cargo clippy -- -D warnings` | Required gate. |
 | `bubblewrap` (Linux) / `sandbox-exec` (macOS) | OS-provided | Sandbox the build worker; no network except cached crates mirror per research §7. |
 
@@ -59,7 +59,14 @@ All phases reference this section. Do not introduce versions not listed here wit
 - MCP spec revision: **2025-11-25** (research §7). Transports: **STDIO** (subprocess for IDEs) and **Streamable HTTP** (long-running service for remote/CI). The deprecated 2024-11-05 HTTP+SSE transport is not implemented.
 
 ### License
-- **Apache-2.0** across all repos and packages — matches OpenZeppelin `stellar-contracts` and `kalepail/pollywallet` per research §13 and the RFP Section 3 requirement.
+- **Apache-2.0** for this toolkit's own code, packages, and released bundles — per the RFP Section 3 requirement.
+- **Upstream license notes (Phase 1 verified, 2026-05-15):**
+  - OpenZeppelin `stellar-contracts` (incl. `stellar-accounts 0.7.1`) is **MIT** (not Apache-2.0 as research §13 assumed). MIT is permissively downstream-compatible with Apache-2.0 distribution.
+  - `kalepail/passkey-kit` (npm `passkey-kit`) is **MIT**.
+  - `@stellar/freighter-api` (npm) is Apache-2.0 (matches us).
+  - `rmcp` (Rust MCP SDK) is Apache-2.0.
+  - `soroban-sdk`, `soroban-env-host`, `stellar-xdr`, `stellar-rpc-client`, `stellar-cli` are all Apache-2.0.
+- **NOTICE file requirement:** because we vendor or re-distribute MIT-licensed upstreams (`stellar-accounts`, `passkey-kit`), the released bundle's `NOTICE` must reproduce their MIT copyright lines as required by the Apache-2.0 dual-license interaction. Phase 9 (audits) and Phase 10 (release) must check this.
 
 ### Workspace Layout (canonical paths — referenced by every phase)
 ```
@@ -706,12 +713,12 @@ These are unresolved at planning time per research §11 (analysis) and §16 (tec
 | Which auditor specifically? OtterSec or fallback? | Phase 9 (handoff) | Resolved in `audits/auditor-selection.md` before Phase 9 starts |
 | Final hosted-MCP provider choice? | Phase 10 Stream B | `docs/hosting-decision.md` |
 | Mainnet RPC provider for the hosted endpoint? | Phase 10 Stream B | `docs/rpc-mainnet-decision.md` |
-| Does `rmcp` ship MCP spec 2025-11-25? | Phase 1 (resolves the decision; Phase 5 consumes it) | `docs/mcp-sdk-decision.md` |
-| Exact `stellar-accounts` version on crates.io (`0.7.1` vs `0.7.0-rc.1`)? | Phase 1 | Edit *Tech Stack & Versions* once resolved |
+| Does `rmcp` ship MCP spec 2025-11-25? | **RESOLVED in Phase 1**: yes, `rmcp 1.7.0` supports `2025-11-25` since v1.5.0 (PR #802). See `docs/mcp-sdk-decision.md`. |
+| Exact `stellar-accounts` version on crates.io (`0.7.1` vs `0.7.0-rc.1`)? | **RESOLVED in Phase 1**: `0.7.1` (both crates.io publish AND GitHub tag align). The plan's *Tech Stack & Versions* row is updated. |
 | Codegen dependency mode (link `stellar-accounts` or stand alone)? | Phase 3 | `docs/codegen-dependency-mode.md` |
-| Does `spending_limit::AccountParams` carry a `token: Address`? | Phase 2 | `docs/oz-internal-shapes.md` |
-| `spending_limit` period unit (ledgers vs seconds)? | Phase 2 | `docs/oz-internal-shapes.md` |
-| Pre-PR-#655 smart-account version marker (used by install preflight)? | Phase 2; revisited in Phase 9 | `docs/oz-internal-shapes.md` |
+| Does `spending_limit::AccountParams` carry a `token: Address`? | **RESOLVED in Phase 1**: NO. The struct (`SpendingLimitAccountParams`) has only `spending_limit: i128` and `period_ledgers: u32`. The token lives in `ContextRule.context_type::CallContract(Address)` and `install` rejects any other context type with `OnlyCallContractAllowed (3227)`. See `docs/oz-internal-shapes.md` §4.1. |
+| `spending_limit` period unit (ledgers vs seconds)? | **RESOLVED in Phase 1**: ledgers (`period_ledgers: u32`). Rolling-window logic uses `e.ledger().sequence()` and `entry.ledger_sequence: u32`. See `docs/oz-internal-shapes.md` §4.2. |
+| Pre-PR-#655 smart-account version marker (used by install preflight)? | **PARTIALLY RESOLVED in Phase 1**: no on-chain marker exists in source. Three fallback strategies documented in `docs/oz-internal-shapes.md` §8 (WASM-hash whitelist, behavioral probe, user assertion). Decision deferred to Phase 2 implementation; Phase 9 may file an issue upstream requesting a `SMART_ACCOUNT_AUTH_DIGEST_REV` constant. |
 
 ---
 
