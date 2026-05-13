@@ -1,0 +1,29 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Worktrees (managed by harness)
+.claude/worktrees/
+.worktrees/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Local env / secrets
+.env
+.env.local
+*.local
+
+# Logs and tmp
+*.log
+tmp/
