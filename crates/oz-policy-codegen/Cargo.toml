@@ -1,0 +1,11 @@
+[package]
+name = "oz-policy-codegen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Track-B codegen: askama templates + sandboxed cargo build driver producing reproducible Soroban policy WASM artifacts."
+
+[dependencies]
+oz-policy-core = { path = "../oz-policy-core" }

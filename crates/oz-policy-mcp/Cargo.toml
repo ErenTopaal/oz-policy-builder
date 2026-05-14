@@ -1,0 +1,15 @@
+[package]
+name = "oz-policy-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "MCP server binary exposing the OZ Accounts Policy Builder tool surface (STDIO + Streamable HTTP)."
+
+[[bin]]
+name = "oz-policy-mcp"
+path = "src/main.rs"
+
+[dependencies]
+oz-policy-core = { path = "../oz-policy-core" }

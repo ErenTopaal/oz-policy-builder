@@ -1,0 +1,11 @@
+[package]
+name = "oz-policy-simhost"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Soroban env-host simulation harness + proptest-based deny-vector generator for policy verification."
+
+[dependencies]
+oz-policy-core = { path = "../oz-policy-core" }

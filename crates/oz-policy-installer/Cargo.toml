@@ -1,0 +1,11 @@
+[package]
+name = "oz-policy-installer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Builds install-envelope XDR for SmartAccount::add_context_rule / add_policy. Never auto-submits."
+
+[dependencies]
+oz-policy-core = { path = "../oz-policy-core" }

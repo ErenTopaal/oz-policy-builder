@@ -1,0 +1,16 @@
+[package]
+name = "oz-policy-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Thin CLI mirror of the MCP tool surface — used for local debugging and recorder smoke tests."
+
+[[bin]]
+name = "oz-policy-cli"
+path = "src/main.rs"
+
+[dependencies]
+oz-policy-core = { path = "../oz-policy-core" }
+clap = { workspace = true }
