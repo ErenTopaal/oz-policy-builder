@@ -531,3 +531,9 @@ If any CI step bypasses `stellar contract` and shells out to system `wasm-opt`, 
 5. **Pre/post-#655 marker.** Research and plan assume a clean on-chain marker exists or can be constructed. None exists in source. See section 8 for available fallbacks.
 
 6. **Era of policies' rejection codes.** All policy error codes are in the range 3200-3227; smart-account errors are 3000-3016. The `E_SYNTH_NOT_EXPRESSIBLE` mapping table (Phase 2) should reserve these as user-facing reasons but should not duplicate them as numeric codes (avoid namespace collisions).
+
+---
+
+All line numbers above verified against `git show v0.7.1:packages/accounts/...` on 2026-05-15. Verification method: shallow clone of `OpenZeppelin/stellar-contracts` at tag `v0.7.1` (commit `3f81125bed3114cc93f5fca6d13240082050269a`), then `grep -n <unique_anchor_phrase>` for every `file:line` reference in §1–§10. Every line ref resolves to its cited symbol at the pinned tag.
+
+When refreshing this doc against a newer tag, regenerate every `file:line` reference with grep against the pinned tag and update this date.
