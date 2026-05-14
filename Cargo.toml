@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/oz-policy-builder/oz-policy-builder"
+authors = ["OZ Policy Builder contributors"]
+
+# All dependency versions are pinned with `=` to enforce reproducible builds
+# (per plan.md Phase 9 reproducible-build requirement). Member crates consume
+# these via `<dep> = { workspace = true }`.
+[workspace.dependencies]
+# --- Stellar / Soroban ecosystem (versions verified in P1-T1 plan.md Tech Stack table) ---
+soroban-sdk = "=25.3.0"
+soroban-env-host = "=25.0.1"
+stellar-accounts = "=0.7.1"
+stellar-rpc-client = "=25.1.0"
+stellar-xdr = "=25.0.0"
+
+# --- Codegen & MCP (versions verified in plan.md Tech Stack table) ---
+askama = "=0.16.0"
+rmcp = "=1.7.0"
+# schemars: plan.md pins major `=1.0` to match rmcp 1.7.0's `schemars = "1.0"`
+# declaration; latest patch as of 2026-05 is 1.2.1 (Cargo's `=1.0` semantics
+# select the exact 1.0.x latest). Keep at the major track to satisfy rmcp.
+schemars = "=1.0"
+
+# --- Testing ---
+proptest = "=1.11.0"
+
+# --- General-purpose deps (verified latest stable on crates.io 2026-05-15) ---
+# serde 1.0.228 — latest stable (https://crates.io/crates/serde/1.0.228, MSRV 1.56)
+serde = { version = "=1.0.228", features = ["derive"] }
+# serde_json 1.0.149 — latest stable (https://crates.io/crates/serde_json/1.0.149, MSRV 1.68)
+serde_json = "=1.0.149"
+# thiserror 1.0.69 — latest 1.x stable (https://crates.io/crates/thiserror/1.0.69, MSRV 1.68).
+# Sticking to 1.x to avoid the 2.x breaking changes for our Error enum scaffolding.
+thiserror = "=1.0.69"
+# tokio 1.52.3 — latest stable on 1.x (https://crates.io/crates/tokio/1.52.3, MSRV 1.71)
+tokio = { version = "=1.52.3", features = ["macros", "rt-multi-thread"] }
+# clap 4.6.1 — latest stable 4.x (https://crates.io/crates/clap/4.6.1, MSRV 1.85)
+clap = { version = "=4.6.1", features = ["derive"] }
+# tracing 0.1.44 — latest stable (https://crates.io/crates/tracing/0.1.44, MSRV 1.65)
+tracing = "=0.1.44"
+# tracing-subscriber 0.3.23 — latest stable (https://crates.io/crates/tracing-subscriber/0.3.23, MSRV 1.65)
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
+
+# `overflow-checks = true` is LOAD-BEARING for safety per plan.md
+# Cross-Phase Invariants (Blend security guidance verbatim). Do not unset.
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
+[profile.dev]
+overflow-checks = true
