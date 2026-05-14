@@ -378,7 +378,15 @@ Findings:
 
 **Implication for Phase 2 installer preflight:** the planned "is this account post-#655?" check cannot be answered by introspecting the deployed contract. Available fallback strategies:
 
-1. **Bytecode-hash whitelist.** Compute the WASM hash of OZ-released smart-account example builds at tags `>= v0.7.0-rc.2` (PR #655 merged 2026-03-26, included in `v0.7.0-rc.2` released the same day, all subsequent stable tags) and require the deployed account's `LedgerKeyContractCode.hash` to match one of those hashes. This is brittle to custom forks but correct for OZ-stock accounts.
+1. **Bytecode-hash whitelist.** Compute the WASM hash of OZ-released smart-account example builds at tags `>= v0.7.0-rc.2` and require the deployed account's `LedgerKeyContractCode.hash` to match one of those hashes. This is brittle to custom forks but correct for OZ-stock accounts.
+
+   **PR #655 release-trail evidence (verified 2026-05-15):**
+   - PR URL: https://github.com/OpenZeppelin/stellar-contracts/pull/655 ("Smart account: new sign digest")
+   - Merged: `2026-03-26T13:09:07Z` (per `gh pr view 655 --json mergedAt`)
+   - Merge commit SHA: `5958551051a0bba1a007c8dbb44f35fd547edf0f` (per `gh pr view 655 --json mergeCommit`)
+   - First tag containing the merge commit: `v0.7.0-rc.2` (released `2026-03-26T15:00:50Z`, same day as merge) — verified via `git tag --contains 5958551051a0bba1a007c8dbb44f35fd547edf0f`, which returns exactly `v0.7.0-rc.2`, `v0.7.0`, `v0.7.1`.
+   - First *stable* tag containing the merge commit: `v0.7.0` (released `2026-04-03T13:19:45Z`).
+   - Tag-list verification: `gh release list -R OpenZeppelin/stellar-contracts` confirms `v0.7.0-rc.2` is the next tag after the merge commit; no intermediate tag exists between `v0.7.0-rc.1` (2026-03-02, pre-merge) and `v0.7.0-rc.2`.
 2. **Behavioral probe.** Submit a simulated `__check_auth` with a known-good post-#655-format signature against a `Default` rule; if it succeeds, the account is post-#655. This costs one simulate call and surfaces the new-digest behavior directly.
 3. **Document the limitation** and require the *user* to assert (via an `--account-revision=post-655` flag or wallet-metadata) that their deployed account is current. The installer rejects without an assertion.
 
