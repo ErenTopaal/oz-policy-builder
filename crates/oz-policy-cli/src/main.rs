@@ -3,6 +3,7 @@
 //! P1-T3 (see `plan.md` § "Phase 1 — Foundations").
 
 use clap::{Parser, Subcommand};
+use oz_policy_core::Error;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -21,15 +22,29 @@ enum Command {
     Record,
 }
 
-fn run(cli: Cli) -> &'static str {
+/// Phase-1 placeholder handler. Returns `Result<_, Error>` so the
+/// cross-crate boundary with `oz-policy-core` is wired and link-tested from
+/// the start; P1-T3 will replace the `Ok` body with real recorder output and
+/// the `Err` variants will be the canonical `E_RECORDER_*` codes.
+fn record_placeholder() -> Result<&'static str, Error> {
+    Ok("phase 1 placeholder")
+}
+
+fn run(cli: Cli) -> Result<&'static str, Error> {
     match cli.command {
-        Command::Record => "phase 1 placeholder",
+        Command::Record => record_placeholder(),
     }
 }
 
 fn main() {
     let cli = Cli::parse();
-    println!("{}", run(cli));
+    match run(cli) {
+        Ok(msg) => println!("{}", msg),
+        Err(e) => {
+            eprintln!("{}: {}", e.code(), e);
+            std::process::exit(1);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -50,6 +65,6 @@ mod tests {
         let cli = Cli {
             command: Command::Record,
         };
-        assert_eq!(run(cli), "phase 1 placeholder");
+        assert_eq!(run(cli).unwrap(), "phase 1 placeholder");
     }
 }
