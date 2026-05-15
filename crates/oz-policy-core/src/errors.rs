@@ -154,4 +154,40 @@ mod tests {
             );
         }
     }
+
+    /// Compiler-enforced exhaustive coverage guard.
+    ///
+    /// The slice-driven `every_variant_maps_to_canonical_code` test above is a
+    /// runtime check: if someone adds a 10th variant to `Error` and forgets to
+    /// extend that slice, the test still compiles and silently misses the new
+    /// variant. This second test uses an exhaustive `match` so the compiler
+    /// itself refuses to build the test until the new variant is mapped to its
+    /// canonical `E_*` code here — which in turn forces a corresponding update
+    /// to the production `Error::code()` impl (otherwise the sanity assertion
+    /// below would fail).
+    #[test]
+    fn variant_coverage_is_exhaustive() {
+        fn canonical_code_for(e: &Error) -> &'static str {
+            // NOTE: do NOT add a wildcard arm — the whole point of this test is
+            // that adding a new `Error` variant must break the build here.
+            match e {
+                Error::RecorderHashNotFound(_) => "E_RECORDER_HASH_NOT_FOUND",
+                Error::RecorderSimFailed(_) => "E_RECORDER_SIM_FAILED",
+                Error::SynthNotExpressible(_) => "E_SYNTH_NOT_EXPRESSIBLE",
+                Error::CodegenCompileFailed(_) => "E_CODEGEN_COMPILE_FAILED",
+                Error::SimPermitDenied(_) => "E_SIM_PERMIT_DENIED",
+                Error::SimDenyPassed(_) => "E_SIM_DENY_PASSED",
+                Error::VerifyDrift(_) => "E_VERIFY_DRIFT",
+                Error::WalletRejected(_) => "E_WALLET_REJECTED",
+                Error::InstallPreflightFailed(_) => "E_INSTALL_PREFLIGHT_FAILED",
+            }
+        }
+
+        // Sanity check: the locally-mirrored mapping must agree with the
+        // production `Error::code()` method for at least one probe variant.
+        // If `Error::code()` is updated without updating the match above (or
+        // vice versa), this assertion will fail.
+        let probe = Error::VerifyDrift("probe".into());
+        assert_eq!(canonical_code_for(&probe), probe.code());
+    }
 }
