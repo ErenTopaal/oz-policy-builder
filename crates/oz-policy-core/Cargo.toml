@@ -8,7 +8,8 @@ authors.workspace = true
 description = "Core policy IR, decision tree, schema, and error types for the OZ Accounts Policy Builder."
 
 [dependencies]
-serde = { workspace = true }
-serde_json = { workspace = true }
-schemars = { workspace = true }
+# Phase 1 only ships the canonical `Error` enum, which needs `thiserror` and
+# nothing else. `serde`, `serde_json`, and `schemars` are kept declared at
+# the workspace level (see top-level Cargo.toml) and will be re-introduced
+# here in Phase 2 when `PolicySpec` IR + JSON Schema codegen land.
 thiserror = { workspace = true }
