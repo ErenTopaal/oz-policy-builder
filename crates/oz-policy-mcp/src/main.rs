@@ -10,10 +10,15 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use oz_policy_core::Error;
+
+    /// Confirms the MCP binary actually links against `oz_policy_core` —
+    /// Phase 5 will surface these `E_*` codes verbatim over the MCP wire,
+    /// so the cross-crate boundary needs to be exercised from Phase 1 to
+    /// match the pattern used by the other placeholder crates.
     #[test]
-    fn arithmetic_still_works() {
-        // Trivial smoke test gating Phase-1 binary scaffolding; replaced
-        // with real MCP handshake tests in Phase 5.
-        assert_eq!(2 + 2, 4);
+    fn mcp_can_round_trip_canonical_error_code() {
+        let e = Error::WalletRejected("user clicked cancel".into());
+        assert_eq!(e.code(), "E_WALLET_REJECTED");
     }
 }
