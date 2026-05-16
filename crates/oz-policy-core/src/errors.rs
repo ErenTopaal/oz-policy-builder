@@ -10,7 +10,8 @@
 //! Phase 1 only constructs these variants in unit tests. Later phases attach
 //! real semantics:
 //!
-//! * `oz-policy-recorder`  → `E_RECORDER_*`
+//! * `oz-policy-recorder`  → `E_RECORDER_*` (`E_RECORDER_HASH_NOT_FOUND`,
+//!   `E_RECORDER_SIM_FAILED`, `E_RECORDER_XDR_DECODE_FAILED`)
 //! * `oz-policy-core`      → `E_SYNTH_NOT_EXPRESSIBLE`
 //! * `oz-policy-codegen`   → `E_CODEGEN_COMPILE_FAILED`
 //! * `oz-policy-simhost`   → `E_SIM_*`, `E_VERIFY_DRIFT`
@@ -33,6 +34,14 @@ pub enum Error {
     /// failed to produce a decodable auth tree.
     #[error("E_RECORDER_SIM_FAILED: {0}")]
     RecorderSimFailed(String),
+
+    /// Recorder received well-formed RPC envelopes (or test fixtures) but the
+    /// embedded XDR (envelope, result-meta, auth, or `ScVal`) failed to
+    /// decode. Distinct from `E_RECORDER_SIM_FAILED` (= the RPC call itself
+    /// reported failure) and `E_RECORDER_HASH_NOT_FOUND` (= the tx is not on
+    /// chain). Added in P1-T3.
+    #[error("E_RECORDER_XDR_DECODE_FAILED: {0}")]
+    RecorderXdrDecodeFailed(String),
 
     /// Synthesizer determined the requested constraints cannot be expressed
     /// by any combination of OZ primitives or Track-B templates within the
@@ -80,6 +89,7 @@ impl Error {
         match self {
             Error::RecorderHashNotFound(_) => "E_RECORDER_HASH_NOT_FOUND",
             Error::RecorderSimFailed(_) => "E_RECORDER_SIM_FAILED",
+            Error::RecorderXdrDecodeFailed(_) => "E_RECORDER_XDR_DECODE_FAILED",
             Error::SynthNotExpressible(_) => "E_SYNTH_NOT_EXPRESSIBLE",
             Error::CodegenCompileFailed(_) => "E_CODEGEN_COMPILE_FAILED",
             Error::SimPermitDenied(_) => "E_SIM_PERMIT_DENIED",
@@ -109,6 +119,10 @@ mod tests {
             (
                 Error::RecorderSimFailed("rpc returned host error".into()),
                 "E_RECORDER_SIM_FAILED",
+            ),
+            (
+                Error::RecorderXdrDecodeFailed("malformed ScVal in transfer args[2]".into()),
+                "E_RECORDER_XDR_DECODE_FAILED",
             ),
             (
                 Error::SynthNotExpressible("constraint count exceeded limit".into()),
@@ -173,6 +187,7 @@ mod tests {
             match e {
                 Error::RecorderHashNotFound(_) => "E_RECORDER_HASH_NOT_FOUND",
                 Error::RecorderSimFailed(_) => "E_RECORDER_SIM_FAILED",
+                Error::RecorderXdrDecodeFailed(_) => "E_RECORDER_XDR_DECODE_FAILED",
                 Error::SynthNotExpressible(_) => "E_SYNTH_NOT_EXPRESSIBLE",
                 Error::CodegenCompileFailed(_) => "E_CODEGEN_COMPILE_FAILED",
                 Error::SimPermitDenied(_) => "E_SIM_PERMIT_DENIED",

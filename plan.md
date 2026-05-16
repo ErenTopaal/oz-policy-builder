@@ -104,7 +104,7 @@ repo-root/
 ### Naming Conventions (used throughout the plan)
 - Policy IR root type: `PolicySpec` (versioned). Schema URI: `oz-policy-builder/v1`.
 - Recording IR root type: `Recording`. Schema URI: `oz-policy-builder/recording/v1`.
-- Tool error code prefix: `E_`. Full list: `E_RECORDER_HASH_NOT_FOUND`, `E_RECORDER_SIM_FAILED`, `E_SYNTH_NOT_EXPRESSIBLE`, `E_CODEGEN_COMPILE_FAILED`, `E_SIM_PERMIT_DENIED`, `E_SIM_DENY_PASSED`, `E_VERIFY_DRIFT`, `E_WALLET_REJECTED`, `E_INSTALL_PREFLIGHT_FAILED`.
+- Tool error code prefix: `E_`. Full list: `E_RECORDER_HASH_NOT_FOUND`, `E_RECORDER_SIM_FAILED`, `E_RECORDER_XDR_DECODE_FAILED`, `E_SYNTH_NOT_EXPRESSIBLE`, `E_CODEGEN_COMPILE_FAILED`, `E_SIM_PERMIT_DENIED`, `E_SIM_DENY_PASSED`, `E_VERIFY_DRIFT`, `E_WALLET_REJECTED`, `E_INSTALL_PREFLIGHT_FAILED`. (`E_RECORDER_XDR_DECODE_FAILED` added in P1-T3 for the recorder's XDR decode path; distinct from `E_RECORDER_SIM_FAILED` which signals the RPC call itself reported failure.)
 - Storage key convention in generated contracts (from research §5.2.1): `max_{arg_name}` / `min_{arg_name}` for ranges, `threshold`, `allowed_{arg_name}` for allowlists.
 - All synthesizer outputs are pure functions of inputs; codegen byte-determinism enforced by pinned toolchain + `Cargo.lock` + pinned `wasm-opt`.
 
