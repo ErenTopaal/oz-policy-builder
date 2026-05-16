@@ -158,12 +158,23 @@ pub async fn record_by_simulation(
         rec.auth_tree = walk_auth_entries(&first.auth)?;
     }
 
-    // Pull diagnostic / contract events from the simulation.
+    // Pull contract / system events from the simulation. Diagnostic events
+    // are intentionally excluded: per `TypedEvent`'s doc-comment, diagnostic
+    // events are policy-noise (host-internal counters, fn-entry/exit traces)
+    // and must not appear in the Recording. The on-chain `walk_events` path
+    // emits the same set (the meta only contains contract+system events
+    // outside diagnostic_events buckets), so the two paths stay consistent.
+    // We additionally drop events from unsuccessful host frames
+    // (`in_successful_contract_call == false`) — those represent unwound
+    // sub-invocations and aren't part of the canonical event log either.
     let sim_events = sim
         .events()
         .map_err(|e| Error::RecorderXdrDecodeFailed(format!("simulation events decode: {e}")))?;
     rec.events = sim_events
         .iter()
+        .filter(|de| {
+            de.in_successful_contract_call && de.event.type_ != ContractEventType::Diagnostic
+        })
         .map(|de| typed_event_from_contract_event(&de.event))
         .collect::<Result<Vec<_>, _>>()?;
 
