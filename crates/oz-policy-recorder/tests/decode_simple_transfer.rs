@@ -1,0 +1,66 @@
+//! Integration test: decode a committed real-testnet SAC `transfer` envelope
+//! + result_meta via the internal `decode_from_xdr_blobs` helper, no network.
+//!
+//! Source of fixture: `tests/fixtures/simple_transfer.*.xdr.base64`
+//! (testnet tx `52b86b5393b9ee936aa7b62638fb9d40fdbbed93ea6ac685e925205f52d50fcf`
+//! at ledger 2566000). See `tests/fixtures/README.md`.
+
+use oz_policy_recorder::{ArgValue, IngestSource};
+
+mod common;
+use common as helpers;
+
+const NETWORK: &str = "Test SDF Network ; September 2015";
+
+#[test]
+fn decodes_simple_transfer_correctly() {
+    let envelope = include_str!("fixtures/simple_transfer.envelope.xdr.base64");
+    let meta = include_str!("fixtures/simple_transfer.result_meta.xdr.base64");
+    let rec = helpers::decode(envelope.trim(), meta.trim(), NETWORK)
+        .expect("decode fixture should succeed");
+    // schema is the canonical wire identifier
+    assert_eq!(rec.schema, "oz-policy-builder/recording/v1");
+    assert_eq!(rec.network_passphrase, NETWORK);
+    // The fixture is sourced from a real `getTransaction` response; the
+    // helper does not set `ingest` (that's the public entrypoint's job),
+    // so we only validate the contracts / args here.
+    assert!(matches!(rec.ingest, IngestSource::Hash { .. }));
+    assert_eq!(
+        rec.contracts.len(),
+        1,
+        "exactly one InvokeContract op expected, got {}",
+        rec.contracts.len()
+    );
+    let c = &rec.contracts[0];
+    assert_eq!(c.function, "transfer", "function name must be 'transfer'");
+    assert_eq!(c.args.len(), 3, "transfer must have 3 args: from,to,amount");
+    // arg2 (amount) is an i128 per SEP-41
+    assert!(
+        matches!(c.args[2], ArgValue::I128(_)),
+        "args[2] should be ArgValue::I128, got {:?}",
+        c.args[2]
+    );
+    // The other two args should both be Addresses.
+    assert!(
+        matches!(c.args[0], ArgValue::Address(_)),
+        "args[0] should be Address, got {:?}",
+        c.args[0]
+    );
+    assert!(
+        matches!(c.args[1], ArgValue::Address(_)),
+        "args[1] should be Address, got {:?}",
+        c.args[1]
+    );
+    // Contract address must be a `C…` StrKey
+    assert!(
+        c.address.starts_with('C'),
+        "contract StrKey must start with C, got {}",
+        c.address
+    );
+    // The fixture has a `SourceAccount` auth entry with no sub_invocations.
+    assert_eq!(rec.auth_tree.roots.len(), 1);
+    assert!(matches!(
+        rec.auth_tree.roots[0].credentials,
+        oz_policy_recorder::Credentials::SourceAccount
+    ));
+}
