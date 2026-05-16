@@ -24,7 +24,30 @@ feature-depth = 1
 # "unmaintained = warn" is set explicitly here.)
 yanked = "deny"
 unmaintained = "workspace"
-ignore = []
+ignore = [
+    # The next three advisories all live in `rustls-webpki 0.101.7`, which
+    # ships only through `stellar-rpc-client 25.1.0 → jsonrpsee-http-client
+    # 0.20.4 → hyper-rustls 0.24.2 → rustls 0.21.12`. Upgrading any link in
+    # that chain requires upgrading `stellar-rpc-client` itself — which is
+    # pinned to `=25.1.0` per the Phase-1 reproducible-build invariant in
+    # `plan.md` Tech Stack. We surface these here (rather than deleting the
+    # advisory check) so future audits see the explicit acknowledgement; the
+    # entries should be removed the moment `stellar-rpc-client` cuts a
+    # release that re-pins `rustls-webpki >= 0.103.13`.
+    #
+    # Reachability assessment: all three CVEs require a *misissued* server
+    # certificate or a malformed CRL signed by a trusted CA to be exploitable.
+    # The recorder talks to operator-configured Soroban RPC endpoints (default
+    # `soroban-testnet.stellar.org`), which present standard public-CA TLS
+    # certificates; these classes of attack are not in our threat model.
+    #
+    # RUSTSEC-2026-0098 — name constraints for URI names incorrectly accepted.
+    "RUSTSEC-2026-0098",
+    # RUSTSEC-2026-0099 — name constraints + wildcard mismatch in webpki.
+    "RUSTSEC-2026-0099",
+    # RUSTSEC-2026-0104 — reachable panic in CRL parsing.
+    "RUSTSEC-2026-0104",
+]
 
 [licenses]
 # Standard-permissive licenses surfaced by our concrete dep graph. Any

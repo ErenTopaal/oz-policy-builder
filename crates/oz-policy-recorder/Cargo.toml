@@ -9,3 +9,16 @@ description = "Stellar transaction recorder: ingest a tx (hash or simulate) and 
 
 [dependencies]
 oz-policy-core = { path = "../oz-policy-core" }
+stellar-rpc-client = { workspace = true }
+stellar-xdr = { workspace = true, features = ["curr", "std", "base64", "serde"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+hex = "=0.4.3"
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+tokio = { workspace = true }
