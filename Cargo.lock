@@ -955,7 +955,6 @@ dependencies = [
  "sha2",
  "stellar-rpc-client",
  "stellar-xdr",
- "thiserror",
  "tokio",
  "tracing",
 ]
