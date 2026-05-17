@@ -34,11 +34,18 @@ fn decodes_simple_transfer_correctly() {
     let c = &rec.contracts[0];
     assert_eq!(c.function, "transfer", "function name must be 'transfer'");
     assert_eq!(c.args.len(), 3, "transfer must have 3 args: from,to,amount");
-    // arg2 (amount) is an i128 per SEP-41
-    assert!(
-        matches!(c.args[2], ArgValue::I128(_)),
-        "args[2] should be ArgValue::I128, got {:?}",
-        c.args[2]
+    // arg2 (amount) is an i128 per SEP-41. The fixture's README pins the
+    // captured testnet `transfer` amount at `51_613_347` (decimal); assert
+    // the exact serialised value here so a future XDR-decode regression
+    // that flipped a sign bit or mis-decoded the `Int128Parts` halves
+    // would fail loudly, not just match the variant.
+    let ArgValue::I128(amount) = &c.args[2] else {
+        panic!("args[2] should be ArgValue::I128, got {:?}", c.args[2]);
+    };
+    assert_eq!(
+        amount, "51613347",
+        "transfer amount must equal the fixture's captured value (see fixtures/README.md), \
+         got {amount}"
     );
     // The other two args should both be Addresses.
     assert!(
