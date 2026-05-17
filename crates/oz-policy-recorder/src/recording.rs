@@ -164,6 +164,17 @@ pub struct AuthTree {
 pub struct AuthEntry {
     pub credentials: Credentials,
     pub root_invocation: AuthInvocation,
+    /// Zero-based index of the `InvokeHostFunction` operation in the source
+    /// envelope that owned this auth entry. Always `0` for the common
+    /// single-op envelope; multi-op envelopes (rare in practice but legal
+    /// per XDR) preserve their op→auth correspondence here.
+    ///
+    /// Marked `#[serde(default)]` for forward/backward compatibility: older
+    /// Recordings produced before this field existed deserialise with
+    /// `source_op_index == 0`, which is the correct value for the
+    /// overwhelmingly common single-op case.
+    #[serde(default)]
+    pub source_op_index: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]

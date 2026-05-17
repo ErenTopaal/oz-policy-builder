@@ -382,7 +382,10 @@ fn walk_envelope_invocations(
 
     let mut contracts = Vec::new();
     let mut auth_roots = Vec::new();
-    for op in ops_iter {
+    // `op_index` counts ALL operations on the envelope, not just
+    // `InvokeHostFunction`s, so the value on `AuthEntry::source_op_index`
+    // matches the wire-level operation index in the source transaction.
+    for (op_index, op) in ops_iter.iter().enumerate() {
         if let OperationBody::InvokeHostFunction(ih) = &op.body {
             match &ih.host_function {
                 HostFunction::InvokeContract(ic) => {
@@ -404,7 +407,10 @@ fn walk_envelope_invocations(
                     // associated auth entries we want to capture below.
                 }
             }
-            let tree = walk_auth_entries(ih.auth.as_slice())?;
+            // Tag each auth root with the source op index so multi-op
+            // envelopes preserve op→auth correspondence in the Recording.
+            let op_idx_u32 = u32::try_from(op_index).unwrap_or(u32::MAX);
+            let tree = walk_auth_entries_with_op_index(ih.auth.as_slice(), op_idx_u32)?;
             auth_roots.extend(tree.roots);
         }
     }
@@ -412,8 +418,20 @@ fn walk_envelope_invocations(
 }
 
 fn walk_auth_entries(entries: &[SorobanAuthorizationEntry]) -> Result<AuthTree, Error> {
+    // Default op-index 0 — used by the simulation path (one envelope = one
+    // simulation result, so the op_index is unambiguously 0). The
+    // multi-op-aware envelope walker uses
+    // `walk_auth_entries_with_op_index` directly.
+    walk_auth_entries_with_op_index(entries, 0)
+}
+
+fn walk_auth_entries_with_op_index(
+    entries: &[SorobanAuthorizationEntry],
+    source_op_index: u32,
+) -> Result<AuthTree, Error> {
     tracing::debug!(
         entry_count = entries.len(),
+        source_op_index,
         "decoding SorobanAuthorizationEntry slice"
     );
     let roots = entries
@@ -422,6 +440,7 @@ fn walk_auth_entries(entries: &[SorobanAuthorizationEntry]) -> Result<AuthTree, 
             Ok(AuthEntry {
                 credentials: decode_credentials(&e.credentials)?,
                 root_invocation: decode_invocation(&e.root_invocation)?,
+                source_op_index,
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
