@@ -43,6 +43,39 @@ use crate::recording::{
 // Public entrypoints
 // ---------------------------------------------------------------------------
 
+/// Ask the RPC endpoint which network it serves and compare against the
+/// passphrase the caller asserted. Without this guard, a user can point
+/// `--rpc <mainnet-url> --network "Test SDF Network ; September 2015"` and
+/// get mainnet data labelled as testnet in the Recording, which would
+/// corrupt downstream policy decisions silently.
+///
+/// Wrapped in the same `RPC_TIMEOUT` as every other RPC await so a stuck
+/// endpoint fails fast instead of hanging here.
+async fn verify_network_match(
+    client: &Client,
+    rpc_url: &str,
+    asserted_passphrase: &str,
+) -> Result<(), Error> {
+    let net = timeout(RPC_TIMEOUT, client.get_network())
+        .await
+        .map_err(|_elapsed| {
+            Error::RecorderSimFailed(format!("rpc timeout after 30s: {rpc_url}"))
+        })?
+        .map_err(|e| Error::RecorderSimFailed(format!("getNetwork({rpc_url}) failed: {e}")))?;
+    if net.passphrase != asserted_passphrase {
+        return Err(Error::RecorderSimFailed(format!(
+            "network mismatch: rpc {rpc_url} reports passphrase '{}' but caller asserted '{}'",
+            net.passphrase, asserted_passphrase
+        )));
+    }
+    tracing::debug!(
+        passphrase = %net.passphrase,
+        protocol_version = net.protocol_version,
+        "verified RPC network passphrase"
+    );
+    Ok(())
+}
+
 /// Fetch a confirmed transaction by hash and produce a typed [`Recording`].
 ///
 /// * If `getTransaction` returns `NOT_FOUND` (retention exceeded or wrong
@@ -60,6 +93,7 @@ pub async fn record_by_hash(
 ) -> Result<Recording, Error> {
     let client = Client::new(rpc_url)
         .map_err(|e| Error::RecorderSimFailed(format!("rpc client init failed: {e}")))?;
+    verify_network_match(&client, rpc_url, network_passphrase).await?;
     let hash_bytes: Hash = hash.parse().map_err(|e: xdr::Error| {
         Error::RecorderHashNotFound(format!("invalid hash {hash}: {e}"))
     })?;
@@ -158,6 +192,7 @@ pub async fn record_by_simulation(
     }
     let client = Client::new(rpc_url)
         .map_err(|e| Error::RecorderSimFailed(format!("rpc client init failed: {e}")))?;
+    verify_network_match(&client, rpc_url, network_passphrase).await?;
     let envelope = TransactionEnvelope::from_xdr_base64(envelope_xdr_base64, Limits::none())
         .map_err(|e| Error::RecorderXdrDecodeFailed(format!("envelope decode: {e}")))?;
     tracing::debug!(
