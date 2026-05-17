@@ -555,10 +555,27 @@ fn walk_state_changes(meta: &TransactionMeta) -> Result<Vec<StateDelta>, Error> 
 fn push_changes_from(c: &LedgerEntryChanges, out: &mut Vec<StateDelta>) -> Result<(), Error> {
     // Walk linearly; carry the most-recent `State` as the "before" pre-image
     // for the next `Updated` / `Removed` adjacent to it.
+    //
+    // The Stellar convention encodes an updated entry as the adjacent pair
+    // `[State, Updated]` and a deleted entry as `[State, Removed]`. This
+    // adjacency is the wire convention but not enforced by the XDR contract,
+    // so we guard against ordering surprises:
+    //   * In debug builds, a `debug_assert!` catches two consecutive `State`
+    //     entries without an intervening pair — this would mean a malformed
+    //     stream slipped past CI.
+    //   * In production, an orphan `Updated` / `Removed` (no prior `State`
+    //     for the same key) emits a `tracing::warn!` and continues with
+    //     `before = None`, so the recording stays best-effort rather than
+    //     refusing the entire transaction over a meta-encoding quirk.
     let mut last_state: Option<(LedgerKey, ArgValue, Option<String>)> = None;
     for change in c.iter() {
         match change {
             LedgerEntryChange::State(entry) => {
+                debug_assert!(
+                    last_state.is_none(),
+                    "consecutive State entries without paired Updated/Removed; \
+                     the second State entry will overwrite the first's pre-image"
+                );
                 let (lkey, key_arg, contract) = ledger_entry_key(entry)?;
                 let val = ledger_entry_value(entry)?;
                 last_state = Some((lkey, val.clone(), contract.clone()));
@@ -579,13 +596,26 @@ fn push_changes_from(c: &LedgerEntryChanges, out: &mut Vec<StateDelta>) -> Resul
             LedgerEntryChange::Updated(entry) => {
                 let (lkey, key_arg, contract) = ledger_entry_key(entry)?;
                 let after = ledger_entry_value(entry)?;
-                let before = last_state.take().and_then(|(prev_key, before_val, _)| {
-                    if prev_key == lkey {
-                        Some(before_val)
-                    } else {
+                let prior = last_state.take();
+                let before = match prior {
+                    Some((prev_key, before_val, _)) if prev_key == lkey => Some(before_val),
+                    Some((prev_key, _, _)) => {
+                        tracing::warn!(
+                            ?prev_key,
+                            updated_key = ?lkey,
+                            "StateDelta orphan Updated: prior State has a different key; \
+                             before will be None"
+                        );
                         None
                     }
-                });
+                    None => {
+                        tracing::warn!(
+                            updated_key = ?lkey,
+                            "StateDelta orphan Updated: no prior State entry; before will be None"
+                        );
+                        None
+                    }
+                };
                 out.push(StateDelta {
                     key: key_arg,
                     contract,
@@ -595,13 +625,26 @@ fn push_changes_from(c: &LedgerEntryChanges, out: &mut Vec<StateDelta>) -> Resul
             }
             LedgerEntryChange::Removed(lkey) => {
                 let (key_arg, contract) = ledger_key_to_arg(lkey);
-                let before = last_state.take().and_then(|(prev_key, before_val, _)| {
-                    if &prev_key == lkey {
-                        Some(before_val)
-                    } else {
+                let prior = last_state.take();
+                let before = match prior {
+                    Some((prev_key, before_val, _)) if &prev_key == lkey => Some(before_val),
+                    Some((prev_key, _, _)) => {
+                        tracing::warn!(
+                            ?prev_key,
+                            removed_key = ?lkey,
+                            "StateDelta orphan Removed: prior State has a different key; \
+                             before will be None"
+                        );
                         None
                     }
-                });
+                    None => {
+                        tracing::warn!(
+                            removed_key = ?lkey,
+                            "StateDelta orphan Removed: no prior State entry; before will be None"
+                        );
+                        None
+                    }
+                };
                 out.push(StateDelta {
                     key: key_arg,
                     contract,
