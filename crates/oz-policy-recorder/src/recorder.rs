@@ -15,7 +15,17 @@
 
 use oz_policy_core::Error;
 use sha2::Digest;
+use std::time::Duration;
 use stellar_rpc_client::{Client, LedgerEntryChange as RpcLedgerEntryChange};
+use tokio::time::timeout;
+
+/// Hard cap on every RPC `await` so a hung endpoint never blocks the recorder
+/// indefinitely. 30s is a deliberate ceiling: longer than a healthy testnet
+/// `getTransaction` round-trip (typ. < 1s) and longer than a fresh `simulate`
+/// against a non-trivial envelope (typ. < 5s), but short enough that a stuck
+/// CI never wedges past the test timeout. Phase 5 (MCP) is expected to layer
+/// retries on top; we do not retry here.
+const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 use stellar_xdr::curr::{
     self as xdr, ContractEventBody, ContractEventType, ContractId, Hash, HostFunction, Int128Parts,
     Int256Parts, LedgerEntryChange, LedgerEntryChanges, LedgerEntryData, LedgerKey, Limits,
@@ -54,17 +64,22 @@ pub async fn record_by_hash(
         Error::RecorderHashNotFound(format!("invalid hash {hash}: {e}"))
     })?;
 
-    let resp = client.get_transaction(&hash_bytes).await.map_err(|e| {
-        let msg = format!("{e}");
-        // The RPC client maps the JSON-RPC `tx not found` path to a transport
-        // error rather than its own variant; we distinguish by string match
-        // because there is no typed sentinel.
-        if msg.contains("NOT_FOUND") || msg.contains("transaction not found") {
-            Error::RecorderHashNotFound(format!("hash {hash}: {msg}"))
-        } else {
-            Error::RecorderSimFailed(format!("getTransaction({hash}) failed: {msg}"))
-        }
-    })?;
+    let resp = timeout(RPC_TIMEOUT, client.get_transaction(&hash_bytes))
+        .await
+        .map_err(|_elapsed| {
+            Error::RecorderSimFailed(format!("rpc timeout after 30s: {rpc_url}"))
+        })?
+        .map_err(|e| {
+            let msg = format!("{e}");
+            // The RPC client maps the JSON-RPC `tx not found` path to a transport
+            // error rather than its own variant; we distinguish by string match
+            // because there is no typed sentinel.
+            if msg.contains("NOT_FOUND") || msg.contains("transaction not found") {
+                Error::RecorderHashNotFound(format!("hash {hash}: {msg}"))
+            } else {
+                Error::RecorderSimFailed(format!("getTransaction({hash}) failed: {msg}"))
+            }
+        })?;
 
     if resp.status == "NOT_FOUND" {
         return Err(Error::RecorderHashNotFound(format!(
@@ -134,10 +149,13 @@ pub async fn record_by_simulation(
         "decoded TransactionEnvelope for simulation"
     );
 
-    let sim = client
-        .simulate_transaction_envelope(&envelope, None)
-        .await
-        .map_err(|e| Error::RecorderSimFailed(format!("simulateTransaction: {e}")))?;
+    let sim = timeout(
+        RPC_TIMEOUT,
+        client.simulate_transaction_envelope(&envelope, None),
+    )
+    .await
+    .map_err(|_elapsed| Error::RecorderSimFailed(format!("rpc timeout after 30s: {rpc_url}")))?
+    .map_err(|e| Error::RecorderSimFailed(format!("simulateTransaction: {e}")))?;
 
     if let Some(err) = &sim.error {
         return Err(Error::RecorderSimFailed(format!(
