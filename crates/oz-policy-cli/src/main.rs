@@ -101,6 +101,18 @@ async fn run_record(args: RecordArgs) -> Result<Recording, Error> {
 }
 
 fn main() {
+    // Initialise the global `tracing` subscriber so the recorder's
+    // `tracing::{info,debug,warn}!` calls reach stderr. Filter is driven by
+    // `RUST_LOG` (e.g. `RUST_LOG=oz_policy_recorder=debug`); defaults to
+    // `info` when the env var is absent or malformed.
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     let cli = Cli::parse();
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()

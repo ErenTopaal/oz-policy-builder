@@ -42,6 +42,7 @@ use crate::recording::{
 /// * Any RPC transport error maps to [`Error::RecorderSimFailed`] with the
 ///   underlying reason in the payload.
 /// * Any XDR decode failure maps to [`Error::RecorderXdrDecodeFailed`].
+#[tracing::instrument(skip_all, fields(rpc_url = %rpc_url, hash = %hash, network_passphrase = %network_passphrase))]
 pub async fn record_by_hash(
     rpc_url: &str,
     network_passphrase: &str,
@@ -97,6 +98,14 @@ pub async fn record_by_hash(
         hash: hash.to_string(),
     };
     rec.ledger = resp.ledger;
+    tracing::info!(
+        contract_count = rec.contracts.len(),
+        event_count = rec.events.len(),
+        auth_root_count = rec.auth_tree.roots.len(),
+        state_change_count = rec.state_changes.len(),
+        ledger = ?rec.ledger,
+        "record_by_hash completed"
+    );
     Ok(rec)
 }
 
@@ -109,6 +118,7 @@ pub async fn record_by_hash(
 /// "internal, not to be used" in upstream. We honor that and ignore the value
 /// for the stable API while still preserving the parameter in our signature
 /// so the CLI surface stays stable for when the upstream stabilises.
+#[tracing::instrument(skip_all, fields(rpc_url = %rpc_url, network_passphrase = %network_passphrase))]
 pub async fn record_by_simulation(
     rpc_url: &str,
     network_passphrase: &str,
@@ -119,6 +129,10 @@ pub async fn record_by_simulation(
         .map_err(|e| Error::RecorderSimFailed(format!("rpc client init failed: {e}")))?;
     let envelope = TransactionEnvelope::from_xdr_base64(envelope_xdr_base64, Limits::none())
         .map_err(|e| Error::RecorderXdrDecodeFailed(format!("envelope decode: {e}")))?;
+    tracing::debug!(
+        envelope_b64_len = envelope_xdr_base64.len(),
+        "decoded TransactionEnvelope for simulation"
+    );
 
     let sim = client
         .simulate_transaction_envelope(&envelope, None)
@@ -197,6 +211,13 @@ pub async fn record_by_simulation(
         envelope_xdr_sha256: hex::encode(digest),
     };
     rec.ledger = None;
+    tracing::info!(
+        contract_count = rec.contracts.len(),
+        event_count = rec.events.len(),
+        auth_root_count = rec.auth_tree.roots.len(),
+        state_change_count = rec.state_changes.len(),
+        "record_by_simulation completed"
+    );
     Ok(rec)
 }
 
@@ -222,14 +243,27 @@ pub fn decode_from_xdr_blobs(
 ) -> Result<Recording, Error> {
     let envelope = TransactionEnvelope::from_xdr_base64(envelope_b64, Limits::none())
         .map_err(|e| Error::RecorderXdrDecodeFailed(format!("envelope: {e}")))?;
+    tracing::debug!(
+        envelope_b64_len = envelope_b64.len(),
+        "decoded TransactionEnvelope"
+    );
 
     let (contracts, auth_tree) = walk_envelope_invocations(&envelope)?;
+    tracing::debug!(
+        contract_count = contracts.len(),
+        auth_root_count = auth_tree.roots.len(),
+        "walked envelope invocations + auth entries"
+    );
 
     let (state_changes, events) = if result_meta_b64.is_empty() {
         (Vec::new(), Vec::new())
     } else {
         let meta = TransactionMeta::from_xdr_base64(result_meta_b64, Limits::none())
             .map_err(|e| Error::RecorderXdrDecodeFailed(format!("result_meta: {e}")))?;
+        tracing::debug!(
+            meta_b64_len = result_meta_b64.len(),
+            "decoded TransactionMeta"
+        );
         let sc = walk_state_changes(&meta)?;
         let ev = walk_events(&meta)?;
         (sc, ev)
@@ -309,6 +343,10 @@ fn walk_envelope_invocations(
 }
 
 fn walk_auth_entries(entries: &[SorobanAuthorizationEntry]) -> Result<AuthTree, Error> {
+    tracing::debug!(
+        entry_count = entries.len(),
+        "decoding SorobanAuthorizationEntry slice"
+    );
     let roots = entries
         .iter()
         .map(|e| {
