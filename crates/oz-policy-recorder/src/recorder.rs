@@ -133,13 +133,29 @@ pub async fn record_by_hash(
 /// "internal, not to be used" in upstream. We honor that and ignore the value
 /// for the stable API while still preserving the parameter in our signature
 /// so the CLI surface stays stable for when the upstream stabilises.
+/// If a caller passes `Some(_)`, we emit a `tracing::warn!` rather than
+/// silently dropping the value — the no-op-ness must be visible.
 #[tracing::instrument(skip_all, fields(rpc_url = %rpc_url, network_passphrase = %network_passphrase))]
 pub async fn record_by_simulation(
     rpc_url: &str,
     network_passphrase: &str,
     envelope_xdr_base64: &str,
-    _instruction_leeway: Option<u64>,
+    instruction_leeway: Option<u64>,
 ) -> Result<Recording, Error> {
+    // Surface the no-op-ness of `instruction_leeway` so operators are not
+    // misled into thinking they tuned the simulation budget. The stable
+    // `stellar-rpc-client 25.1.0` `simulate_transaction_envelope` surface
+    // accepts no `resourceConfig`; the `next_*` variant does but is marked
+    // "internal, not to be used" upstream. We preserve the parameter for
+    // forward compatibility (and a stable CLI surface) but must NOT silently
+    // accept-and-drop a value the caller explicitly set.
+    if let Some(leeway) = instruction_leeway {
+        tracing::warn!(
+            instruction_leeway = leeway,
+            "--instruction-leeway is currently a no-op pending stellar-rpc-client \
+             resource_config surface; falling back to default budget"
+        );
+    }
     let client = Client::new(rpc_url)
         .map_err(|e| Error::RecorderSimFailed(format!("rpc client init failed: {e}")))?;
     let envelope = TransactionEnvelope::from_xdr_base64(envelope_xdr_base64, Limits::none())
