@@ -1,0 +1,8 @@
+{
+  "network": "testnet",
+  "hash": "5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e",
+  "rpc_url": "https://soroban-testnet.stellar.org",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "description": "Blend v2 yield-claim flow recorded on Stellar testnet. Pool contract: CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF (TestnetV2 pool from blend-utils testnet.contracts.json). Invoked function: claim(from, reserve_token_ids=[0..=7], to). Submitted by source account GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN; tx succeeded on-chain (status=SUCCESS, ledger=2572326), but the claim returned 0 BLND because the source had no accrued emissions — this is the canonical 'no-op claim' shape we want for the policy-builder fixture.",
+  "captured_at": "2026-05-15"
+}

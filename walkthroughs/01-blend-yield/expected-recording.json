@@ -1,0 +1,581 @@
+{
+  "schema": "oz-policy-builder/recording/v1",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "ingest": {
+    "kind": "hash",
+    "hash": "5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e"
+  },
+  "ledger": 2572326,
+  "contracts": [
+    {
+      "address": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+      "function": "claim",
+      "args": [
+        {
+          "type": "address",
+          "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+        },
+        {
+          "type": "vec",
+          "value": [
+            {
+              "type": "u32",
+              "value": 0
+            },
+            {
+              "type": "u32",
+              "value": 1
+            },
+            {
+              "type": "u32",
+              "value": 2
+            },
+            {
+              "type": "u32",
+              "value": 3
+            },
+            {
+              "type": "u32",
+              "value": 4
+            },
+            {
+              "type": "u32",
+              "value": 5
+            },
+            {
+              "type": "u32",
+              "value": 6
+            },
+            {
+              "type": "u32",
+              "value": 7
+            }
+          ]
+        },
+        {
+          "type": "address",
+          "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+        }
+      ]
+    }
+  ],
+  "auth_tree": {
+    "roots": [
+      {
+        "credentials": {
+          "kind": "source_account"
+        },
+        "root_invocation": {
+          "function": {
+            "kind": "contract",
+            "address": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "function": "claim",
+            "args": [
+              {
+                "type": "address",
+                "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+              },
+              {
+                "type": "vec",
+                "value": [
+                  {
+                    "type": "u32",
+                    "value": 0
+                  },
+                  {
+                    "type": "u32",
+                    "value": 1
+                  },
+                  {
+                    "type": "u32",
+                    "value": 2
+                  },
+                  {
+                    "type": "u32",
+                    "value": 3
+                  },
+                  {
+                    "type": "u32",
+                    "value": 4
+                  },
+                  {
+                    "type": "u32",
+                    "value": 5
+                  },
+                  {
+                    "type": "u32",
+                    "value": 6
+                  },
+                  {
+                    "type": "u32",
+                    "value": 7
+                  }
+                ]
+              },
+              {
+                "type": "address",
+                "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+              }
+            ]
+          },
+          "sub_invocations": []
+        },
+        "source_op_index": 0
+      }
+    ]
+  },
+  "state_changes": [
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Account"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": null,
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": null,
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": null,
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "UserEmis"
+          },
+          {
+            "type": "map",
+            "value": [
+              {
+                "key": {
+                  "type": "symbol",
+                  "value": "reserve_id"
+                },
+                "value": {
+                  "type": "u32",
+                  "value": 2
+                }
+              },
+              {
+                "key": {
+                  "type": "symbol",
+                  "value": "user"
+                },
+                "value": {
+                  "type": "address",
+                  "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "contract": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+      "before": null,
+      "after": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "accrued"
+            },
+            "value": {
+              "type": "i128",
+              "value": "0"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "index"
+            },
+            "value": {
+              "type": "i128",
+              "value": "3321264864996867752"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "UserEmis"
+          },
+          {
+            "type": "map",
+            "value": [
+              {
+                "key": {
+                  "type": "symbol",
+                  "value": "reserve_id"
+                },
+                "value": {
+                  "type": "u32",
+                  "value": 5
+                }
+              },
+              {
+                "key": {
+                  "type": "symbol",
+                  "value": "user"
+                },
+                "value": {
+                  "type": "address",
+                  "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "contract": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+      "before": null,
+      "after": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "accrued"
+            },
+            "value": {
+              "type": "i128",
+              "value": "0"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "index"
+            },
+            "value": {
+              "type": "i128",
+              "value": "14075303242157459058"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "UserEmis"
+          },
+          {
+            "type": "map",
+            "value": [
+              {
+                "key": {
+                  "type": "symbol",
+                  "value": "reserve_id"
+                },
+                "value": {
+                  "type": "u32",
+                  "value": 6
+                }
+              },
+              {
+                "key": {
+                  "type": "symbol",
+                  "value": "user"
+                },
+                "value": {
+                  "type": "address",
+                  "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "contract": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+      "before": null,
+      "after": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "accrued"
+            },
+            "value": {
+              "type": "i128",
+              "value": "0"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "index"
+            },
+            "value": {
+              "type": "i128",
+              "value": "2758500735014342"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "contract": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+      "kind": "contract",
+      "topics": [
+        {
+          "type": "symbol",
+          "value": "claim"
+        },
+        {
+          "type": "address",
+          "value": "GATJIJRQXBCGP25K4NLG532UMO4PC4FE7O64P4XSHOKFPBQF6TDTGAJN"
+        }
+      ],
+      "data": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "vec",
+            "value": [
+              {
+                "type": "u32",
+                "value": 0
+              },
+              {
+                "type": "u32",
+                "value": 1
+              },
+              {
+                "type": "u32",
+                "value": 2
+              },
+              {
+                "type": "u32",
+                "value": 3
+              },
+              {
+                "type": "u32",
+                "value": 4
+              },
+              {
+                "type": "u32",
+                "value": 5
+              },
+              {
+                "type": "u32",
+                "value": 6
+              },
+              {
+                "type": "u32",
+                "value": 7
+              }
+            ]
+          },
+          {
+            "type": "i128",
+            "value": "0"
+          }
+        ]
+      }
+    }
+  ]
+}
