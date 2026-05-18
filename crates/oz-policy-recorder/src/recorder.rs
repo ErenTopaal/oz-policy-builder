@@ -257,12 +257,16 @@ pub async fn record_by_simulation(
         .map(|de| typed_event_from_contract_event(&de.event))
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Map simulation state_changes onto our StateDelta vector.
+    // Map simulation state_changes onto our StateDelta vector. We apply the
+    // same deterministic ordering as the on-chain path so the simulation
+    // and hash recordings of the same envelope can be diffed against each
+    // other meaningfully.
     if let Some(changes) = &sim.state_changes {
         rec.state_changes = changes
             .iter()
             .map(state_delta_from_rpc_change)
             .collect::<Result<Vec<_>, _>>()?;
+        sort_state_changes_deterministically(&mut rec.state_changes);
     }
 
     // Tag ingest as Simulation with the envelope's SHA-256 fingerprint.
@@ -329,7 +333,21 @@ pub fn decode_from_xdr_blobs(
             meta_b64_len = result_meta_b64.len(),
             "decoded TransactionMeta"
         );
-        let sc = walk_state_changes(&meta)?;
+        let mut sc = walk_state_changes(&meta)?;
+        // Canonicalise the state-change ordering. The Stellar public testnet
+        // RPC is a load-balanced cluster whose backends can return the same
+        // transaction's `LedgerEntryChanges` in different orders (notably,
+        // `Created`-of-Ttl entries can be interleaved with `Updated`-of-
+        // ContractData entries at different positions). Both orderings carry
+        // the same set of entries — the host doesn't promise stable indexing
+        // across operations — but the policy-builder's Recording is meant to
+        // be a *canonical* IR, so we sort post-walk by a deterministic key.
+        //
+        // The sort is stable on `(contract, key_json, phase)` where `phase`
+        // distinguishes (created, updated, removed) for paths where the same
+        // (contract, key) could appear with different before/after shapes in
+        // the same transaction (rare but legal). See P1-T4 in `plan.md`.
+        sort_state_changes_deterministically(&mut sc);
         let ev = walk_events(&meta)?;
         (sc, ev)
     };
@@ -518,6 +536,54 @@ fn executable_value(e: &xdr::ContractExecutable) -> String {
 // ---------------------------------------------------------------------------
 // TransactionMeta → state_changes + events
 // ---------------------------------------------------------------------------
+
+/// Sort a `Vec<StateDelta>` into a deterministic canonical order so the same
+/// set of changes produces a byte-equal Recording regardless of the order
+/// the RPC happened to emit them.
+///
+/// Why this is necessary: the public Stellar testnet RPC is a load-balanced
+/// cluster where different backends can return the per-operation
+/// `LedgerEntryChanges` list for the same transaction in different orders
+/// (notably interleaving `Ttl`-Created entries between `ContractData`
+/// updates differently). Both orderings carry the same logical state
+/// changes — the host doesn't guarantee a stable wire order across nodes —
+/// but the policy-builder Recording is positioned as the *canonical* IR a
+/// synthesizer reads, so we collapse this ambiguity here.
+///
+/// The sort key is the JSON representation of `(contract, key, phase)`:
+/// * `contract`: `None` (non-ContractData entries) sort before `Some(c)`,
+///   then alphabetically by StrKey.
+/// * `key`: the decoded `ArgValue`, serialised to canonical JSON so two
+///   structurally-equal keys compare equal.
+/// * `phase`: a small integer distinguishing Created (0) / Updated (1) /
+///   Removed (2) for the rare-but-legal case where the same `(contract, key)`
+///   appears multiple times in one transaction.
+///
+/// Using JSON as the comparison medium is the cheapest way to get a stable
+/// total order over the heterogeneous `ArgValue` tree without inventing a
+/// custom `Ord` impl that we'd then need to keep in lockstep with the JSON
+/// schema. `serde_json::to_string` on `ArgValue` is deterministic because
+/// the type contains no maps with non-deterministic iteration order (all
+/// `Map` variants serialise as ordered `Vec<MapEntry>`).
+fn sort_state_changes_deterministically(changes: &mut [StateDelta]) {
+    fn phase(d: &StateDelta) -> u8 {
+        match (&d.before, &d.after) {
+            (None, Some(_)) => 0,    // Created / Restored
+            (Some(_), Some(_)) => 1, // Updated
+            (Some(_), None) => 2,    // Removed
+            (None, None) => 3,       // shouldn't occur; sort last for visibility
+        }
+    }
+    changes.sort_by_cached_key(|d| {
+        // Best-effort JSON encoding for the sort key. If serialization ever
+        // fails (it cannot, given the schema, but `serde_json` returns a
+        // Result), fall back to `String::new()` so we never panic on the
+        // sort path — a less-canonical order is strictly better than a
+        // crash for a deterministic-but-not-perfect ordering.
+        let key_json = serde_json::to_string(&d.key).unwrap_or_default();
+        (d.contract.clone(), key_json, phase(d))
+    });
+}
 
 fn walk_state_changes(meta: &TransactionMeta) -> Result<Vec<StateDelta>, Error> {
     // We walk per-operation `changes` and tx-level `tx_changes_before` /
