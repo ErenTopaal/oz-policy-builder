@@ -8,8 +8,11 @@ authors.workspace = true
 description = "Core policy IR, decision tree, schema, and error types for the OZ Accounts Policy Builder."
 
 [dependencies]
-# Phase 1 only ships the canonical `Error` enum, which needs `thiserror` and
-# nothing else. `serde`, `serde_json`, and `schemars` are kept declared at
-# the workspace level (see top-level Cargo.toml) and will be re-introduced
-# here in Phase 2 when `PolicySpec` IR + JSON Schema codegen land.
+# Phase 2 (P2-T1 / P2-T2): the `Error` enum still requires `thiserror`; the
+# new `PolicySpec` IR + the relocated `ArgValue` enum (moved here from
+# `oz-policy-recorder` so the spec can reference it without a recorder
+# dependency cycle) require `serde`, `serde_json`, and `schemars`.
 thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }

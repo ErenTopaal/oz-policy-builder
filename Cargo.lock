@@ -960,6 +960,9 @@ dependencies = [
 name = "oz-policy-core"
 version = "0.0.0"
 dependencies = [
+ "schemars 1.0.5",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
