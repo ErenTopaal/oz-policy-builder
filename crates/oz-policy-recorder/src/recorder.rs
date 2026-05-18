@@ -17,7 +17,19 @@ use oz_policy_core::Error;
 use sha2::Digest;
 use std::time::Duration;
 use stellar_rpc_client::{Client, LedgerEntryChange as RpcLedgerEntryChange};
+use stellar_xdr::curr::{
+    self as xdr, ContractEventBody, ContractEventType, ContractId, Hash, HostFunction, Int128Parts,
+    Int256Parts, LedgerEntryChange, LedgerEntryChanges, LedgerEntryData, LedgerKey, Limits,
+    OperationBody, ReadXdr, ScAddress, ScError, ScErrorCode, ScVal, SorobanAuthorizationEntry,
+    SorobanAuthorizedFunction, SorobanAuthorizedInvocation, SorobanCredentials,
+    TransactionEnvelope, TransactionMeta, UInt128Parts, UInt256Parts, WriteXdr,
+};
 use tokio::time::timeout;
+
+use crate::recording::{
+    ArgValue, AuthEntry, AuthFunction, AuthInvocation, AuthTree, ContractRecord, Credentials,
+    IngestSource, MapEntry, Recording, StateDelta, TypedEvent, RECORDING_SCHEMA_URI,
+};
 
 /// Hard cap on every RPC `await` so a hung endpoint never blocks the recorder
 /// indefinitely. 30s is a deliberate ceiling: longer than a healthy testnet
@@ -26,18 +38,6 @@ use tokio::time::timeout;
 /// CI never wedges past the test timeout. Phase 5 (MCP) is expected to layer
 /// retries on top; we do not retry here.
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
-use stellar_xdr::curr::{
-    self as xdr, ContractEventBody, ContractEventType, ContractId, Hash, HostFunction, Int128Parts,
-    Int256Parts, LedgerEntryChange, LedgerEntryChanges, LedgerEntryData, LedgerKey, Limits,
-    OperationBody, ReadXdr, ScAddress, ScError, ScErrorCode, ScVal, SorobanAuthorizationEntry,
-    SorobanAuthorizedFunction, SorobanAuthorizedInvocation, SorobanCredentials,
-    TransactionEnvelope, TransactionMeta, UInt128Parts, UInt256Parts, WriteXdr,
-};
-
-use crate::recording::{
-    ArgValue, AuthEntry, AuthFunction, AuthInvocation, AuthTree, ContractRecord, Credentials,
-    IngestSource, MapEntry, Recording, StateDelta, TypedEvent, RECORDING_SCHEMA_URI,
-};
 
 // ---------------------------------------------------------------------------
 // Public entrypoints
@@ -58,9 +58,7 @@ async fn verify_network_match(
 ) -> Result<(), Error> {
     let net = timeout(RPC_TIMEOUT, client.get_network())
         .await
-        .map_err(|_elapsed| {
-            Error::RecorderSimFailed(format!("rpc timeout after 30s: {rpc_url}"))
-        })?
+        .map_err(|_elapsed| Error::RecorderSimFailed(format!("rpc timeout after 30s: {rpc_url}")))?
         .map_err(|e| Error::RecorderSimFailed(format!("getNetwork({rpc_url}) failed: {e}")))?;
     if net.passphrase != asserted_passphrase {
         return Err(Error::RecorderSimFailed(format!(
@@ -100,9 +98,7 @@ pub async fn record_by_hash(
 
     let resp = timeout(RPC_TIMEOUT, client.get_transaction(&hash_bytes))
         .await
-        .map_err(|_elapsed| {
-            Error::RecorderSimFailed(format!("rpc timeout after 30s: {rpc_url}"))
-        })?
+        .map_err(|_elapsed| Error::RecorderSimFailed(format!("rpc timeout after 30s: {rpc_url}")))?
         .map_err(|e| {
             let msg = format!("{e}");
             // The RPC client maps the JSON-RPC `tx not found` path to a transport
