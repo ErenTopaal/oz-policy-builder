@@ -14,15 +14,19 @@
 //!   consumed by the Phase 2 decision tree and the Phase 2 installer.
 //! * [`sep41`] — SEP-41 SAC detection helpers used by the decision tree to
 //!   gate `spending_limit` composition.
+//! * [`decision_tree::synthesize`] — Track-A composition + Track-B slot
+//!   emission for a single `Recording` (Phase 2 Stream A).
 
 #![forbid(unsafe_code)]
 
 pub mod arg_value;
+pub mod decision_tree;
 pub mod errors;
 pub mod recording;
 pub mod sep41;
 pub mod spec;
 
 pub use arg_value::{ArgValue, MapEntry};
+pub use decision_tree::{synthesize, SynthesisOptions, Tightness};
 pub use errors::Error;
 pub use sep41::is_sep41_transfer;
