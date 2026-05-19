@@ -125,14 +125,22 @@ pub struct ContextRuleSpec {
 /// via `Constraint::FunctionAllowlist`), never a rule-level filter — the
 /// on-chain `ContextRuleType::CallContract(Address)` only carries the target
 /// contract address.
+///
+/// JSON-shape note: `CallContract` is encoded as a struct variant
+/// `{ "kind": "call_contract", "address": "..." }` rather than a Rust
+/// newtype tuple variant — serde's internal-tag representation
+/// (`#[serde(tag = "kind")]`) does not support tagging newtype variants that
+/// wrap primitives (`serde` rejects this at runtime with
+/// *"cannot serialize tagged newtype variant ... containing a string"*).
+/// The on-chain semantics are unchanged; the wire shape is just `{kind,address}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ContextType {
     /// Matches all invocations of the smart account.
     Default,
-    /// Matches invocations routed through the named target contract (StrKey
-    /// `C…` address).
-    CallContract(String),
+    /// Matches invocations routed through the named target contract.
+    /// `address` is a StrKey `C…` address.
+    CallContract { address: String },
 }
 
 // -------------------------------------------------------------------------
