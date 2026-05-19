@@ -292,10 +292,7 @@ pub enum Constraint {
     TimeWindow { start_ledger: u32, end_ledger: u32 },
     /// Cap on number of admitted calls within a rolling window of
     /// `window_ledgers` ledgers.
-    CallFrequency {
-        max_calls: u32,
-        window_ledgers: u32,
-    },
+    CallFrequency { max_calls: u32, window_ledgers: u32 },
     /// Required invocation order. `phases[i]` is the function name allowed
     /// at the i-th call in the cycle; on advancing past `phases.len() - 1`
     /// the index wraps to 0.

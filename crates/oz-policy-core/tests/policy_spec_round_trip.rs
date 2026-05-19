@@ -153,7 +153,9 @@ fn comprehensive_spec_round_trips() {
                 fn_name: "transfer".to_string(),
                 arg_index: 1,
                 matcher: ArgMatcher::Exact {
-                    value: ArgValue::Address("CRECIPIENT0000000000000000000000000000000000000000".to_string()),
+                    value: ArgValue::Address(
+                        "CRECIPIENT0000000000000000000000000000000000000000".to_string(),
+                    ),
                 },
             },
             Constraint::AmountRange {
