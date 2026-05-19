@@ -84,15 +84,15 @@ pub struct PolicySpec {
 
 /// Three-way switch controlling which synthesizer track may run.
 ///
-/// * `Auto`         — synthesizer is free to compose existing primitives (Track A)
-///                    and / or emit generated policy slots (Track B).
-/// * `ComposeOnly`  — synthesizer must succeed using only existing OZ primitives
-///                    (Track A). If the constraints cannot be expressed,
-///                    `E_SYNTH_NOT_EXPRESSIBLE`.
-/// * `CodegenOnly`  — synthesizer must emit a `Generated` policy slot for every
-///                    constraint (Track B). Useful for testing the codegen path
-///                    end-to-end against constraints that *could* compose to
-///                    `simple_threshold` etc.
+/// * `Auto` — synthesizer is free to compose existing primitives (Track A)
+///   and / or emit generated policy slots (Track B).
+/// * `ComposeOnly` — synthesizer must succeed using only existing OZ
+///   primitives (Track A). If the constraints cannot be expressed,
+///   `E_SYNTH_NOT_EXPRESSIBLE`.
+/// * `CodegenOnly` — synthesizer must emit a `Generated` policy slot for
+///   every constraint (Track B). Useful for testing the codegen path
+///   end-to-end against constraints that *could* compose to
+///   `simple_threshold` etc.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SynthesisMode {
