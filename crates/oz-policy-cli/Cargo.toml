@@ -14,7 +14,19 @@ path = "src/main.rs"
 [dependencies]
 oz-policy-core = { path = "../oz-policy-core" }
 oz-policy-recorder = { path = "../oz-policy-recorder" }
+# Phase 2 Round 3: the `prepare-install` subcommand calls
+# `oz_policy_installer::build_install_envelope` to produce a wallet-ready
+# `TransactionEnvelope` XDR from a PolicySpec. The installer surfaces the
+# v1 registry blocker (no published primitive addresses) as
+# `Error::InstallPreflightFailed("primitive_address_unknown ...")`; the
+# CLI prints that verbatim to stderr (exit non-zero) — no silent masking.
+oz-policy-installer = { path = "../oz-policy-installer" }
 clap = { workspace = true }
+# `EnvelopeArtifact` does not derive `Serialize`, so we project it into a
+# small local `EnvelopeArtifactJson` struct and serialize that. We only
+# need the `derive` macro — workspace `serde` already pulls in
+# `features = ["derive"]`.
+serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }
