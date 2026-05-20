@@ -1,0 +1,8 @@
+{
+  "network": "testnet",
+  "hash": "52b86b5393b9ee936aa7b62638fb9d40fdbbed93ea6ac685e925205f52d50fcf",
+  "rpc_url": "https://soroban-testnet.stellar.org",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "description": "SEP-41 USDC-style transfer recorded on Stellar testnet. SAC contract: CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH. Invoked function: transfer(from, to, amount). args[0]=GDTE7FQIUPKN6NMXK2T37GEJZRLQEQGYC55OQCZM7SASBWY36C4WCPZ4 (source), args[1]=CADQECDLVSOZUVANZWNNV2BO4U2APZYNXEYL34B2WFLETJI5OKMIOCQZ (destination contract), args[2]=51613347 stroops. Submitted by source account GDTE7FQIUPKN6NMXK2T37GEJZRLQEQGYC55OQCZM7SASBWY36C4WCPZ4 with SourceAccount credentials (no soroban-auth payload); tx succeeded on-chain (status=SUCCESS, ledger=2566000). This is the canonical Phase 2 Track-A fixture: exactly one SEP-41 transfer with an observable i128 amount, used to gate `spending_limit` composition (per docs/oz-internal-shapes.md §2 and OZ PR-#649).",
+  "captured_at": "2026-05-15"
+}

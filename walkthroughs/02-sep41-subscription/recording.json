@@ -1,0 +1,159 @@
+{
+  "schema": "oz-policy-builder/recording/v1",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "ingest": {
+    "kind": "hash",
+    "hash": "52b86b5393b9ee936aa7b62638fb9d40fdbbed93ea6ac685e925205f52d50fcf"
+  },
+  "ledger": 2566000,
+  "contracts": [
+    {
+      "address": "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH",
+      "function": "transfer",
+      "args": [
+        {
+          "type": "address",
+          "value": "GDTE7FQIUPKN6NMXK2T37GEJZRLQEQGYC55OQCZM7SASBWY36C4WCPZ4"
+        },
+        {
+          "type": "address",
+          "value": "CADQECDLVSOZUVANZWNNV2BO4U2APZYNXEYL34B2WFLETJI5OKMIOCQZ"
+        },
+        {
+          "type": "i128",
+          "value": "51613347"
+        }
+      ]
+    }
+  ],
+  "auth_tree": {
+    "roots": [
+      {
+        "credentials": {
+          "kind": "source_account"
+        },
+        "root_invocation": {
+          "function": {
+            "kind": "contract",
+            "address": "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH",
+            "function": "transfer",
+            "args": [
+              {
+                "type": "address",
+                "value": "GDTE7FQIUPKN6NMXK2T37GEJZRLQEQGYC55OQCZM7SASBWY36C4WCPZ4"
+              },
+              {
+                "type": "address",
+                "value": "CADQECDLVSOZUVANZWNNV2BO4U2APZYNXEYL34B2WFLETJI5OKMIOCQZ"
+              },
+              {
+                "type": "i128",
+                "value": "51613347"
+              }
+            ]
+          },
+          "sub_invocations": []
+        },
+        "source_op_index": 0
+      }
+    ]
+  },
+  "state_changes": [
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Account"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": null,
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "Balance"
+          },
+          {
+            "type": "address",
+            "value": "CADQECDLVSOZUVANZWNNV2BO4U2APZYNXEYL34B2WFLETJI5OKMIOCQZ"
+          }
+        ]
+      },
+      "contract": "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH",
+      "before": null,
+      "after": {
+        "type": "i128",
+        "value": "51613347"
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "Balance"
+          },
+          {
+            "type": "address",
+            "value": "GDTE7FQIUPKN6NMXK2T37GEJZRLQEQGYC55OQCZM7SASBWY36C4WCPZ4"
+          }
+        ]
+      },
+      "contract": "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH",
+      "before": {
+        "type": "i128",
+        "value": "1805401870"
+      },
+      "after": {
+        "type": "i128",
+        "value": "1753788523"
+      }
+    }
+  ],
+  "events": [
+    {
+      "contract": "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH",
+      "kind": "contract",
+      "topics": [
+        {
+          "type": "symbol",
+          "value": "transfer"
+        },
+        {
+          "type": "address",
+          "value": "GDTE7FQIUPKN6NMXK2T37GEJZRLQEQGYC55OQCZM7SASBWY36C4WCPZ4"
+        },
+        {
+          "type": "address",
+          "value": "CADQECDLVSOZUVANZWNNV2BO4U2APZYNXEYL34B2WFLETJI5OKMIOCQZ"
+        }
+      ],
+      "data": {
+        "type": "i128",
+        "value": "51613347"
+      }
+    }
+  ]
+}
