@@ -971,6 +971,11 @@ name = "oz-policy-installer"
 version = "0.0.0"
 dependencies = [
  "oz-policy-core",
+ "stellar-rpc-client",
+ "stellar-strkey 0.0.15",
+ "stellar-xdr",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

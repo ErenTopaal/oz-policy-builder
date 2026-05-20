@@ -9,3 +9,32 @@ description = "Builds install-envelope XDR for SmartAccount::add_context_rule / 
 
 [dependencies]
 oz-policy-core = { path = "../oz-policy-core" }
+# stellar-rpc-client: drives `simulateTransaction` / `getNetwork` /
+# `getAccount` for envelope assembly. Versioned via the workspace `=25.1.0`
+# pin to match the recorder's RPC surface.
+stellar-rpc-client = { workspace = true }
+# stellar-xdr: source of `TransactionEnvelope`, `Operation`,
+# `InvokeHostFunctionOp`, `HostFunction::InvokeContract`, and the `ReadXdr`
+# / `WriteXdr` impls we use to ser/de envelopes. `curr` is the
+# protocol-current generated module, `std` enables the std-backed reader,
+# `base64` enables the `from_xdr_base64` / `to_xdr_base64` helpers we use
+# for the wallet-facing serialization, and `serde` mirrors the recorder's
+# feature flags.
+stellar-xdr = { workspace = true, features = ["curr", "std", "base64", "serde"] }
+# stellar-strkey: used for honest C-address / G-address StrKey validation
+# in `preflight.rs`. The lockfile already pulls 0.0.15 transitively via
+# stellar-rpc-client; we depend on it directly so preflight can use the
+# typed `Contract::from_string` / `ed25519::PublicKey::from_string`
+# helpers without a private-API leak.
+stellar-strkey = "=0.0.15"
+# tokio: required for `tokio::time::timeout` wrapping each RPC await,
+# matching the recorder's `RPC_TIMEOUT` pattern. No `#[tokio::main]` lives
+# in this crate; the CLI / MCP server own the runtime.
+tokio = { workspace = true }
+# tracing: `#[tracing::instrument]` on the public envelope entrypoint plus
+# `tracing::{info,debug,warn}!` at each RPC boundary, mirroring the
+# recorder's style. CLI initialises the subscriber in `main`.
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
