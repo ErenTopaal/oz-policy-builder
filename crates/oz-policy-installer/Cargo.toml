@@ -38,3 +38,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+# Used by `tests/phase2_completion.rs` (the Phase 2 binary completion gate)
+# to read the frozen `Recording` JSON document from disk and to byte-compare
+# the synthesised `PolicySpec` against the frozen `expected-spec-track-a.json`
+# walkthrough fixture.
+serde_json = { workspace = true }
