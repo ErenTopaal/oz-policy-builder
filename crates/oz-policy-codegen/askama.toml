@@ -1,0 +1,7 @@
+# Tell askama where to find the workspace-root `templates/` dir. By default it
+# would only resolve `crates/oz-policy-codegen/templates/`; we keep templates
+# at the workspace root so they sit alongside the codegen-dependency-mode doc
+# and are visible to humans browsing the repo (see plan.md §"Files you must
+# produce"). Path is relative to this crate's CARGO_MANIFEST_DIR.
+[general]
+dirs = ["../../templates"]

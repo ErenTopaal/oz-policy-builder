@@ -9,3 +9,44 @@ description = "Track-B codegen: askama templates + sandboxed cargo build driver 
 
 [dependencies]
 oz-policy-core = { path = "../oz-policy-core" }
+# askama: type-safe Jinja-like templating used to render Track-B `.rs.jinja`
+# templates into compilable Soroban contract sources. Default features include
+# `derive` (proc-macro) + `config` (so `askama.toml` is honoured). The
+# templates live at the workspace-root `templates/` dir, pointed to by
+# `crates/oz-policy-codegen/askama.toml`.
+askama = { workspace = true }
+# serde: used to derive `Serialize` on `RenderedCrate` so callers (Stream B
+# sandbox driver, CLI codegen subcommand, MCP server) can echo a render
+# transcript to disk for audit purposes.
+serde = { workspace = true }
+# sha2: cache-key hashing of (Cargo.toml || src/lib.rs) for the sandbox driver
+# and computation of the post-optimize WASM hash. Pinned to match the recorder
+# crate (`=0.10.9`) so the workspace resolves a single version. MIT OR Apache-2.0.
+sha2 = "=0.10.9"
+# tokio: the sandbox driver runs `cargo build` / `stellar contract optimize`
+# via `tokio::process::Command` and reads/writes scratch files through
+# `tokio::fs`. The workspace pin (`=1.52.3`) already supplies `macros` and
+# `rt-multi-thread`; this member adds `process` + `fs` for the async Command
+# / File surface.
+tokio = { workspace = true, features = ["process", "fs"] }
+# tracing: instrumented sandbox driver entry points + warnings when the OS
+# sandbox tool (`sandbox-exec` / `bwrap`) is absent. Subscriber init lives in
+# binary crates.
+tracing = { workspace = true }
+# thiserror: typed `SandboxError` enum that converts into the canonical
+# `oz_policy_core::Error::CodegenCompileFailed`.
+thiserror = { workspace = true }
+# tempfile: not used at the public API surface, but kept for unit-test
+# scratch directories that must vanish on drop (the production cache root is
+# explicitly long-lived for reuse).
+tempfile = "=3.27.0"
+# dirs: resolves `${HOME}/.cache/oz-policy-codegen` on Linux/macOS for the
+# sandbox cache root when `OZ_POLICY_CODEGEN_CACHE_DIR` is unset.
+dirs = "=6.0.0"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["process", "fs"] }
+tempfile = "=3.27.0"
+# sha2: integration test (`tests/minimal_compile.rs`) recomputes the
+# `wasm_hash_of_src` cache key for its hand-crafted RenderedCrate.
+sha2 = "=0.10.9"
