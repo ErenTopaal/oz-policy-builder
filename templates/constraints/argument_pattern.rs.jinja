@@ -1,0 +1,56 @@
+// --- argument_pattern ---
+// Typed slot match against a specific (fn_name, arg_index). Each entry encodes
+// the matcher into a Rust expression operating on the decoded `args.get(idx)`
+// Val. Unrecognised arms default-reject via ArgumentMismatch.
+{
+{%- for entry in argument_patterns %}
+{%- if entry.fn_use_symbol_short %}
+    if fn_name == &symbol_short!("{{ entry.fn_name }}") {
+{%- else %}
+    if fn_name == &Symbol::new(e, "{{ entry.fn_name }}") {
+{%- endif %}
+        let arg_val = args.get({{ entry.arg_index }}u32)
+            .unwrap_or_else(|| panic_with_error!(e, PolicyError::ArgumentMismatch));
+{%- if entry.kind == "exact_address" %}
+        let decoded = Address::try_from_val(e, &arg_val)
+            .unwrap_or_else(|_| panic_with_error!(e, PolicyError::ArgumentMismatch));
+        let expected = Address::from_string(&String::from_str(e, "{{ entry.address }}"));
+        if decoded != expected {
+            panic_with_error!(e, PolicyError::ArgumentMismatch);
+        }
+{%- elif entry.kind == "exact_u32" %}
+        let decoded = u32::try_from_val(e, &arg_val)
+            .unwrap_or_else(|_| panic_with_error!(e, PolicyError::ArgumentMismatch));
+        if decoded != {{ entry.value }}u32 {
+            panic_with_error!(e, PolicyError::ArgumentMismatch);
+        }
+{%- elif entry.kind == "exact_u64" %}
+        let decoded = u64::try_from_val(e, &arg_val)
+            .unwrap_or_else(|_| panic_with_error!(e, PolicyError::ArgumentMismatch));
+        if decoded != {{ entry.value }}u64 {
+            panic_with_error!(e, PolicyError::ArgumentMismatch);
+        }
+{%- elif entry.kind == "exact_bytes" %}
+        let decoded = Bytes::try_from_val(e, &arg_val)
+            .unwrap_or_else(|_| panic_with_error!(e, PolicyError::ArgumentMismatch));
+        let expected = Bytes::from_array(e, &[{{ entry.bytes_csv }}]);
+        if decoded != expected {
+            panic_with_error!(e, PolicyError::ArgumentMismatch);
+        }
+{%- elif entry.kind == "i128_range" %}
+        let decoded = i128::try_from_val(e, &arg_val)
+            .unwrap_or_else(|_| panic_with_error!(e, PolicyError::ArgumentMismatch));
+{%- if entry.has_min %}
+        if decoded < {{ entry.min }}i128 {
+            panic_with_error!(e, PolicyError::ArgumentMismatch);
+        }
+{%- endif %}
+{%- if entry.has_max %}
+        if decoded > {{ entry.max }}i128 {
+            panic_with_error!(e, PolicyError::ArgumentMismatch);
+        }
+{%- endif %}
+{%- endif %}
+    }
+{%- endfor %}
+}

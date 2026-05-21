@@ -1,0 +1,31 @@
+// --- sequence_ordering ---
+// Required invocation order. The current phase index is stored under
+// `StorageKey::PhaseIndex` and cycles through `phases`. Mismatch panics.
+{
+    let phase_key = StorageKey::PhaseIndex(smart_account.clone(), context_rule.id);
+    let current_idx: u32 = e.storage().persistent().get(&phase_key).unwrap_or(0u32);
+    let phases_len: u32 = {{ sequence_ordering.phases_len }}u32;
+
+    let mut matched = false;
+{%- for phase in sequence_ordering.phases %}
+    if current_idx == {{ loop.index0 }}u32 {
+{%- if phase.use_symbol_short %}
+        if fn_name == &symbol_short!("{{ phase.name }}") {
+{%- else %}
+        if fn_name == &Symbol::new(e, "{{ phase.name }}") {
+{%- endif %}
+            matched = true;
+        }
+    }
+{%- endfor %}
+
+    if !matched {
+        panic_with_error!(e, PolicyError::SequenceOrderingViolated);
+    }
+
+    let next_idx = (current_idx + 1u32) % phases_len;
+    e.storage().persistent().set(&phase_key, &next_idx);
+    e.storage()
+        .persistent()
+        .extend_ttl(&phase_key, 17_280u32 * 29u32, 17_280u32 * 30u32);
+}

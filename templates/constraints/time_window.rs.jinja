@@ -1,0 +1,9 @@
+// --- time_window ---
+// Restricts admission to ledger sequences in `[start_ledger, end_ledger]`
+// (inclusive). Outside the window: TimeWindowViolated.
+{
+    let current = e.ledger().sequence();
+    if current < {{ time_window.start_ledger }}u32 || current > {{ time_window.end_ledger }}u32 {
+        panic_with_error!(e, PolicyError::TimeWindowViolated);
+    }
+}

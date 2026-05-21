@@ -1,0 +1,36 @@
+// --- call_frequency ---
+// Rolling window: keep the ledger sequences of admitted enforce calls in
+// `StorageKey::FreqLedgers`. On each new enforce, evict entries older than
+// `current - window_ledgers`, then panic if remaining count >= max_calls,
+// else push the current ledger and persist. TTL extended on every write.
+{
+    let current = e.ledger().sequence();
+    let freq_key = StorageKey::FreqLedgers(smart_account.clone(), context_rule.id);
+    let mut history: Vec<u32> = e
+        .storage()
+        .persistent()
+        .get(&freq_key)
+        .unwrap_or_else(|| Vec::new(e));
+
+    // Evict entries strictly older than the rolling-window cutoff.
+    let cutoff = current.saturating_sub({{ call_frequency.window_ledgers }}u32);
+    let mut kept: Vec<u32> = Vec::new(e);
+    for i in 0..history.len() {
+        let seq = history.get(i).unwrap();
+        if seq > cutoff {
+            kept.push_back(seq);
+        }
+    }
+    history = kept;
+
+    if history.len() >= {{ call_frequency.max_calls }}u32 {
+        panic_with_error!(e, PolicyError::CallFrequencyExceeded);
+    }
+
+    history.push_back(current);
+    e.storage().persistent().set(&freq_key, &history);
+    // Default TTL extension: 30 days in ledgers (matches OZ primitives).
+    e.storage()
+        .persistent()
+        .extend_ttl(&freq_key, 17_280u32 * 29u32, 17_280u32 * 30u32);
+}

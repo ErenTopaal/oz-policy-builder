@@ -1,0 +1,21 @@
+// --- function_allowlist ---
+// Only the listed function symbols may be invoked. Names ≤ 9 ASCII chars use
+// `symbol_short!`; longer ones use `Symbol::new(env, "…")`. Unrecognised
+// fn_name → FunctionNotAllowed.
+{
+    let mut matched = false;
+{%- for entry in function_allowlist %}
+{%- if entry.use_symbol_short %}
+    if fn_name == &symbol_short!("{{ entry.name }}") {
+        matched = true;
+    }
+{%- else %}
+    if fn_name == &Symbol::new(e, "{{ entry.name }}") {
+        matched = true;
+    }
+{%- endif %}
+{%- endfor %}
+    if !matched {
+        panic_with_error!(e, PolicyError::FunctionNotAllowed);
+    }
+}

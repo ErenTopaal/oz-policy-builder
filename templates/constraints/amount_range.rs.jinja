@@ -1,0 +1,28 @@
+// --- amount_range ---
+// Constrains an `i128` argument to `[min, max]` (inclusive). Either bound may
+// be open (None); both-open is forbidden at synthesis time so always at least
+// one branch is emitted.
+{
+{%- for entry in amount_ranges %}
+{%- if entry.fn_use_symbol_short %}
+    if fn_name == &symbol_short!("{{ entry.fn_name }}") {
+{%- else %}
+    if fn_name == &Symbol::new(e, "{{ entry.fn_name }}") {
+{%- endif %}
+        let arg_val = args.get({{ entry.arg_index }}u32)
+            .unwrap_or_else(|| panic_with_error!(e, PolicyError::AmountOutOfRange));
+        let amount = i128::try_from_val(e, &arg_val)
+            .unwrap_or_else(|_| panic_with_error!(e, PolicyError::AmountOutOfRange));
+{%- if entry.has_min %}
+        if amount < {{ entry.min }}i128 {
+            panic_with_error!(e, PolicyError::AmountOutOfRange);
+        }
+{%- endif %}
+{%- if entry.has_max %}
+        if amount > {{ entry.max }}i128 {
+            panic_with_error!(e, PolicyError::AmountOutOfRange);
+        }
+{%- endif %}
+    }
+{%- endfor %}
+}
