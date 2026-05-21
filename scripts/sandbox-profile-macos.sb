@@ -1,0 +1,65 @@
+;;; OZ Accounts Policy Builder — macOS Seatbelt profile for the sandboxed
+;;; `cargo build --target wasm32-unknown-unknown --release --locked` step.
+;;;
+;;; This profile is consumed by `sandbox-exec -f <this-file>` from
+;;; `crates/oz-policy-codegen/src/sandbox.rs`. Two parameters are injected by
+;;; the driver via `sandbox-exec -D KEY=VALUE`:
+;;;
+;;;   CACHE_DIR  — absolute path to the per-render cache directory the build
+;;;                writes into (e.g. `${OZ_POLICY_CODEGEN_CACHE_DIR}/sandbox/
+;;;                <hex>/`); must be both readable and writable.
+;;;   HOME_DIR   — absolute path to the user's home dir; the cargo registry
+;;;                under `${HOME_DIR}/.cargo` is mounted read-only so the
+;;;                offline build can resolve dependencies without networking.
+;;;
+;;; Security posture: this profile DENIES network egress (no `network*`
+;;; allow), allows process exec for cargo/rustc/lld + the toolchain, allows
+;;; file reads from the cargo registry + the system, and limits writes to
+;;; the build cache directory and standard ephemeral locations (/tmp,
+;;; /private/tmp, /var/folders). Phase 9 will tighten this further.
+;;;
+;;; Note: this is *hardening*, not a security barrier — correctness of the
+;;; build pipeline must not depend on it. If `sandbox-exec` is unavailable
+;;; or refuses the profile, the driver falls back to running unsandboxed
+;;; and emits a `tracing::warn!`.
+
+(version 1)
+(deny default)
+
+;; --- File system reads ---------------------------------------------------
+;; Allow reading the entire filesystem; the build needs the Rust toolchain
+;; under `~/.rustup`, the cargo registry under `~/.cargo`, system libraries
+;; under `/usr/lib`, `/System`, and the workspace path passed via CACHE_DIR.
+;; The read-only mount of `~/.cargo` mandated by the driver is implemented
+;; here by NOT granting file-write* outside the cache dir.
+(allow file-read*)
+
+;; --- File system writes (cache dir + ephemerals) -------------------------
+(allow file-write*
+       (subpath (param "CACHE_DIR"))
+       (subpath "/private/tmp")
+       (subpath "/private/var/folders")
+       (subpath "/tmp")
+       (subpath "/var/folders"))
+
+;; --- Process exec / fork -------------------------------------------------
+;; cargo invokes rustc, which invokes linker (rust-lld for wasm32), which
+;; may spawn helper processes.
+(allow process-fork)
+(allow process-exec)
+
+;; --- Sysctl / system info ------------------------------------------------
+;; rustc consults sysctls for CPU info, jobserver setup, etc.
+(allow sysctl-read)
+(allow mach-lookup)
+(allow ipc-posix-shm)
+(allow signal (target self))
+
+;; --- Network: DENIED ----------------------------------------------------
+;; We deliberately do NOT allow `network*`. Any attempt by cargo or rustc
+;; to open a socket fails fast, preventing silent dependency downloads or
+;; telemetry beacons. The build must use the pre-fetched offline registry.
+
+;; --- Filesystem metadata + locking --------------------------------------
+;; Cargo's lock files (Cargo.lock, .package-cache) require flock.
+(allow file-ioctl)
