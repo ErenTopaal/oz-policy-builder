@@ -21,6 +21,11 @@ oz-policy-recorder = { path = "../oz-policy-recorder" }
 # `Error::InstallPreflightFailed("primitive_address_unknown ...")`; the
 # CLI prints that verbatim to stderr (exit non-zero) — no silent masking.
 oz-policy-installer = { path = "../oz-policy-installer" }
+# Phase 3 Round 2: the `codegen` subcommand calls
+# `oz_policy_codegen::synthesize_track_b` to render+compile every
+# `Generated` policy slot in a PolicySpec, then writes `source.rs`,
+# `policy.wasm`, and `wasm_hash.txt` per slot under `--out`.
+oz-policy-codegen = { path = "../oz-policy-codegen" }
 clap = { workspace = true }
 # `EnvelopeArtifact` does not derive `Serialize`, so we project it into a
 # small local `EnvelopeArtifactJson` struct and serialize that. We only

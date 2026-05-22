@@ -1,6 +1,6 @@
 //! Thin CLI mirror of the MCP surface.
 //!
-//! Subcommands (Phase 2 Round 3):
+//! Subcommands:
 //! * `record` — fetch a Soroban transaction (by on-chain hash or simulation
 //!   envelope) and emit a deterministic [`Recording`] JSON document.
 //! * `synthesize` — read a `Recording` JSON, run the Phase 2 decision tree,
@@ -8,6 +8,9 @@
 //! * `prepare-install` — read a `PolicySpec` JSON, call
 //!   `oz_policy_installer::build_install_envelope`, and emit the resulting
 //!   [`EnvelopeArtifact`] (base64 XDR + diagnostics) JSON.
+//! * `codegen` — read a `PolicySpec` JSON, run Phase 3 Track-B codegen for
+//!   every `Generated` slot, and write `source.rs`, `policy.wasm`, and
+//!   `wasm_hash.txt` per slot under `--out`.
 //!
 //! All subcommands print the result pretty-printed to stdout on success, or
 //! `E_*` + detail to stderr (exit non-zero) on failure. The exit code maps
@@ -49,6 +52,12 @@ enum Command {
     /// `EnvelopeArtifact` JSON to stdout. Calls `simulateTransaction` and
     /// `getLedgerEntries` on the configured RPC; never auto-submits.
     PrepareInstall(PrepareInstallArgs),
+    /// Read a `PolicySpec` JSON document from disk, run Phase 3 Track-B
+    /// codegen for every `Generated` policy slot, and write the rendered
+    /// source, optimized WASM, and lowercase-hex SHA-256 hash for each slot
+    /// under `--out/slot_<i>/`. Existing (Track-A) slots are silently
+    /// skipped.
+    Codegen(CodegenArgs),
 }
 
 /// Mutually exclusive: exactly one of `--hash` / `--envelope-xdr` is required.
@@ -227,6 +236,20 @@ struct PrepareInstallArgs {
     account_revision: AccountRevisionArg,
 }
 
+#[derive(Debug, Args)]
+struct CodegenArgs {
+    /// Path to a `PolicySpec` JSON document on disk.
+    #[arg(value_name = "SPEC_FILE")]
+    spec_file: PathBuf,
+
+    /// Output directory. One subdirectory `slot_<i>/` is written per
+    /// `Generated` policy slot, each containing `source.rs`, `policy.wasm`,
+    /// and `wasm_hash.txt`. The directory is created if missing; existing
+    /// files at those paths are overwritten.
+    #[arg(long = "out", value_name = "DIR")]
+    out: PathBuf,
+}
+
 /// JSON-serialisable mirror of [`EnvelopeArtifact`]. The installer's struct
 /// is `Debug + Clone + PartialEq + Eq` but not `Serialize`, so we project
 /// the three public fields into a small local type that derives
@@ -236,6 +259,32 @@ struct EnvelopeArtifactJson {
     envelope_xdr_base64: String,
     min_resource_fee: i64,
     host_function_count: u32,
+}
+
+/// JSON-serialisable summary emitted by the `codegen` subcommand on success.
+/// Mirrors a single generated-slot artifact's identifying metadata; the
+/// actual `source.rs` / `policy.wasm` / `wasm_hash.txt` files are written
+/// to disk under `--out/slot_<i>/`.
+#[derive(Debug, Serialize)]
+struct CodegenSlotSummary {
+    /// Index into `PolicySpec.policies` for this generated slot.
+    slot_index: usize,
+    /// Lowercase hex SHA-256 of the optimized WASM bytes — the same value
+    /// written into `slot_<i>/wasm_hash.txt`.
+    wasm_sha256_hex: String,
+    /// `true` iff the sandbox driver served this slot from its on-disk
+    /// cache (no `cargo build` was re-run).
+    cache_hit: bool,
+    /// Size of the optimized WASM in bytes.
+    wasm_bytes: usize,
+}
+
+/// Top-level JSON output of the `codegen` subcommand.
+#[derive(Debug, Serialize)]
+struct CodegenReport {
+    out_dir: String,
+    generated_slot_count: usize,
+    slots: Vec<CodegenSlotSummary>,
 }
 
 impl From<&EnvelopeArtifact> for EnvelopeArtifactJson {
@@ -260,6 +309,7 @@ impl From<&EnvelopeArtifact> for EnvelopeArtifactJson {
 /// | E_RECORDER_XDR_DECODE_FAILED     | 12        |
 /// | E_SYNTH_NOT_EXPRESSIBLE          | 13        |
 /// | E_INSTALL_PREFLIGHT_FAILED       | 14        |
+/// | E_CODEGEN_COMPILE_FAILED         | 15        |
 /// | (any other E_*)                  | 20        |
 fn exit_code_for(e: &Error) -> i32 {
     match e {
@@ -268,6 +318,7 @@ fn exit_code_for(e: &Error) -> i32 {
         Error::RecorderXdrDecodeFailed(_) => 12,
         Error::SynthNotExpressible(_) => 13,
         Error::InstallPreflightFailed(_) => 14,
+        Error::CodegenCompileFailed(_) => 15,
         _ => 20,
     }
 }
@@ -313,6 +364,119 @@ fn run_synthesize(args: SynthesizeArgs) -> Result<PolicySpec, Error> {
     })?;
     let opts = args.to_options();
     oz_policy_core::decision_tree::synthesize(&recording, &opts)
+}
+
+/// Read a spec from disk, run Phase 3 Track-B codegen, and write the
+/// per-slot artifacts under `args.out`. Returns a summary suitable for
+/// pretty-printing to stdout.
+///
+/// Disk layout produced under `args.out`:
+///
+/// ```text
+/// <out>/
+///   slot_<i>/
+///     source.rs       — rendered Rust source (artifact.source)
+///     policy.wasm     — optimized WASM bytes (artifact.wasm)
+///     wasm_hash.txt   — lowercase hex SHA-256 of policy.wasm
+/// ```
+///
+/// where `<i>` is the original index in `PolicySpec.policies`. Track-A
+/// `Existing` slots are silently skipped (no `slot_<i>/` directory is
+/// emitted for them). A spec with zero generated slots produces an empty
+/// summary, exit 0, and no files written beyond the top-level `out` dir
+/// itself.
+async fn run_codegen(args: CodegenArgs) -> Result<CodegenReport, Error> {
+    let raw = std::fs::read_to_string(&args.spec_file).map_err(|e| {
+        Error::CodegenCompileFailed(format!(
+            "failed to read spec file {}: {e}",
+            args.spec_file.display()
+        ))
+    })?;
+    let spec: PolicySpec = serde_json::from_str(&raw).map_err(|e| {
+        Error::CodegenCompileFailed(format!(
+            "failed to parse spec JSON from {}: {e}",
+            args.spec_file.display()
+        ))
+    })?;
+
+    // Drive codegen end-to-end. `synthesize_track_b` already returns
+    // artifacts in slot order, skipping Existing slots silently.
+    let artifacts = oz_policy_codegen::synthesize_track_b(&spec).await?;
+
+    std::fs::create_dir_all(&args.out).map_err(|e| {
+        Error::CodegenCompileFailed(format!(
+            "failed to create out dir {}: {e}",
+            args.out.display()
+        ))
+    })?;
+
+    // We need to re-map artifact-index → original-slot-index so the per-slot
+    // directories carry the spec's original numbering. `synthesize_track_b`
+    // collapses Existing slots; iterate the spec to recover the mapping.
+    let mut summaries = Vec::new();
+    let mut art_iter = artifacts.into_iter();
+    for (slot_idx, slot) in spec.policies.iter().enumerate() {
+        if !matches!(slot, oz_policy_core::spec::PolicySlot::Generated { .. }) {
+            continue;
+        }
+        let artifact = art_iter
+            .next()
+            .expect("internal: synthesize_track_b returned fewer artifacts than Generated slots");
+
+        let slot_dir = args.out.join(format!("slot_{slot_idx}"));
+        std::fs::create_dir_all(&slot_dir).map_err(|e| {
+            Error::CodegenCompileFailed(format!(
+                "failed to create slot dir {}: {e}",
+                slot_dir.display()
+            ))
+        })?;
+        std::fs::write(slot_dir.join("source.rs"), artifact.source.as_bytes()).map_err(|e| {
+            Error::CodegenCompileFailed(format!(
+                "failed to write source.rs in {}: {e}",
+                slot_dir.display()
+            ))
+        })?;
+        std::fs::write(slot_dir.join("policy.wasm"), &artifact.wasm).map_err(|e| {
+            Error::CodegenCompileFailed(format!(
+                "failed to write policy.wasm in {}: {e}",
+                slot_dir.display()
+            ))
+        })?;
+        let hex = hex_lower(&artifact.wasm_hash);
+        // Single trailing newline so `cat`/`diff` on the file look right
+        // and the value can be substring-loaded cleanly by other tools.
+        std::fs::write(slot_dir.join("wasm_hash.txt"), format!("{hex}\n")).map_err(|e| {
+            Error::CodegenCompileFailed(format!(
+                "failed to write wasm_hash.txt in {}: {e}",
+                slot_dir.display()
+            ))
+        })?;
+
+        summaries.push(CodegenSlotSummary {
+            slot_index: slot_idx,
+            wasm_sha256_hex: hex,
+            cache_hit: artifact.cache_hit,
+            wasm_bytes: artifact.wasm.len(),
+        });
+    }
+
+    Ok(CodegenReport {
+        out_dir: args.out.display().to_string(),
+        generated_slot_count: summaries.len(),
+        slots: summaries,
+    })
+}
+
+/// Lowercase-hex encode a 32-byte digest. Hand-rolled to avoid adding a
+/// dedicated hex dep to the CLI crate; this function is invoked at most
+/// once per generated slot.
+fn hex_lower(bytes: &[u8; 32]) -> String {
+    let mut s = String::with_capacity(64);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 
 /// Read a spec from disk and call into the installer. Surfaces real errors
@@ -387,6 +551,10 @@ fn main() {
                     std::process::exit(exit_code_for(&e));
                 }
             }
+        }
+        Command::Codegen(args) => {
+            let result = rt.block_on(run_codegen(args));
+            print_or_exit(result);
         }
     }
 }
@@ -749,6 +917,74 @@ mod tests {
         assert_eq!(args.rpc, DEFAULT_TESTNET_RPC);
         assert_eq!(args.network, DEFAULT_TESTNET_NETWORK);
         assert_eq!(args.account_revision, AccountRevisionArg::Unknown);
+    }
+
+    // -------------------------------------------------------------------
+    // Codegen subcommand
+    // -------------------------------------------------------------------
+
+    /// The full-form invocation must parse with `--out` populated.
+    #[test]
+    fn codegen_subcommand_accepts_full_form() {
+        let cli = Cli::try_parse_from([
+            "oz-policy-cli",
+            "codegen",
+            "spec.json",
+            "--out",
+            "target/codegen-out",
+        ])
+        .expect("parse codegen full form");
+        match cli.command {
+            Command::Codegen(args) => {
+                assert_eq!(args.spec_file, PathBuf::from("spec.json"));
+                assert_eq!(args.out, PathBuf::from("target/codegen-out"));
+            }
+            other => panic!("expected Codegen, got {other:?}"),
+        }
+    }
+
+    /// `--out` is required by clap (no default). Forgetting it must surface
+    /// `MissingRequiredArgument`, not silently default into the cwd.
+    #[test]
+    fn codegen_subcommand_requires_out_flag() {
+        let err = Cli::try_parse_from(["oz-policy-cli", "codegen", "spec.json"])
+            .expect_err("missing --out must fail");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    /// `codegen` must require the positional spec-file argument too.
+    #[test]
+    fn codegen_subcommand_requires_spec_file() {
+        let err = Cli::try_parse_from(["oz-policy-cli", "codegen", "--out", "target/x"])
+            .expect_err("missing spec file must fail");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    /// `--help` must parse cleanly (clap turns this into `DisplayHelp`,
+    /// which is *not* an error in the failure sense but appears as one
+    /// from `try_parse_from`).
+    #[test]
+    fn codegen_subcommand_help_renders() {
+        let err = Cli::try_parse_from(["oz-policy-cli", "codegen", "--help"])
+            .expect_err("`--help` short-circuits parsing");
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
+        let rendered = err.to_string();
+        // Cross-check that the help text mentions both the required spec
+        // file positional and the `--out` flag — those are the load-bearing
+        // pieces of the subcommand surface.
+        assert!(
+            rendered.contains("--out"),
+            "codegen --help must mention --out flag; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("SPEC_FILE"),
+            "codegen --help must mention SPEC_FILE positional; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn exit_code_includes_codegen_compile_failed() {
+        assert_eq!(exit_code_for(&Error::CodegenCompileFailed("x".into())), 15);
     }
 
     #[test]
