@@ -303,7 +303,7 @@ After both streams return, lead session reconciles type signatures (one stream m
 - Sandbox isolation test: attempt to `cargo build` a generated crate after killing the local cargo registry mount → the build must fail (proving no network egress). This is a CI-only test marked `#[ignore]` for local runs.
 - `oz-policy-cli codegen walkthroughs/03-soroswap-bounded/spec.json --out target/walkthrough-3-out` produces `policy.wasm`, `source.rs`, `wasm_hash.txt`; the WASM hash matches the value pinned in `walkthroughs/03-soroswap-bounded/expected-wasm-hash.txt`.
 
-**Completion Criterion (binary):** `cargo nextest run -p oz-policy-codegen` green AND the Soroswap-walkthrough codegen produces a WASM whose SHA-256 matches the pinned expected hash.
+**Completion Criterion (binary):** Render byte-equality: `cargo nextest run -p oz-policy-codegen phase3_render_byte_equal` passes — renders `walkthroughs/phase3-codegen-fixture/spec.json` and asserts the result is byte-equal to `walkthroughs/phase3-codegen-fixture/expected/slot_0/source.rs`. **AND** full pipeline (ignored): `cargo nextest run -p oz-policy-codegen --run-ignored only phase3_compile_hash_pinned` produces a WASM whose SHA-256 matches the value pinned in `walkthroughs/phase3-codegen-fixture/expected/slot_0/wasm_hash.txt`. The Soroswap walkthrough (Phase 8) reuses these templates; its corpus is frozen later.
 
 ---
 
