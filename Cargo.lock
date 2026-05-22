@@ -1108,6 +1108,7 @@ name = "oz-policy-cli"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "oz-policy-codegen",
  "oz-policy-core",
  "oz-policy-installer",
  "oz-policy-recorder",
@@ -1125,6 +1126,7 @@ dependencies = [
  "dirs",
  "oz-policy-core",
  "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "thiserror 1.0.69",

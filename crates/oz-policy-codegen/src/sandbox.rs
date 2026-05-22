@@ -418,6 +418,17 @@ async fn run_build_command(
         // Refuse to fetch from the network under any path; the sandbox
         // profile also enforces this, but belt-and-braces.
         .env("CARGO_NET_OFFLINE", "true")
+        // `stellar-accounts = 0.7.1` enables `experimental_spec_shaking_v2`
+        // on `soroban-sdk = 25.3.0`. That feature's build.rs panics unless
+        // the cargo invocation comes from `stellar contract build` ≥
+        // 25.2.0 or this env var is set explicitly. We invoke `cargo
+        // build` directly (not via `stellar contract build`) so we set
+        // the var here. The optimize pass downstream still calls
+        // `stellar contract optimize` against the resulting WASM, which
+        // works on the bundled stellar-cli 25.1.0+ regardless of this
+        // toggle. See `crates/oz-policy-codegen/docs/codegen-dependency-mode.md`
+        // (Round 2 amendment) for the rationale.
+        .env("SOROBAN_SDK_BUILD_SYSTEM_SUPPORTS_SPEC_SHAKING_V2", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let out = cmd

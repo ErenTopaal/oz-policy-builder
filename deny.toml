@@ -65,6 +65,13 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "Zlib",
     "MIT-0",
+    # MPL-2.0: weak file-level copyleft, surfaced transitively by
+    # `option-ext` (a dep of `dirs` → `dirs-sys`). The codegen crate uses
+    # `dirs` to resolve `${HOME}/.cache/oz-policy-codegen`. MPL-2.0 is NOT
+    # in the GPL/AGPL/LGPL blocklist that this file's authors flagged as a
+    # stop-and-ask; allowing it here keeps the cache-dir resolution path
+    # available without vendoring our own platform-specific lookup.
+    "MPL-2.0",
 ]
 confidence-threshold = 0.8
 
