@@ -1,0 +1,30 @@
+{
+  "schema": "oz-policy-builder/v1",
+  "synthesis_mode": "codegen_only",
+  "context_rule": {
+    "name": "phase3-fixture",
+    "context_type": {
+      "kind": "call_contract",
+      "address": "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH"
+    },
+    "valid_until": null
+  },
+  "signers": [],
+  "policies": [
+    {
+      "kind": "generated",
+      "template_family": "function_allowlist",
+      "constraints": [
+        {
+          "kind": "function_allowlist",
+          "functions": ["transfer"]
+        }
+      ]
+    }
+  ],
+  "lifetime_ledgers": null,
+  "recording_ref": {
+    "hash": null,
+    "schema": "oz-policy-builder/recording/v1"
+  }
+}
