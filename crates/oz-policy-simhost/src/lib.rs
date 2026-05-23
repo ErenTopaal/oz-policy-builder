@@ -6,4 +6,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod deny;
+pub mod host;
 pub mod placeholder;
+
+pub use host::{AuthPayload, HostExecError, TestContext, TestHost};

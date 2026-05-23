@@ -9,3 +9,40 @@ description = "Soroban env-host simulation harness + proptest-based deny-vector 
 
 [dependencies]
 oz-policy-core = { path = "../oz-policy-core" }
+oz-policy-codegen = { path = "../oz-policy-codegen" }
+# soroban-env-host: drives the in-process simulation. `testutils` enables
+# `register_test_contract_wasm` (and pulls in `recording_mode`, which we use
+# during the install + enforce dispatch so we don't have to fabricate signed
+# auth entries). Pinned at the workspace level (=25.0.1) to match the SDK
+# pin and the protocol the OZ smart-account WASM was built against.
+soroban-env-host = { workspace = true, features = ["testutils"] }
+# proptest: drives the boundary-mutation deny-vector generator (Phase 4 Stream
+# B). Strategies are deterministic for a given (spec, recording, seed) so the
+# generator is reproducible across runs; see `src/deny.rs`.
+proptest = { workspace = true }
+# serde / serde_json: derive `Serialize` + `Deserialize` on `DenyVector` so
+# the orchestrator (Stream A's `run.rs`) can serialise extra deny vectors
+# fed via `simulate --extra-deny <json>`, and so the determinism gate
+# (`generate_deny_vectors_is_byte_equal_for_same_seed`) can compare two
+# `Vec<DenyVector>` outputs byte-by-byte via JSON.
+serde = { workspace = true }
+serde_json = { workspace = true }
+# schemars: derive `JsonSchema` on the `SimReport` types so the Phase 5
+# MCP `simulate` tool can publish a structured schema for them.
+schemars = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+# sha2: cross-check the vendored smart-account WASM SHA-256 at load time so
+# the simhost fails loudly if the binary on disk has drifted from the
+# committed source (see `docs/simhost-smart-account-source.md`).
+sha2 = "=0.10.9"
+# stellar-strkey: convert `ScAddress` <-> human-readable StrKey `C…` / `G…`
+# at the public-API boundary of `TestHost`. The exact version (0.0.13) is
+# what `soroban-env-host = 25.0.1` brings in transitively; we add it as a
+# direct dep so it appears in our manifest's typecheck audit trail.
+stellar-strkey = "=0.0.13"
+
+[dev-dependencies]
+# tokio: integration tests need an async runtime alongside the test harness.
+tokio = { workspace = true }
