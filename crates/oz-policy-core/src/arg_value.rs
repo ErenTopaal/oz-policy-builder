@@ -35,7 +35,13 @@ use serde::{Deserialize, Serialize};
 /// If the Soroban host ever introduces an `ScVal` variant we cannot decode
 /// (none exist today for `stellar-xdr 25.0.0`), the recorder must surface
 /// `Error::RecorderXdrDecodeFailed` rather than emit `Unsupported`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+///
+/// `Eq` is derived because every contained field type is `Eq`: floats are
+/// not part of the `ScVal` shape, all `String`/`Option<String>`/`Vec<T>` /
+/// integer payloads are `Eq`. This lets downstream consumers (Phase 4
+/// `DenyVector`, set / map collections of recordings) compare values
+/// without falling back to manual comparators.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum ArgValue {
     Bool(bool),
@@ -101,7 +107,7 @@ pub enum ArgValue {
 /// Map entry pair — explicit struct so JSON serialisation is unambiguous and
 /// `schemars` produces a clean schema (tuples land as 2-element arrays which
 /// hide field intent).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MapEntry {
     pub key: ArgValue,
