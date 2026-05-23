@@ -70,8 +70,8 @@ stellar contract optimize \
 | Field | Value |
 | --- | --- |
 | Path | `crates/oz-policy-simhost/vendor/oz-minimal-smart-account-v0.7.1.wasm` |
-| Size | 48138 bytes (post-`stellar contract optimize`) |
-| SHA-256 | `ede4bc15fff69952efe2bc95aaa2149810ef6c8567f50750b5ec8ad88b37d675` |
+| Size | 48718 bytes (post-`stellar contract optimize`) |
+| SHA-256 | `4b855eb5d4be538753d6b99fe570b5b25b8e064123229dc899edf050788d4a7a` |
 | Built against | `stellar-accounts = 0.7.1`, `soroban-sdk = 25.3.0`, `rustc 1.89.0`, `stellar-cli 25.1.0` |
 
 The SHA-256 is also pinned in `oz_policy_simhost::host::VENDORED_SMART_ACCOUNT_WASM_SHA256`

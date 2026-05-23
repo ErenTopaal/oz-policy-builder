@@ -37,9 +37,20 @@ pub struct MinimalSmartAccount;
 
 #[contractimpl]
 impl MinimalSmartAccount {
-    /// Constructor — installs a single `Default` context rule named "rule"
-    /// with the provided signers + policies. Mirrors the upstream example.
-    pub fn __constructor(e: &Env, signers: Vec<Signer>, policies: Map<Address, Val>) {
+    /// Constructor — no-op. The simhost uses the post-deploy
+    /// [`Self::init`] entry point so it can construct the host via
+    /// `register_test_contract_wasm` (which invokes the constructor with
+    /// empty args) and only afterwards seed the smart-account state
+    /// with `(signers, policies)`. The OZ upstream example bundles these
+    /// into `__constructor` because it expects the deployer to know the
+    /// initial composition at create-time; we don't, so we defer.
+    pub fn __constructor() {}
+
+    /// Post-deploy seeding: installs a single `Default` context rule named
+    /// `"rule"` with the provided signers + policies. Mirrors the upstream
+    /// `__constructor` body. Requires `smart_account.require_auth()`
+    /// internally via `add_context_rule`'s mutator gate.
+    pub fn init(e: &Env, signers: Vec<Signer>, policies: Map<Address, Val>) {
         smart_account::add_context_rule(
             e,
             &ContextRuleType::Default,
