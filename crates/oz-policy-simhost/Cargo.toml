@@ -46,3 +46,6 @@ stellar-strkey = "=0.0.13"
 [dev-dependencies]
 # tokio: integration tests need an async runtime alongside the test harness.
 tokio = { workspace = true }
+# sha2: the `tests/host_smoke.rs` ignored gate recomputes the vendored
+# smart-account WASM SHA-256 at the integration-test boundary.
+sha2 = "=0.10.9"
