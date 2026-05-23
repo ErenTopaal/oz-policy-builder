@@ -1,0 +1,51 @@
+# Minimal OZ smart-account contract used by the simhost integration test.
+#
+# This source is NOT part of the workspace build. It is built once,
+# out-of-band, via `stellar contract build` (Phase 4 fixture-creation step)
+# and the resulting WASM blob is committed under
+# `crates/oz-policy-simhost/vendor/`. The source is kept in-tree so the
+# vendored binary remains auditable.
+#
+# The contract is the OZ `multisig-account-example` (examples/multisig-smart-account/account
+# at OpenZeppelin/stellar-contracts tag v0.7.1) stripped of its Upgradeable
+# dependency. We retain:
+#   * SmartAccount  (context-rule + signer + policy management)
+#   * CustomAccountInterface::__check_auth (invokes stellar_accounts::do_check_auth)
+#   * ExecutionEntryPoint (so policy-driven invocations route correctly)
+#
+# Dropping Upgradeable removes the only dependency on `stellar-contract-utils`,
+# so the build closure is just `soroban-sdk = 25.3.0` + `stellar-accounts = 0.7.1`
+# (workspace-pinned via P1-T1).
+[workspace]
+# Detached from the parent workspace — built standalone, out-of-band.
+
+[package]
+name = "minimal-smart-account"
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+# Pin rust-version + resolver = "3" so Cargo's MSRV-aware resolver backs the
+# soroban-sdk-macros / soroban-spec sub-crates off the `25.3.1` patch (which
+# requires rustc 1.91.0) and selects the buildable `25.3.0`. This is the same
+# trick the Phase 3 codegen uses (see `oz-policy-codegen::render::generated_cargo_toml`).
+rust-version = "1.89.0"
+resolver = "3"
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+# Pinned exactly to the workspace versions (see top-level Cargo.toml).
+# The `experimental_spec_shaking_v2` feature on soroban-sdk is required by
+# stellar-accounts 0.7.1; not enabling it produces a compile-time error.
+soroban-sdk = { version = "=25.3.0", features = ["experimental_spec_shaking_v2"] }
+stellar-accounts = "=0.7.1"
+
+[profile.release]
+overflow-checks = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"
