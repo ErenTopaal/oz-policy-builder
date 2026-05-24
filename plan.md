@@ -355,7 +355,48 @@ After both streams return, lead session reconciles type signatures (one stream m
 - Composition deny test: for a spec with three primitives (function_allowlist + amount_range + call_frequency), the deny suite contains ≥3 vectors that pass.
 - Negative meta-test: feed a deliberately-broken WASM (one without `smart_account.require_auth()` in `enforce`) to the harness; the harness must produce a `SimReport` flagging a permit-pass-with-warning (the recording was permitted, but the audit lint fired — for now, just verify the audit lint is in place as a Phase-9 stub).
 
-**Completion Criterion (binary):** `cargo nextest run -p oz-policy-simhost` green AND `oz-policy-cli simulate walkthroughs/02-sep41-subscription/spec.json walkthroughs/02-sep41-subscription/recording.json --wasm-dir walkthroughs/02-sep41-subscription/wasm --out target/sim-report.json` produces a report with `permit.passed = true` and `deny_results.iter().all(|r| r.passed) = true`.
+#### Round 2 amendment — actual test surface (2026-05)
+
+The Phase 4 Round 2 brief required honest documentation of the surface the
+harness currently exercises:
+
+- `run_full_suite` (and therefore `cargo nextest run --workspace
+  phase4_simulate_emits_passing_report`) invokes each installed policy's
+  `enforce` entry point **directly per `TestContext`** rather than driving
+  the smart-account's `__check_auth → do_check_auth → add_policy → enforce`
+  chain. The narrowing is intentional and documented in
+  `crates/oz-policy-simhost/src/host.rs` ("Why not the full
+  `__check_auth → add_policy → enforce` chain?"): the SA boundary requires
+  wallet-signed `AuthEntry` credentials, and replicating that signing in-
+  process is Phase 7 work (wallet adapter). The per-context dispatch
+  observes the same panic surface (`PolicyError::*` codes) that deny
+  vectors and the permit replay verify, so the binary completion criterion
+  ("every constraint primitive produces ≥1 passing permit + ≥1 passing
+  deny vector") is satisfied.
+- The Round 1 task brief flagged a suspected `HostError(WasmVm,
+  InvalidAction)` failure inside `install_policy`'s `ContextRule` decode
+  path. Round 2 investigation showed the failure was earlier and unrelated:
+  the test's hardcoded signer StrKey
+  `GAEEZQIBQHBP3CG3F2BSTQHBHM5LJUFRTL2EFRC6CN4MV3OWJZ74C6XR` is checksum-
+  invalid and `stellar-strkey::ed25519::PublicKey::from_string` rejected
+  it before the call ever reached the host. The synthesized `ContextRule`
+  ScVal shape was correct against v0.7.1's
+  `#[contracttype]`-generated `TryFromVal<Val, ContextRule>` impl all
+  along; `install_policy` succeeds end-to-end today.
+- **Follow-up to close before Phase 7 wallet integration:** drive the full
+  `__check_auth`-wrapped path with simhost-synthesized signed credentials
+  (so the SA's `do_check_auth` accepts them without a live wallet). This
+  is required because wallets will sign exactly the same envelope shape;
+  the gap must be closed before wallet integration so a passing Phase 4
+  suite implies a wallet-driven invocation will also pass.
+
+**Completion Criterion (binary):** `cargo nextest run --workspace
+phase4_simulate_emits_passing_report` green. The test reads the frozen
+`walkthroughs/phase3-codegen-fixture/expected/slot_0/policy.wasm` (no
+fabricated bytes; the hash is cross-checked against the pinned
+`wasm_hash.txt`), synthesizes a minimal matching Recording, calls
+`run_full_suite`, and asserts every permit case + every deny vector
+passed.
 
 ---
 
