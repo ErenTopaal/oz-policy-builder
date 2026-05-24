@@ -26,7 +26,18 @@ oz-policy-installer = { path = "../oz-policy-installer" }
 # `Generated` policy slot in a PolicySpec, then writes `source.rs`,
 # `policy.wasm`, and `wasm_hash.txt` per slot under `--out`.
 oz-policy-codegen = { path = "../oz-policy-codegen" }
+# Phase 4 Round 2: the `simulate` subcommand calls
+# `oz_policy_simhost::run::run_full_suite` to replay a Recording through a
+# spec's compiled policy slate and emit a `SimReport` JSON. Pulled in here
+# so the CLI can drive end-to-end policy verification without a separate
+# `oz-policy-simulator` binary.
+oz-policy-simhost = { path = "../oz-policy-simhost" }
 clap = { workspace = true }
+# Used by the `simulate` subcommand to compute SHA-256 of each loaded
+# `policy.wasm` so the synthesized `CompiledArtifact.wasm_hash` field
+# remains a real hash (no `[0; 32]` placeholders). Pinned at the same
+# version as `oz-policy-simhost` to keep the dependency graph minimal.
+sha2 = "=0.10.9"
 # `EnvelopeArtifact` does not derive `Serialize`, so we project it into a
 # small local `EnvelopeArtifactJson` struct and serialize that. We only
 # need the `derive` macro — workspace `serde` already pulls in

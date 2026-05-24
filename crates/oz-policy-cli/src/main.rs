@@ -11,6 +11,11 @@
 //! * `codegen` — read a `PolicySpec` JSON, run Phase 3 Track-B codegen for
 //!   every `Generated` slot, and write `source.rs`, `policy.wasm`, and
 //!   `wasm_hash.txt` per slot under `--out`.
+//! * `simulate` — read a `PolicySpec` JSON, a `Recording` JSON, and the
+//!   per-slot WASM bytes from `--wasm-dir`, replay the recording through
+//!   `oz_policy_simhost::run::run_full_suite`, and write the resulting
+//!   `SimReport` JSON to `--out`. Exit 0 iff every permit + deny vector
+//!   passed.
 //!
 //! All subcommands print the result pretty-printed to stdout on success, or
 //! `E_*` + detail to stderr (exit non-zero) on failure. The exit code maps
@@ -22,8 +27,10 @@ use oz_policy_core::spec::{PolicySpec, SynthesisMode};
 use oz_policy_core::{Error, Tightness};
 use oz_policy_installer::{AccountRevision, EnvelopeArtifact};
 use oz_policy_recorder::Recording;
+use oz_policy_simhost::deny::DenyVector;
+use oz_policy_simhost::SimReport;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_TESTNET_RPC: &str = "https://soroban-testnet.stellar.org";
 const DEFAULT_TESTNET_NETWORK: &str = "Test SDF Network ; September 2015";
@@ -58,6 +65,13 @@ enum Command {
     /// under `--out/slot_<i>/`. Existing (Track-A) slots are silently
     /// skipped.
     Codegen(CodegenArgs),
+    /// Read a `PolicySpec` JSON, a `Recording` JSON, and the per-slot
+    /// `policy.wasm` files under `--wasm-dir`. Replay the recording through
+    /// `oz_policy_simhost::run::run_full_suite` and write the resulting
+    /// `SimReport` JSON to `--out` (pretty-printed, deterministic). Exit 0
+    /// iff `report.permit.passed && every deny_results[i].passed`;
+    /// otherwise exit with the canonical `E_*` mapping.
+    Simulate(SimulateArgs),
 }
 
 /// Mutually exclusive: exactly one of `--hash` / `--envelope-xdr` is required.
@@ -250,6 +264,37 @@ struct CodegenArgs {
     out: PathBuf,
 }
 
+#[derive(Debug, Args)]
+struct SimulateArgs {
+    /// Path to a `PolicySpec` JSON document on disk.
+    #[arg(value_name = "SPEC_FILE")]
+    spec_file: PathBuf,
+
+    /// Path to a `Recording` JSON document on disk (the permit-replay
+    /// input).
+    #[arg(value_name = "RECORDING_FILE")]
+    recording_file: PathBuf,
+
+    /// Directory containing one `slot_<i>/policy.wasm` per Track-B
+    /// `Generated` slot in the spec. Track-A `Existing` slots are skipped
+    /// (no WASM needed). The directory layout matches the `codegen`
+    /// subcommand's `--out`.
+    #[arg(long = "wasm-dir", value_name = "DIR")]
+    wasm_dir: PathBuf,
+
+    /// Optional path to a JSON file containing a `Vec<DenyVector>` to
+    /// append to the auto-generated deny suite. Useful for fuzzed
+    /// regression vectors discovered in audit.
+    #[arg(long = "extra-deny", value_name = "FILE")]
+    extra_deny: Option<PathBuf>,
+
+    /// Destination path for the resulting `SimReport` JSON. The parent
+    /// directory must already exist (we don't auto-create here so a
+    /// fat-fingered path stays loud).
+    #[arg(long = "out", value_name = "FILE")]
+    out: PathBuf,
+}
+
 /// JSON-serialisable mirror of [`EnvelopeArtifact`]. The installer's struct
 /// is `Debug + Clone + PartialEq + Eq` but not `Serialize`, so we project
 /// the three public fields into a small local type that derives
@@ -310,6 +355,8 @@ impl From<&EnvelopeArtifact> for EnvelopeArtifactJson {
 /// | E_SYNTH_NOT_EXPRESSIBLE          | 13        |
 /// | E_INSTALL_PREFLIGHT_FAILED       | 14        |
 /// | E_CODEGEN_COMPILE_FAILED         | 15        |
+/// | E_SIM_PERMIT_DENIED              | 16        |
+/// | E_SIM_DENY_PASSED                | 17        |
 /// | (any other E_*)                  | 20        |
 fn exit_code_for(e: &Error) -> i32 {
     match e {
@@ -319,6 +366,8 @@ fn exit_code_for(e: &Error) -> i32 {
         Error::SynthNotExpressible(_) => 13,
         Error::InstallPreflightFailed(_) => 14,
         Error::CodegenCompileFailed(_) => 15,
+        Error::SimPermitDenied(_) => 16,
+        Error::SimDenyPassed(_) => 17,
         _ => 20,
     }
 }
@@ -467,6 +516,141 @@ async fn run_codegen(args: CodegenArgs) -> Result<CodegenReport, Error> {
     })
 }
 
+/// Drive `oz_policy_simhost::run::run_full_suite` end-to-end from disk
+/// inputs and write the resulting [`SimReport`] JSON to `args.out`.
+///
+/// Returns the [`SimReport`] so the caller can decide an exit code based on
+/// `report.permit.passed && every deny_results[i].passed`. The on-disk
+/// JSON is pretty-printed with a trailing newline so `diff`/`cat` look
+/// right.
+///
+/// Errors:
+/// * `Error::SimPermitDenied` — failed to read/parse the spec, recording,
+///   `--extra-deny` JSON, or any WASM file; or the parent of `--out` did
+///   not exist; or `run_full_suite` itself errored at the host boundary.
+async fn run_simulate(args: SimulateArgs) -> Result<SimReport, Error> {
+    let spec_raw = std::fs::read_to_string(&args.spec_file).map_err(|e| {
+        Error::SimPermitDenied(format!(
+            "failed to read spec file {}: {e}",
+            args.spec_file.display()
+        ))
+    })?;
+    let spec: PolicySpec = serde_json::from_str(&spec_raw).map_err(|e| {
+        Error::SimPermitDenied(format!(
+            "failed to parse spec JSON from {}: {e}",
+            args.spec_file.display()
+        ))
+    })?;
+
+    let recording_raw = std::fs::read_to_string(&args.recording_file).map_err(|e| {
+        Error::SimPermitDenied(format!(
+            "failed to read recording file {}: {e}",
+            args.recording_file.display()
+        ))
+    })?;
+    let recording: Recording = serde_json::from_str(&recording_raw).map_err(|e| {
+        Error::SimPermitDenied(format!(
+            "failed to parse recording JSON from {}: {e}",
+            args.recording_file.display()
+        ))
+    })?;
+
+    // Load the per-slot WASM bytes. Slot order matches `synthesize_track_b`:
+    // skip `Existing` slots, append one `CompiledArtifact` per `Generated`
+    // slot. Each WASM lives at `<wasm-dir>/slot_<i>/policy.wasm` where `i`
+    // is the *original* PolicySpec.policies index.
+    let artifacts = load_wasm_artifacts(&args.wasm_dir, &spec)?;
+
+    // Optional extra deny vectors.
+    let extra_deny = if let Some(path) = args.extra_deny.as_ref() {
+        let raw = std::fs::read_to_string(path).map_err(|e| {
+            Error::SimPermitDenied(format!(
+                "failed to read --extra-deny file {}: {e}",
+                path.display()
+            ))
+        })?;
+        let parsed: Vec<DenyVector> = serde_json::from_str(&raw).map_err(|e| {
+            Error::SimPermitDenied(format!(
+                "failed to parse --extra-deny JSON from {}: {e}",
+                path.display()
+            ))
+        })?;
+        parsed
+    } else {
+        Vec::new()
+    };
+
+    let report =
+        oz_policy_simhost::run::run_full_suite(&spec, &recording, &artifacts, extra_deny).await?;
+
+    let mut json = serde_json::to_string_pretty(&report).map_err(|e| {
+        Error::SimPermitDenied(format!("failed to serialize SimReport JSON: {e}"))
+    })?;
+    json.push('\n');
+    std::fs::write(&args.out, json.as_bytes()).map_err(|e| {
+        Error::SimPermitDenied(format!(
+            "failed to write SimReport to {}: {e}",
+            args.out.display()
+        ))
+    })?;
+
+    Ok(report)
+}
+
+/// Read `<wasm_dir>/slot_<i>/policy.wasm` for each `Generated` slot in
+/// `spec.policies`, in declared order. `Existing` slots are skipped (no
+/// WASM is loaded — the simhost driver only installs Track-B artifacts).
+///
+/// Returns the artifacts in the same order `synthesize_track_b` would —
+/// which is the order `run_full_suite` expects in its `wasm_per_slot`
+/// argument.
+fn load_wasm_artifacts(
+    wasm_dir: &Path,
+    spec: &PolicySpec,
+) -> Result<Vec<oz_policy_codegen::CompiledArtifact>, Error> {
+    let mut out = Vec::new();
+    for (slot_idx, slot) in spec.policies.iter().enumerate() {
+        if !matches!(slot, oz_policy_core::spec::PolicySlot::Generated { .. }) {
+            continue;
+        }
+        let wasm_path = wasm_dir
+            .join(format!("slot_{slot_idx}"))
+            .join("policy.wasm");
+        let wasm = std::fs::read(&wasm_path).map_err(|e| {
+            Error::SimPermitDenied(format!(
+                "failed to read policy WASM at {}: {e}",
+                wasm_path.display()
+            ))
+        })?;
+        let wasm_hash = sha256_32(&wasm);
+        out.push(oz_policy_codegen::CompiledArtifact {
+            wasm,
+            wasm_hash,
+            // Source isn't needed at simulation time; the simhost driver
+            // only reads `wasm`. Echo an empty string so the projection is
+            // explicit (vs. silently reading `source.rs` and surprising the
+            // caller with extra I/O).
+            source: String::new(),
+            cache_hit: false,
+        });
+    }
+    Ok(out)
+}
+
+/// Compute the SHA-256 of `bytes` into a `[u8; 32]`. The CLI's `simulate`
+/// path recomputes the hash for each loaded `policy.wasm` so callers can
+/// drop a pre-built WASM into `--wasm-dir` without smuggling a hash file
+/// alongside it.
+fn sha256_32(bytes: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let out = hasher.finalize();
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&out);
+    arr
+}
+
 /// Lowercase-hex encode a 32-byte digest. Hand-rolled to avoid adding a
 /// dedicated hex dep to the CLI crate; this function is invoked at most
 /// once per generated slot.
@@ -556,7 +740,94 @@ fn main() {
             let result = rt.block_on(run_codegen(args));
             print_or_exit(result);
         }
+        Command::Simulate(args) => {
+            let out_path = args.out.clone();
+            let result = rt.block_on(run_simulate(args));
+            match result {
+                Ok(report) => {
+                    // Pretty-print the report to stdout for visibility AND
+                    // surface a fail-fast exit if any vector regressed.
+                    let summary = SimulateSummary::from_report(&report, &out_path);
+                    let summary_json = match serde_json::to_string_pretty(&summary) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("E_CLI_SERIALIZE_FAILED: {e}");
+                            std::process::exit(31);
+                        }
+                    };
+                    println!("{summary_json}");
+                    if let Some(err) = simulate_outcome_to_error(&report) {
+                        eprintln!("{}: {}", err.code(), err);
+                        std::process::exit(exit_code_for(&err));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{}: {}", e.code(), e);
+                    std::process::exit(exit_code_for(&e));
+                }
+            }
+        }
     }
+}
+
+/// Compact summary printed to stdout by the `simulate` subcommand. The
+/// full `SimReport` (incl. per-vector detail) lives at `out_path` on
+/// disk; we surface the headline fields here so CI logs stay readable
+/// without `cat`-ing the JSON file.
+#[derive(Debug, Serialize)]
+struct SimulateSummary {
+    out_file: String,
+    spec_id: String,
+    permit_passed: bool,
+    deny_total: usize,
+    deny_passed: usize,
+    timestamp_ledger: u32,
+}
+
+impl SimulateSummary {
+    fn from_report(r: &SimReport, out_path: &Path) -> Self {
+        Self {
+            out_file: out_path.display().to_string(),
+            spec_id: r.spec_id.clone(),
+            permit_passed: r.permit.passed,
+            deny_total: r.total_vectors,
+            deny_passed: r.passed,
+            timestamp_ledger: r.timestamp_ledger,
+        }
+    }
+}
+
+/// Map a `SimReport` outcome to an `Error` for the exit-code decision.
+/// `None` => report is fully passing => exit 0.
+///
+/// `permit` failures map to `E_SIM_PERMIT_DENIED`; any deny vector
+/// failing (i.e. not panicking with the expected code) maps to
+/// `E_SIM_DENY_PASSED` — the canonical "an attack vector slipped past"
+/// surface from `oz_policy_core::Error` § E_SIM_*.
+fn simulate_outcome_to_error(r: &SimReport) -> Option<Error> {
+    if !r.permit.passed {
+        let detail = r
+            .permit
+            .error
+            .as_deref()
+            .unwrap_or("permit branch did not pass");
+        return Some(Error::SimPermitDenied(detail.to_string()));
+    }
+    if r.passed != r.total_vectors {
+        let first_fail = r
+            .deny_results
+            .iter()
+            .find(|d| !d.passed)
+            .map(|d| {
+                format!(
+                    "{}: expected panic {}, got {:?}",
+                    d.name, d.expected_error_code, d.actual_error_code
+                )
+            })
+            .unwrap_or_else(|| "one or more deny vectors failed".to_string());
+        return Some(Error::SimDenyPassed(first_fail));
+    }
+    None
 }
 
 /// Pretty-print `result` (`Ok`) or surface the error to stderr (`Err`).
@@ -985,6 +1256,206 @@ mod tests {
     #[test]
     fn exit_code_includes_codegen_compile_failed() {
         assert_eq!(exit_code_for(&Error::CodegenCompileFailed("x".into())), 15);
+    }
+
+    // -------------------------------------------------------------------
+    // Simulate subcommand
+    // -------------------------------------------------------------------
+
+    /// Full-form `simulate` invocation parses every flag + positional.
+    #[test]
+    fn simulate_subcommand_accepts_full_form() {
+        let cli = Cli::try_parse_from([
+            "oz-policy-cli",
+            "simulate",
+            "spec.json",
+            "rec.json",
+            "--wasm-dir",
+            "target/wasms",
+            "--extra-deny",
+            "extra.json",
+            "--out",
+            "report.json",
+        ])
+        .expect("parse simulate full form");
+        match cli.command {
+            Command::Simulate(args) => {
+                assert_eq!(args.spec_file, PathBuf::from("spec.json"));
+                assert_eq!(args.recording_file, PathBuf::from("rec.json"));
+                assert_eq!(args.wasm_dir, PathBuf::from("target/wasms"));
+                assert_eq!(args.extra_deny, Some(PathBuf::from("extra.json")));
+                assert_eq!(args.out, PathBuf::from("report.json"));
+            }
+            other => panic!("expected Simulate, got {other:?}"),
+        }
+    }
+
+    /// `--extra-deny` is optional. Without it the field is `None`.
+    #[test]
+    fn simulate_subcommand_extra_deny_defaults_to_none() {
+        let cli = Cli::try_parse_from([
+            "oz-policy-cli",
+            "simulate",
+            "spec.json",
+            "rec.json",
+            "--wasm-dir",
+            "target/wasms",
+            "--out",
+            "report.json",
+        ])
+        .expect("parse simulate without --extra-deny");
+        let Command::Simulate(args) = cli.command else {
+            panic!("expected Simulate")
+        };
+        assert!(args.extra_deny.is_none());
+    }
+
+    /// `--wasm-dir` is mandatory — forgetting it must surface
+    /// `MissingRequiredArgument` rather than silently defaulting.
+    #[test]
+    fn simulate_subcommand_requires_wasm_dir() {
+        let err = Cli::try_parse_from([
+            "oz-policy-cli",
+            "simulate",
+            "spec.json",
+            "rec.json",
+            "--out",
+            "report.json",
+        ])
+        .expect_err("missing --wasm-dir must fail");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    /// `--out` is mandatory — without it we have nowhere to write the
+    /// `SimReport` JSON, so clap must reject the invocation.
+    #[test]
+    fn simulate_subcommand_requires_out() {
+        let err = Cli::try_parse_from([
+            "oz-policy-cli",
+            "simulate",
+            "spec.json",
+            "rec.json",
+            "--wasm-dir",
+            "target/wasms",
+        ])
+        .expect_err("missing --out must fail");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    /// Both positional arguments are required.
+    #[test]
+    fn simulate_subcommand_requires_spec_and_recording() {
+        let err = Cli::try_parse_from([
+            "oz-policy-cli",
+            "simulate",
+            "--wasm-dir",
+            "target/wasms",
+            "--out",
+            "report.json",
+        ])
+        .expect_err("missing spec/recording positionals must fail");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    /// `simulate --help` rendering mentions every load-bearing flag.
+    #[test]
+    fn simulate_subcommand_help_renders() {
+        let err = Cli::try_parse_from(["oz-policy-cli", "simulate", "--help"])
+            .expect_err("--help short-circuits parsing");
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
+        let rendered = err.to_string();
+        for needle in ["SPEC_FILE", "RECORDING_FILE", "--wasm-dir", "--out"] {
+            assert!(
+                rendered.contains(needle),
+                "simulate --help missing `{needle}`; got:\n{rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn exit_code_includes_sim_permit_denied() {
+        assert_eq!(exit_code_for(&Error::SimPermitDenied("x".into())), 16);
+    }
+
+    #[test]
+    fn exit_code_includes_sim_deny_passed() {
+        assert_eq!(exit_code_for(&Error::SimDenyPassed("x".into())), 17);
+    }
+
+    /// `simulate_outcome_to_error` returns `None` when both branches pass.
+    #[test]
+    fn simulate_outcome_returns_none_on_full_pass() {
+        let r = SimReport {
+            spec_id: "ok".into(),
+            permit: oz_policy_simhost::PermitResult {
+                passed: true,
+                error: None,
+            },
+            deny_results: vec![oz_policy_simhost::DenyResult {
+                name: "v1".into(),
+                passed: true,
+                expected_error_code: 1010,
+                actual_error_code: Some(1010),
+            }],
+            total_vectors: 1,
+            passed: 1,
+            timestamp_ledger: 100,
+        };
+        assert!(simulate_outcome_to_error(&r).is_none());
+    }
+
+    /// A permit failure maps to `E_SIM_PERMIT_DENIED`.
+    #[test]
+    fn simulate_outcome_permit_failure_maps_to_e_sim_permit_denied() {
+        let r = SimReport {
+            spec_id: "fail".into(),
+            permit: oz_policy_simhost::PermitResult {
+                passed: false,
+                error: Some("denied by policy".into()),
+            },
+            deny_results: vec![],
+            total_vectors: 0,
+            passed: 0,
+            timestamp_ledger: 100,
+        };
+        let err = simulate_outcome_to_error(&r).expect("expected an error");
+        assert_eq!(err.code(), "E_SIM_PERMIT_DENIED");
+        assert!(err.to_string().contains("denied by policy"));
+    }
+
+    /// A deny vector that didn't panic maps to `E_SIM_DENY_PASSED` and
+    /// names the failing vector + expected/actual codes.
+    #[test]
+    fn simulate_outcome_deny_open_maps_to_e_sim_deny_passed() {
+        let r = SimReport {
+            spec_id: "fail".into(),
+            permit: oz_policy_simhost::PermitResult {
+                passed: true,
+                error: None,
+            },
+            deny_results: vec![
+                oz_policy_simhost::DenyResult {
+                    name: "v1".into(),
+                    passed: true,
+                    expected_error_code: 1010,
+                    actual_error_code: Some(1010),
+                },
+                oz_policy_simhost::DenyResult {
+                    name: "v2_open".into(),
+                    passed: false,
+                    expected_error_code: 1010,
+                    actual_error_code: None,
+                },
+            ],
+            total_vectors: 2,
+            passed: 1,
+            timestamp_ledger: 100,
+        };
+        let err = simulate_outcome_to_error(&r).expect("expected an error");
+        assert_eq!(err.code(), "E_SIM_DENY_PASSED");
+        let s = err.to_string();
+        assert!(s.contains("v2_open"));
+        assert!(s.contains("1010"));
     }
 
     #[test]
