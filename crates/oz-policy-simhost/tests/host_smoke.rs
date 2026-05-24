@@ -12,21 +12,37 @@
 //!
 //! Run with `cargo nextest run -p oz-policy-simhost --run-ignored=only`.
 //!
-//! # Known limitation (Phase 4 Round 1)
+//! # Phase 4 Round 2 outcome
 //!
-//! `fixture_policy_allows_transfer_denies_approve` currently fails at the
-//! `install_policy` step with `HostError(WasmVm, InvalidAction)` because
-//! the synthesized `ContextRule` ScVal shape doesn't yet match what the
-//! `#[contracttype]`-generated `TryFromVal<Val, ContextRule>` impl expects
-//! exactly. The struct-key + value-shape encoding is in the right
-//! ballpark — `ScMap { id, name, context_type, signers, signer_ids,
-//! policies, policy_ids, valid_until }` keyed by sorted Symbols — but
-//! the inner field types (Vec<Signer>, Vec<Address>, Option<u32>) need a
-//! field-by-field walk against the soroban-sdk decode path. That's the
-//! Phase 4 Round 2 work item (see `plan.md` § "Phase 4 — Round 2" once
-//! that section lands). The pure-logic + permit-replay paths are
-//! exercised in the lib's `#[cfg(test)]` modules and pass without
-//! depending on this.
+//! Round 1's note here claimed `install_policy` failed with
+//! `HostError(WasmVm, InvalidAction)`. The Round 2 investigation showed
+//! the test never reached `install_policy` at all: the hardcoded
+//! signer-account StrKey
+//! `GAEEZQIBQHBP3CG3F2BSTQHBHM5LJUFRTL2EFRC6CN4MV3OWJZ74C6XR` is a bogus
+//! checksum (`stellar-strkey::ed25519::PublicKey::from_string` returns
+//! `Err(Invalid)`), and the failure surfaced inside
+//! `invoke_policy_enforce → build_context_contract_scval` as
+//! `SetupFailed("unrecognised StrKey: …")` long before the host saw any
+//! ContextRule bytes.
+//!
+//! With the signer rebuilt from a valid 32-byte seed
+//! (`stellar_strkey::ed25519::PublicKey([0xaa; 32])`), the full path —
+//! `install_smart_account → install_policy → invoke_policy_enforce` for
+//! both `transfer` (permit) and `approve` (panic 1010) — succeeds end-to-
+//! end. The synthesized `ContextRule` ScVal shape this file documents
+//! above is therefore correct against the v0.7.1
+//! `#[contracttype]`-generated `TryFromVal<Val, ContextRule>` impl after
+//! all; no Round-2 host-side fix was needed.
+//!
+//! The wider `__check_auth → do_check_auth → add_policy` chain remains
+//! deliberately untested here (see `host.rs` "Why not the full
+//! `__check_auth → add_policy → enforce` chain?" block): driving that
+//! requires wallet-signed `AuthEntry` credentials, which is Phase 7
+//! work. The run orchestrator (`crate::run::run_full_suite`) therefore
+//! invokes each policy's `enforce` entry point directly per
+//! `TestContext`, which is the same observable surface the harness
+//! needs to verify permit/deny outcomes — see `plan.md` § "Phase 4 —
+//! Round 2" for the explicit gap-tracking note.
 //!
 //! `vendored_smart_account_wasm_hash_is_stable` is unrelated and passes
 //! today: it just re-hashes the embedded bytes and confirms they match
@@ -105,12 +121,18 @@ fn fixture_policy_allows_transfer_denies_approve() {
 
     // -------- Permit case: function_name == "transfer" (in allowlist) ----
     let target_addr = "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH";
+    // Valid G-StrKey synthesized from a deterministic 32-byte seed
+    // (`[0xaa; 32]` → checksum-validated by `stellar-strkey 0.0.13`). The
+    // bogus literal previously hardcoded here was rejected by
+    // `PublicKey::from_string` *before* the call ever reached the host, so
+    // the test was masking the install_policy investigation entirely.
+    let signer_strkey = stellar_strkey::ed25519::PublicKey([0xaau8; 32]).to_string();
     let permit_ctx = TestContext {
         contract_address: target_addr.into(),
         function_name: "transfer".into(),
         args: vec![
-            ArgValue::Address("GAEEZQIBQHBP3CG3F2BSTQHBHM5LJUFRTL2EFRC6CN4MV3OWJZ74C6XR".into()),
-            ArgValue::Address("GAEEZQIBQHBP3CG3F2BSTQHBHM5LJUFRTL2EFRC6CN4MV3OWJZ74C6XR".into()),
+            ArgValue::Address(signer_strkey.clone()),
+            ArgValue::Address(signer_strkey.clone()),
             ArgValue::I128("100".into()),
         ],
     };
@@ -122,7 +144,7 @@ fn fixture_policy_allows_transfer_denies_approve() {
         contract_address: target_addr.into(),
         function_name: "approve".into(),
         args: vec![
-            ArgValue::Address("GAEEZQIBQHBP3CG3F2BSTQHBHM5LJUFRTL2EFRC6CN4MV3OWJZ74C6XR".into()),
+            ArgValue::Address(signer_strkey.clone()),
             ArgValue::I128("100".into()),
         ],
     };
