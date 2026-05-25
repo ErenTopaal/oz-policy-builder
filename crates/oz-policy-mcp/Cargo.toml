@@ -7,9 +7,141 @@ repository.workspace = true
 authors.workspace = true
 description = "MCP server binary exposing the OZ Accounts Policy Builder tool surface (STDIO + Streamable HTTP)."
 
+# The crate ships both a library (`oz_policy_mcp`) and a binary
+# (`oz-policy-mcp`). The library exposes the shared `PolicyServer`,
+# `McpStore`, and `auth` middleware so integration tests in
+# `tests/stdio_smoke.rs` + `tests/http_smoke.rs` can spawn the binary via
+# `env!("CARGO_BIN_EXE_oz-policy-mcp")` and the same types can be reused by
+# Phase 8 walkthrough harnesses without duplicating transport wiring.
+[lib]
+name = "oz_policy_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "oz-policy-mcp"
 path = "src/main.rs"
 
 [dependencies]
+# --- Sibling crates wired through the Phase 5 tool surface (Stream A) ---
 oz-policy-core = { path = "../oz-policy-core" }
+# `record_transaction` -> `oz_policy_recorder::{record_by_hash, record_by_simulation}`
+oz-policy-recorder = { path = "../oz-policy-recorder" }
+# `export_policy` (Track-B) -> `oz_policy_codegen::{render_contract, synthesize_track_b}`
+oz-policy-codegen = { path = "../oz-policy-codegen" }
+# `simulate_policy` -> `oz_policy_simhost::run::run_full_suite` plus the
+# `DenyVector` / `AuthPayload` / `TestContext` input shape.
+oz-policy-simhost = { path = "../oz-policy-simhost" }
+# `export_policy` (install envelope) + `verify_install` -> the installer
+# crate's `build_install_envelope` + `AccountRevision` preflight surface.
+oz-policy-installer = { path = "../oz-policy-installer" }
+
+# --- MCP transport stack ---
+# rmcp 1.7.0 provides:
+#   - `server` + `macros` for the `#[tool_router]` / `#[tool_handler]` derives
+#     consumed by Stream A's `tools.rs`.
+#   - `transport-io` + `transport-async-rw` for the STDIO transport
+#     (`rmcp::transport::io::stdio()` driven by `ServiceExt::serve`).
+#   - `transport-streamable-http-server` for the tower service that wraps
+#     `POST /mcp` JSON-RPC framing per MCP spec 2025-11-25.
+#   - `schemars` so tool input/output structs derive JSON Schema directly.
+# We opt INTO four extra features beyond the defaults and skip `auth`/`oauth2`
+# because the Phase 5 auth posture is a static bearer token (per the env var
+# `OZ_POLICY_MCP_TOKEN`, validated in `auth.rs`).
+rmcp = { workspace = true, features = [
+    "server",
+    "macros",
+    "transport-async-rw",
+    "transport-io",
+    "transport-streamable-http-server",
+    "schemars",
+] }
+# --- Stream A runtime + hashing helpers --------------------------------
+# `export_policy.wasm_hash_hex` computes a SHA-256 of the compiled artifact.
+sha2 = "=0.10.9"
+# `export_policy.wasm_hash_hex` hex-encodes that digest; `verify_install`
+# also normalises caller-provided hex inputs through the same crate so the
+# encoding stays consistent.
+hex = "=0.4.3"
+
+# --- HTTP transport hosting + bearer-auth middleware (Stream C) ---
+# axum 0.8.9 hosts the rmcp `StreamableHttpService` under `nest_service("/mcp", ...)`
+# and exposes the unauthenticated `GET /healthz` probe used by k8s liveness
+# checks (plan.md § Phase 10 deployment surface). The `http1` feature is the
+# minimum required to serve HTTP/1.1 (no HTTP/2 / WebSocket need); `tokio`
+# selects the tokio runtime adapter; `json` enables the `Json` response
+# extractor used by `/healthz`.
+axum = { workspace = true }
+# tower: `ServiceBuilder` + `Layer` helpers used by the bearer-auth middleware
+# in `oz-policy-mcp::auth`. axum already depends on `tower 0.5` so this aligns
+# the workspace on a single major version.
+tower = { workspace = true }
+# tower-http: `TraceLayer` for request logging on the HTTP transport.
+tower-http = { workspace = true }
+# http: direct dep so the bearer-auth layer can construct
+# `StatusCode::UNAUTHORIZED` / `HeaderValue` literals without taking a
+# churn-prone transitive dep on a specific rmcp-internal version.
+http = { workspace = true }
+
+# --- async runtime / CLI / logging ---
+# tokio: the workspace pin gives `macros` + `rt-multi-thread`. The MCP binary
+# additionally needs:
+#   - `io-std` for `tokio::io::{stdin, stdout}` driving the STDIO transport,
+#   - `signal` for graceful shutdown on SIGINT/SIGTERM in the HTTP server,
+#   - `net` for `tokio::net::TcpListener` (used by axum::serve),
+#   - `time` for retry waits / shutdown grace,
+#   - `sync` for the shared `CancellationToken`.
+tokio = { workspace = true, features = [
+    "io-std",
+    "signal",
+    "net",
+    "time",
+    "sync",
+] }
+# clap: CLI argument parsing (`--stdio`, `--http <port>`, `--token`,
+# `--data-dir`). `derive` is picked up via the workspace feature list.
+clap = { workspace = true }
+tracing = { workspace = true }
+# tracing-subscriber: stderr-only `fmt` subscriber so JSON-RPC framing on
+# stdout stays uncontaminated under the STDIO transport.
+tracing-subscriber = { workspace = true }
+# tokio-util: `CancellationToken` is the rmcp-recommended graceful-shutdown
+# signal for `StreamableHttpService` and is forwarded into axum's
+# `with_graceful_shutdown`. Already a transitive dep of rmcp but we declare
+# it directly to make the shutdown wiring readable.
+tokio-util = "=0.7.18"
+
+thiserror = { workspace = true }
+# --- serde / store back-end ---
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+# dashmap: lock-free concurrent map for the Phase 5 in-memory `McpStore`
+# (Stream B). Declared here so `cargo deny check` sees it under this crate
+# even when Stream B's `store.rs` hasn't merged yet.
+dashmap = { workspace = true }
+# uuid: `v4` random IDs for `McpStore::new_id` ("<prefix>_<uuid>") per
+# plan.md Phase 5 Implementation → Resources.
+uuid = { workspace = true }
+# base64: serialises WASM payloads as base64 JSON strings inside
+# `ArtifactBundle` and emits `BlobResourceContents` for `artifact://…wasm`.
+base64 = { workspace = true }
+
+[dev-dependencies]
+# tempfile used by the disk-persistence unit tests to scope writes to a
+# disposable directory via `OZ_POLICY_MCP_DATA_DIR`.
+tempfile = "=3.27.0"
+# reqwest drives `tests/http_smoke.rs` against the bound HTTP transport.
+# Pulled from the workspace pin (`=0.12.28`) with rustls-only TLS so no
+# OpenSSL link is required for the integration test.
+reqwest = { workspace = true }
+# Dev tokio adds the subprocess + IO helpers used by both smoke tests.
+# (Production `tokio` features above stay narrow.)
+tokio = { workspace = true, features = [
+    "process",
+    "io-util",
+    "io-std",
+    "signal",
+    "net",
+    "time",
+    "sync",
+] }

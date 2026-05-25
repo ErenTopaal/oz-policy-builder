@@ -41,12 +41,54 @@ serde_json = "=1.0.149"
 thiserror = "=1.0.69"
 # tokio 1.52.3 — latest stable on 1.x (https://crates.io/crates/tokio/1.52.3, MSRV 1.71)
 tokio = { version = "=1.52.3", features = ["macros", "rt-multi-thread"] }
-# clap 4.6.1 — latest stable 4.x (https://crates.io/crates/clap/4.6.1, MSRV 1.85)
-clap = { version = "=4.6.1", features = ["derive"] }
+# clap 4.6.1 — latest stable 4.x (https://crates.io/crates/clap/4.6.1, MSRV 1.85).
+# `env` enables `#[arg(env = "VAR")]` on the MCP binary's --token flag so the
+# `OZ_POLICY_MCP_TOKEN` env var auto-populates without bespoke fallback code.
+clap = { version = "=4.6.1", features = ["derive", "env"] }
 # tracing 0.1.44 — latest stable (https://crates.io/crates/tracing/0.1.44, MSRV 1.65)
 tracing = "=0.1.44"
 # tracing-subscriber 0.3.23 — latest stable (https://crates.io/crates/tracing-subscriber/0.3.23, MSRV 1.65)
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
+# dashmap 6.1.0 — latest stable on the 6.x line (https://crates.io/crates/dashmap/6.1.0).
+# The 7.0.0-rc* line is still pre-release; staying on 6.x avoids opting into a
+# breaking-API track. Used by `oz-policy-mcp::store::McpStore` to back the
+# in-memory resource cache.
+dashmap = "=6.1.0"
+# uuid 1.23.1 — latest stable (https://crates.io/crates/uuid/1.23.1).
+# `v4` enables `Uuid::new_v4()` (random IDs) for `McpStore::new_id`.
+uuid = { version = "=1.23.1", features = ["v4"] }
+# base64 0.22.1 — latest stable (https://crates.io/crates/base64/0.22.1).
+# Used by `oz-policy-mcp::store` to encode the WASM byte payload as a JSON
+# string inside `ArtifactBundle`, and by the resource reader to emit
+# `BlobResourceContents` per the MCP spec.
+base64 = "=0.22.1"
+# axum 0.8.9 — latest stable on the 0.8 line (https://crates.io/crates/axum/0.8.9).
+# Used by `oz-policy-mcp::main` to host the rmcp `StreamableHttpService` tower
+# service under `POST /mcp` and to expose a bearer-auth-free `GET /healthz`
+# probe endpoint for load balancers and k8s liveness checks. rmcp 1.7.0's own
+# `transport-streamable-http-server` integration tests use this same major+minor.
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
+# tower 0.5.2 — latest stable (https://crates.io/crates/tower/0.5.2).
+# We pull in only the `util` feature for the `ServiceBuilder` and `Layer`
+# helpers used by the bearer-auth middleware in `oz-policy-mcp::auth`. axum
+# already depends on `tower 0.5`, so this aligns the workspace on a single
+# major version.
+tower = { version = "=0.5.2", features = ["util"] }
+# tower-http 0.6.8 — latest stable (https://crates.io/crates/tower-http/0.6.8).
+# Provides `TraceLayer` for request logging on the HTTP transport; the
+# `trace` feature pulls in only what we need (no body decompression /
+# compression layers).
+tower-http = { version = "=0.6.8", features = ["trace"] }
+# http 1.4.0 — already present transitively via rmcp 1.7.0. Pinned here so
+# the bearer-auth middleware can construct `StatusCode::UNAUTHORIZED` /
+# `HeaderValue` literals without taking a churn-prone transitive dep.
+http = "=1.4.0"
+# reqwest 0.12.28 — used ONLY as a dev-dep by the HTTP smoke test
+# (`tests/http_smoke.rs`) to drive the bound server. `rustls-tls` keeps the
+# binary off the OpenSSL dependency chain; matches `stellar-rpc-client`'s
+# downstream rustls posture so cargo-deny does not pick up a second TLS
+# backend just for tests.
+reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls"] }
 
 # `overflow-checks = true` is LOAD-BEARING for safety per plan.md
 # Cross-Phase Invariants (Blend security guidance verbatim). Do not unset.
