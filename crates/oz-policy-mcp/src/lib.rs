@@ -5,7 +5,7 @@
 //!
 //! * Stream A — `tools.rs`, `error_mapping.rs` (tool handlers + the
 //!   `oz_policy_core::Error → MCP error` mapping table).
-//! * Stream B (this stream) — [`store`], `resources`, `prompts`
+//! * Stream B (this stream) — [`store`], [`resources`], `prompts`
 //!   (in-memory cache, `resources/list` + `resources/read`,
 //!   `prompts/list` + `prompts/get`).
 //! * Stream C — `auth` (HTTP bearer-token middleware), `server` (the
@@ -21,6 +21,8 @@
 #![deny(unsafe_code)]
 
 // --- Stream B (owned) ------------------------------------------------------
+pub mod resources;
 pub mod store;
 
+pub use resources::Resources;
 pub use store::{ArtifactBundle, McpStore, StorePersistKind};
