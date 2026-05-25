@@ -583,9 +583,8 @@ async fn run_simulate(args: SimulateArgs) -> Result<SimReport, Error> {
     let report =
         oz_policy_simhost::run::run_full_suite(&spec, &recording, &artifacts, extra_deny).await?;
 
-    let mut json = serde_json::to_string_pretty(&report).map_err(|e| {
-        Error::SimPermitDenied(format!("failed to serialize SimReport JSON: {e}"))
-    })?;
+    let mut json = serde_json::to_string_pretty(&report)
+        .map_err(|e| Error::SimPermitDenied(format!("failed to serialize SimReport JSON: {e}")))?;
     json.push('\n');
     std::fs::write(&args.out, json.as_bytes()).map_err(|e| {
         Error::SimPermitDenied(format!(
