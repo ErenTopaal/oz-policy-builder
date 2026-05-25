@@ -42,10 +42,10 @@
 //! rather than driving the smart-account's `__check_auth` boundary
 //! (which would require wallet-signed `AuthEntry` credentials — Phase 7
 //! work). This is the same observable surface deny vectors and the
-//! permit replay need; the Phase 4 binary completion criterion is
-//! "every constraint primitive in the spec produces ≥1 passing permit
-//! + ≥1 passing deny vector," NOT "the full __check_auth wrapper
-//! works."
+//! permit replay need; the Phase 4 binary completion criterion is "every
+//! constraint primitive in the spec produces at least one passing permit
+//! AND at least one passing deny vector," NOT "the full __check_auth
+//! wrapper works."
 
 use oz_policy_codegen::CompiledArtifact;
 use oz_policy_core::recording::{
