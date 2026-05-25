@@ -27,6 +27,12 @@ stellar-xdr = { workspace = true, features = ["curr", "std", "base64", "serde"] 
 # typed `Contract::from_string` / `ed25519::PublicKey::from_string`
 # helpers without a private-API leak.
 stellar-strkey = "=0.0.15"
+# serde / schemars: derive `Serialize` + `Deserialize` + `JsonSchema` on
+# `AccountRevision` so the Phase 5 MCP `export_policy` tool can accept the
+# discriminator on its JSON input wire and publish a structured schema for
+# it (matches the rest of the policy IR `JsonSchema` coverage).
+serde = { workspace = true }
+schemars = { workspace = true }
 # tokio: required for `tokio::time::timeout` wrapping each RPC await,
 # matching the recorder's `RPC_TIMEOUT` pattern. No `#[tokio::main]` lives
 # in this crate; the CLI / MCP server own the runtime.

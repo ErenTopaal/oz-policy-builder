@@ -123,7 +123,10 @@ fn default_ledger_info(sequence_number: u32, network_passphrase: &str) -> Ledger
 /// `AuthPayload` (see `docs/oz-internal-shapes.md` §10) but uses
 /// StrKey-encoded signer addresses + a typed `context_rule_ids` slice so
 /// the type is wire-portable above the `soroban-env-host` boundary.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `JsonSchema` is derived (Phase 5 Stream A) so the MCP `simulate_policy`
+/// tool can publish a structured input schema for `extra_deny_vectors`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AuthPayload {
     /// StrKey `G…` / `C…` addresses for each signer that participates in
     /// this authorization. Order is preserved to mirror the recording's
@@ -140,7 +143,10 @@ pub struct AuthPayload {
 ///
 /// `Eq` is derivable because [`ArgValue`] is now `Eq` (Phase 4 Stream-A
 /// extension; safe — no float variants exist in the `ScVal` shape).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `JsonSchema` is derived (Phase 5 Stream A) so the MCP `simulate_policy`
+/// tool can publish a structured input schema for `extra_deny_vectors`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TestContext {
     /// Target contract StrKey `C…` address.
     pub contract_address: String,

@@ -46,7 +46,16 @@ use oz_policy_core::Error;
 /// Caller-asserted statement about the target smart-account contract's
 /// release vintage. See module doc-comment for why a user-asserted flag is
 /// the only feasible v1 strategy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Serialize` + `Deserialize` + `JsonSchema` are derived (Phase 5 Stream A)
+/// so the MCP `export_policy` tool can accept this discriminator on its
+/// JSON input wire and publish a structured schema for it. The wire form
+/// is the snake_case variant name (`"post_pr_655"`, `"pre_pr_655"`,
+/// `"unknown"`), matching the rest of the policy IR convention.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum AccountRevision {
     /// Operator asserts the deployed smart-account WASM came from
     /// `stellar-contracts >= v0.7.0-rc.2` (the first tag containing the

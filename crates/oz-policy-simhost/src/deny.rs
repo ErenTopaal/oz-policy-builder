@@ -113,7 +113,10 @@ pub const POLICY_SEQUENCE_ORDERING_VIOLATED: u32 = 1070;
 /// extra deny vectors through disk. `Eq` is derivable now that
 /// `oz_policy_core::ArgValue` is `Eq` (Phase 4 Stream-A extension; no float
 /// variants exist in the `ScVal` shape — see `host.rs:134-136`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `JsonSchema` is derived (Phase 5 Stream A) so the MCP `simulate_policy`
+/// tool can publish a structured input schema for `extra_deny_vectors`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DenyVector {
     /// Stable identifier for this vector (`"<primitive>_<mutation>"`).
     /// Required to be byte-equal across two invocations with the same
