@@ -1,0 +1,18 @@
+{
+  "_comment": "Continue reads `~/.continue/config.json` (alternatively, a project-level `.continue/config.json`). The `experimental.modelContextProtocolServer` field declares an MCP-spawned subprocess. Continue's STDIO transport contract matches Claude Desktop and Cursor; configuration shape differs.",
+  "_docs": "https://docs.continue.dev/customization/mcp-servers",
+
+  "experimental": {
+    "modelContextProtocolServer": {
+      "transport": {
+        "type": "stdio",
+        "command": "/absolute/path/to/oz-policy-mcp",
+        "args": ["--stdio"]
+      },
+      "env": {
+        "_OZ_POLICY_MCP_DATA_DIR": "Optional persistence dir; see README.md.",
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}

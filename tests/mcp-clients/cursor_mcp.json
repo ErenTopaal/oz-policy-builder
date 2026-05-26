@@ -1,0 +1,23 @@
+{
+  "_comment": "Cursor reads `~/.cursor/mcp.json` (project-level: `<repo>/.cursor/mcp.json`). The `oz-policy-builder` entry below uses the same STDIO transport as Claude Desktop. To use the HTTP transport instead, point `url` at `http://<host>:<port>/mcp` and add `headers.Authorization = 'Bearer ${OZ_POLICY_MCP_TOKEN}'`.",
+  "_docs": "https://docs.cursor.com/context/model-context-protocol",
+
+  "mcpServers": {
+    "oz-policy-builder": {
+      "command": "/absolute/path/to/oz-policy-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "_OZ_POLICY_MCP_DATA_DIR": "Optional persistence dir; see README.md for semantics.",
+        "RUST_LOG": "info"
+      }
+    },
+
+    "_oz_policy_builder_http_example": {
+      "_comment": "Alternative HTTP wiring. Cursor speaks SSE / Streamable HTTP transports; the bearer token MUST be supplied for the server's auth middleware to accept the request.",
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer ${OZ_POLICY_MCP_TOKEN}"
+      }
+    }
+  }
+}

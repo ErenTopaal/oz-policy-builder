@@ -1,0 +1,15 @@
+{
+  "_comment": "Drop the `mcpServers.oz-policy-builder` entry into the user's Claude Desktop config (~/Library/Application Support/Claude/claude_desktop_config.json on macOS, %APPDATA%/Claude/claude_desktop_config.json on Windows). Restart Claude Desktop to pick up the change. The STDIO transport spawns the binary as a subprocess; no token is required for STDIO.",
+  "_docs": "https://modelcontextprotocol.io/docs/quickstart/user",
+
+  "mcpServers": {
+    "oz-policy-builder": {
+      "command": "/absolute/path/to/oz-policy-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "_OZ_POLICY_MCP_DATA_DIR": "Optional. Uncomment + set to a writable directory to persist recordings/specs/artifacts across Claude Desktop restarts. Without this, every Claude Desktop launch starts with an empty store.",
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}

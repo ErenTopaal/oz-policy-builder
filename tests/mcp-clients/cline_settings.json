@@ -1,0 +1,18 @@
+{
+  "_comment": "Cline reads its `mcpServers` block from the VSCode extension settings JSON (Command Palette → 'Preferences: Open User Settings (JSON)'). Paste this snippet into `cline.mcpServers`. Cline supports both STDIO and HTTP transports; the example below shows STDIO.",
+  "_docs": "https://docs.cline.bot/mcp/configuring-mcp-servers",
+
+  "cline.mcpServers": {
+    "oz-policy-builder": {
+      "command": "/absolute/path/to/oz-policy-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "_OZ_POLICY_MCP_DATA_DIR": "Optional persistence dir; see README.md.",
+        "RUST_LOG": "info"
+      },
+      "disabled": false,
+      "autoApprove": [],
+      "_autoApprove_note": "Per `plan.md` Phase 5 Stream D, leave `autoApprove` EMPTY. Every `export_policy` / `simulate_policy` / `record_transaction` invocation should surface to the human operator for review before running. Auto-approving tool calls defeats the purpose of the policy-builder safety story."
+    }
+  }
+}
