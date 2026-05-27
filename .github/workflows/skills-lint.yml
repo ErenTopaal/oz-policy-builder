@@ -1,0 +1,206 @@
+name: Skills lint
+
+on:
+  push:
+    branches:
+      - main
+      - "phase-*"
+    paths:
+      - "skills/**"
+      - ".github/workflows/skills-lint.yml"
+  pull_request:
+    branches:
+      - main
+      - "phase-*"
+    paths:
+      - "skills/**"
+      - ".github/workflows/skills-lint.yml"
+
+# Cancel in-flight runs for the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: SKILL.md frontmatter + eval YAML schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # actions/checkout@v4 — pinned to the same commit SHA used by .github/workflows/ci.yml
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install PyYAML
+        run: python3 -m pip install --upgrade pip pyyaml
+
+      - name: Lint SKILL.md frontmatter
+        run: |
+          python3 - <<'PY'
+          import pathlib, sys, yaml
+
+          skills_root = pathlib.Path("skills")
+          if not skills_root.exists():
+              print("no skills/ directory present; nothing to lint")
+              sys.exit(0)
+
+          required = {"name", "description"}
+          failed = 0
+          for skill_md in skills_root.rglob("SKILL.md"):
+              text = skill_md.read_text()
+              if not text.startswith("---"):
+                  print(f"{skill_md}: missing YAML frontmatter")
+                  failed += 1
+                  continue
+              # Frontmatter is between the first two '---' lines.
+              parts = text.split("---", 2)
+              if len(parts) < 3:
+                  print(f"{skill_md}: malformed frontmatter delimiters")
+                  failed += 1
+                  continue
+              try:
+                  fm = yaml.safe_load(parts[1])
+              except yaml.YAMLError as exc:
+                  print(f"{skill_md}: YAML parse error: {exc}")
+                  failed += 1
+                  continue
+              if not isinstance(fm, dict):
+                  print(f"{skill_md}: frontmatter is not a mapping")
+                  failed += 1
+                  continue
+              missing = required - fm.keys()
+              if missing:
+                  print(f"{skill_md}: missing required keys: {sorted(missing)}")
+                  failed += 1
+                  continue
+              if not isinstance(fm["name"], str) or not fm["name"]:
+                  print(f"{skill_md}: `name` must be a non-empty string")
+                  failed += 1
+                  continue
+              if not isinstance(fm["description"], str) or not fm["description"].strip():
+                  print(f"{skill_md}: `description` must be a non-empty string")
+                  failed += 1
+                  continue
+              print(f"OK  {skill_md}: name={fm['name']!r}")
+          if failed:
+              print(f"\n{failed} SKILL.md file(s) failed frontmatter lint")
+              sys.exit(1)
+          PY
+
+      - name: Lint eval YAMLs
+        run: |
+          python3 - <<'PY'
+          import pathlib, sys, yaml
+
+          required = {
+              "name",
+              "user_message",
+              "expected_skill",
+              "expected_tool_calls",
+              "expected_clarifications",
+              "acceptance_criteria",
+          }
+          failed = 0
+          evals = list(pathlib.Path("skills").rglob("evals/*.yaml")) + list(
+              pathlib.Path("skills").rglob("evals/*.yml")
+          )
+          if not evals:
+              print("no eval YAMLs present; nothing to lint")
+              sys.exit(0)
+          for eval_path in evals:
+              try:
+                  doc = yaml.safe_load(eval_path.read_text())
+              except yaml.YAMLError as exc:
+                  print(f"{eval_path}: YAML parse error: {exc}")
+                  failed += 1
+                  continue
+              if not isinstance(doc, dict):
+                  print(f"{eval_path}: top level must be a mapping")
+                  failed += 1
+                  continue
+              missing = required - doc.keys()
+              if missing:
+                  print(f"{eval_path}: missing required keys: {sorted(missing)}")
+                  failed += 1
+                  continue
+              if not isinstance(doc["expected_tool_calls"], list) or not doc[
+                  "expected_tool_calls"
+              ]:
+                  print(f"{eval_path}: expected_tool_calls must be a non-empty list")
+                  failed += 1
+                  continue
+              if not isinstance(doc["expected_clarifications"], list):
+                  print(f"{eval_path}: expected_clarifications must be a list (may be empty)")
+                  failed += 1
+                  continue
+              if not isinstance(doc["acceptance_criteria"], list) or not doc[
+                  "acceptance_criteria"
+              ]:
+                  print(f"{eval_path}: acceptance_criteria must be a non-empty list")
+                  failed += 1
+                  continue
+              print(f"OK  {eval_path}: name={doc['name']!r}, tools={doc['expected_tool_calls']}")
+          if failed:
+              print(f"\n{failed} eval YAML file(s) failed lint")
+              sys.exit(1)
+          PY
+
+      - name: Validate tools.json (if present)
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys
+
+          tools_json = pathlib.Path("skills/oz-policy-builder/flat/tools.json")
+          if not tools_json.exists():
+              print("no flat/tools.json present; nothing to validate")
+              sys.exit(0)
+          try:
+              doc = json.loads(tools_json.read_text())
+          except json.JSONDecodeError as exc:
+              print(f"{tools_json}: JSON parse error: {exc}")
+              sys.exit(1)
+          if not isinstance(doc, list) or not doc:
+              print(f"{tools_json}: top level must be a non-empty JSON array")
+              sys.exit(1)
+          required_fields = {"name", "description", "parameters"}
+          expected_names = {
+              "record_transaction",
+              "synthesize_policy",
+              "simulate_policy",
+              "export_policy",
+              "verify_install",
+          }
+          seen = set()
+          for entry in doc:
+              if not isinstance(entry, dict):
+                  print(f"{tools_json}: every entry must be an object")
+                  sys.exit(1)
+              missing = required_fields - entry.keys()
+              if missing:
+                  print(f"{tools_json}: entry missing {sorted(missing)}: {entry.get('name')}")
+                  sys.exit(1)
+              seen.add(entry["name"])
+              if not isinstance(entry["parameters"], dict):
+                  print(f"{tools_json}: parameters must be an object for {entry['name']}")
+                  sys.exit(1)
+          missing_tools = expected_names - seen
+          if missing_tools:
+              print(f"{tools_json}: missing tools {sorted(missing_tools)}")
+              sys.exit(1)
+          print(f"OK  {tools_json}: {len(doc)} tools, all five present")
+          PY
+
+      - name: Smoke-test summarize_recording.py
+        run: |
+          python3 skills/oz-policy-builder/scripts/summarize_recording.py \
+            < walkthroughs/01-blend-yield/expected-recording.json
+
+      - name: Smoke-test propose_clarifications.py
+        run: |
+          python3 skills/oz-policy-builder/scripts/propose_clarifications.py \
+            < walkthroughs/02-sep41-subscription/recording.json
