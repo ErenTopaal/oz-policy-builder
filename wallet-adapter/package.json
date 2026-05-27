@@ -1,0 +1,35 @@
+{
+  "name": "@oz-policy-builder/wallet-adapter",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./freighter": "./dist/adapters/freighter.js"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:integration": "INTEGRATION=1 vitest run"
+  },
+  "peerDependencies": {
+    "@stellar/stellar-sdk": "^12"
+  },
+  "dependencies": {
+    "@stellar/freighter-api": "=6.0.1",
+    "passkey-kit": "0.12.0"
+  },
+  "devDependencies": {
+    "@stellar/stellar-sdk": "=12.3.0",
+    "@types/node": "=22.19.19",
+    "happy-dom": "=20.9.0",
+    "typescript": "=5.6.3",
+    "vitest": "=2.1.9"
+  }
+}
