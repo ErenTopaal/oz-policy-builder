@@ -1,0 +1,35 @@
+# Eval — Blend yield-claim trigger phrase
+#
+# Asserts the skill self-triggers on the canonical Blend phrasing and
+# produces the four-step tool-call sequence the SKILL.md workflow defines.
+# No clarification questions are expected: the Blend `claim` recording has
+# no observable i128 args, no delegated signer credentials, no swap function,
+# and exactly one contract target (the pool) — so
+# `propose_clarifications.py` returns `[]` for this corpus.
+#
+# Schema fields:
+#   user_message            — verbatim user turn that should trigger the skill
+#   expected_skill          — name from SKILL.md frontmatter
+#   expected_tool_calls     — ordered list of MCP tool names the skill must call
+#   expected_clarifications — list of clarification question objects the skill
+#                             must ask (each `{trigger, default}` pair maps to
+#                             a row in propose_clarifications.py's output)
+#   acceptance_criteria     — free-form pass/fail list (humans-in-the-loop)
+
+name: blend-yield-weekly
+user_message: "let me give this agent a 20 USDC weekly budget on Blend"
+expected_skill: oz-policy-builder
+expected_tool_calls:
+  - record_transaction
+  - synthesize_policy
+  - simulate_policy
+  - export_policy
+expected_clarifications: []
+acceptance_criteria:
+  - "Skill self-triggers (no operator prompting required) on the user_message above."
+  - "Tool-call ordering matches expected_tool_calls exactly; record_transaction precedes synthesize_policy, which precedes simulate_policy, which precedes export_policy."
+  - "simulate_policy is called before export_policy (no skipping)."
+  - "Skill does NOT call verify_install proactively (it's the user's follow-up step after wallet signing)."
+  - "Skill does NOT deploy or submit any envelope on the user's behalf."
+  - "Final assistant turn explicitly hands the install envelope to the user's wallet for signature."
+  - "Skill cites references/walkthrough-blend.md when explaining why this synthesizes to a Track-B generated slot."

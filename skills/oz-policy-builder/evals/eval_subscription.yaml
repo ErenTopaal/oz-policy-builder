@@ -1,0 +1,30 @@
+# Eval — SEP-41 subscription trigger phrase
+#
+# Asserts the skill self-triggers on the canonical Vouchify subscription
+# phrasing, asks the "cap vs total" clarification (trigger 1: single observed
+# i128 amount), and produces the four-step tool-call sequence the SKILL.md
+# workflow defines.
+
+name: sep41-subscription-monthly
+user_message: "authorize Vouchify to take $5 USDC from my smart account monthly for 12 months"
+expected_skill: oz-policy-builder
+expected_tool_calls:
+  - record_transaction
+  - synthesize_policy
+  - simulate_policy
+  - export_policy
+expected_clarifications:
+  - trigger: single_observed_amount
+    default: weekly_total
+    must_ask_about:
+      - "cap each call"
+      - "weekly/monthly total"
+acceptance_criteria:
+  - "Skill self-triggers on the user_message above."
+  - "Skill asks the cap-vs-total clarification BEFORE calling synthesize_policy (per SKILL.md step 4)."
+  - "Tool-call ordering matches expected_tool_calls exactly."
+  - "simulate_policy reports at least one permit pass AND deny vectors covering: wrong recipient, over-limit amount, wrong token, expired rule."
+  - "synthesize_policy is called with mode=compose_only (SEP-41 transfer is the canonical Track-A shape)."
+  - "synthesize_policy lifetime_ledgers reflects the user's 'monthly for 12 months' phrasing (e.g. 6_220_800 for 12 × 30-day periods)."
+  - "Skill cites references/walkthrough-subscription.md when explaining the spending_limit + CallContract scoping."
+  - "Skill does NOT auto-deploy. Final turn hands the envelope to the user's wallet."

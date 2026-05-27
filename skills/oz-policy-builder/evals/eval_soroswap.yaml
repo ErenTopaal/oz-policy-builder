@@ -1,0 +1,31 @@
+# Eval — Soroswap delegated trading trigger phrase
+#
+# Asserts the skill self-triggers on the canonical Soroswap budget phrasing,
+# asks the slippage clarification (trigger 3: function name contains "swap"),
+# and produces the four-step tool-call sequence the SKILL.md workflow
+# defines.
+
+name: soroswap-daily-budget
+user_message: "give my trading bot a 100 USDC daily Soroswap budget with 2% slippage"
+expected_skill: oz-policy-builder
+expected_tool_calls:
+  - record_transaction
+  - synthesize_policy
+  - simulate_policy
+  - export_policy
+expected_clarifications:
+  - trigger: swap_router_invocation
+    default: observed_plus_200bps
+    must_ask_about:
+      - "slippage"
+      - "observed + 200 bps"
+acceptance_criteria:
+  - "Skill self-triggers on the user_message above."
+  - "Skill asks the slippage clarification BEFORE calling synthesize_policy (per SKILL.md step 4)."
+  - "Tool-call ordering matches expected_tool_calls exactly."
+  - "synthesize_policy is called with mode=codegen_only (function-allowlist + asset-allowlist + amount-range + call-frequency is not Track-A expressible)."
+  - "synthesize_policy carries the trading-bot signer as delegated_signer."
+  - "simulate_policy includes deny vectors for: non-allowlisted token in path, amount_in exceeding per-leg cap, amount_out_min below slippage floor, and more than max_calls invocations per window."
+  - "Skill cites references/walkthrough-soroswap.md when explaining the four-constraint Track-B encoding."
+  - "Skill notes the corpus is not yet frozen (Phase 8) and works against a simulation envelope rather than a hash."
+  - "Skill does NOT auto-deploy. Final turn hands the envelope to the user's wallet."
