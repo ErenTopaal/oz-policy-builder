@@ -1,0 +1,868 @@
+[
+  {
+    "description": "Record a Stellar transaction (by hash or simulated envelope) and return the deterministic `Recording` IR. Pass exactly one of `hash` or `envelope_xdr_base64`.",
+    "name": "record_transaction",
+    "parameters": {
+      "$defs": {
+        "NetworkKind": {
+          "description": "Stellar network discriminant. Selects passphrase + default RPC URL.",
+          "enum": [
+            "testnet",
+            "mainnet"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`record_transaction` input. Exactly one of `hash` / `envelope_xdr_base64`\nmust be present; the handler validates this at runtime (the JSON Schema\nemits both as optional with a `oneOf`-style description). `rpc_url`\ndefaults per `network`.",
+      "properties": {
+        "envelope_xdr_base64": {
+          "description": "Base64-encoded `TransactionEnvelope` XDR to simulate. Mutually\nexclusive with [`Self::hash`].",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hash": {
+          "description": "64-char hex transaction hash. Mutually exclusive with\n[`Self::envelope_xdr_base64`].",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "instruction_leeway": {
+          "description": "Optional `simulateTransaction.resourceConfig.instructionLeeway`\noverride (in instructions). Honoured only by the simulation path;\nstable `stellar-rpc-client 25.1.0` does not expose this on the\nstable API surface, so the recorder logs a `tracing::warn!` and\ncontinues with the default budget — see\n`oz-policy-recorder/src/recorder.rs` for the no-op contract.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkKind",
+          "description": "Stellar network the transaction belongs to. Selects the default\nnetwork passphrase + RPC endpoint when `rpc_url` is omitted."
+        },
+        "rpc_url": {
+          "description": "Optional RPC URL override. Defaults to [`DEFAULT_TESTNET_RPC`] /\n[`DEFAULT_MAINNET_RPC`] per `network`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "network"
+      ],
+      "title": "RecordTransactionInput",
+      "type": "object"
+    }
+  },
+  {
+    "description": "Synthesize the minimum-rights `PolicySpec` (oz-policy-builder/v1) that would permit the given Recording under the chosen `tightness` and `mode`.",
+    "name": "synthesize_policy",
+    "parameters": {
+      "$defs": {
+        "SynthesisMode": {
+          "description": "Three-way switch controlling which synthesizer track may run.\n\n* `Auto` — synthesizer is free to compose existing primitives (Track A)\n  and / or emit generated policy slots (Track B).\n* `ComposeOnly` — synthesizer must succeed using only existing OZ\n  primitives (Track A). If the constraints cannot be expressed,\n  `E_SYNTH_NOT_EXPRESSIBLE`.\n* `CodegenOnly` — synthesizer must emit a `Generated` policy slot for\n  every constraint (Track B). Useful for testing the codegen path\n  end-to-end against constraints that *could* compose to\n  `simple_threshold` etc.",
+          "enum": [
+            "auto",
+            "compose_only",
+            "codegen_only"
+          ],
+          "type": "string"
+        },
+        "Tightness": {
+          "description": "Numeric tightness used when scaling observed `i128` constraints.\n\nPer `plan.md` Phase 2 *Implementation → decision tree* §:\n* `Exact` — emit the observed value verbatim (×1.0).\n* `SmallMargin` — emit observed × 1.1 (10% headroom).\n* `Loose` — emit observed × 2.0 (2× headroom).\n\nThe scale factors are applied with **decimal-string** `i128` arithmetic\nvia [`i128::checked_mul`] — never floats — so amounts like\n`170141183460469231731687303715884105727` (i128::MAX) round-trip exactly\nat `Exact` and surface as [`Error::SynthNotExpressible`] (not as a panic\nor silent wrap) on overflow under `SmallMargin` / `Loose`.",
+          "enum": [
+            "exact",
+            "small_margin",
+            "loose"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`synthesize_policy` input. Looks up `recording_id` in the store and\ndrives `oz_policy_core::decision_tree::synthesize` with the typed\noptions.",
+      "properties": {
+        "delegated_signer": {
+          "description": "Optional delegated-signer contract address. When set, the\nsynthesizer emits a single `SignerSpec::Delegated` regardless of\nobserved signers (see `decision_tree::SynthesisOptions::delegated_signer`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lifetime_ledgers": {
+          "description": "Optional `PolicySpec::lifetime_ledgers` + `SpendingLimit.period_ledgers`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mode": {
+          "$ref": "#/$defs/SynthesisMode",
+          "description": "Which synthesis path is permitted: compose existing primitives,\nemit a generated slot, or let the synthesizer choose."
+        },
+        "recording_id": {
+          "description": "Recording ID returned by an earlier [`record_transaction`] call.",
+          "type": "string"
+        },
+        "rule_name": {
+          "description": "Optional context rule name. Defaults to `\"rule-<first-8-chars-of-id>\"`\nwhen omitted; the handler clamps the result to `MAX_NAME_SIZE`\n(20 bytes) per `docs/oz-internal-shapes.md` §7.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tightness": {
+          "$ref": "#/$defs/Tightness",
+          "description": "Numeric scaling factor for observed `i128` constraints."
+        }
+      },
+      "required": [
+        "recording_id",
+        "tightness",
+        "mode"
+      ],
+      "title": "SynthesizePolicyInput",
+      "type": "object"
+    }
+  },
+  {
+    "description": "Simulate the given spec against its source recording (permit) and the synthesized + caller-supplied deny vectors. Returns a `SimReport`. Always run this before exporting.",
+    "name": "simulate_policy",
+    "parameters": {
+      "$defs": {
+        "ArgValue": {
+          "description": "Fully decoded `ScVal` mirror. Every Soroban `ScVal` variant maps to one of\nthese. Large integers serialise as JSON strings to preserve precision;\nbytes as hex; addresses as StrKey.\n\nIf the Soroban host ever introduces an `ScVal` variant we cannot decode\n(none exist today for `stellar-xdr 25.0.0`), the recorder must surface\n`Error::RecorderXdrDecodeFailed` rather than emit `Unsupported`.\n\n`Eq` is derived because every contained field type is `Eq`: floats are\nnot part of the `ScVal` shape, all `String`/`Option<String>`/`Vec<T>` /\ninteger payloads are `Eq`. This lets downstream consumers (Phase 4\n`DenyVector`, set / map collections of recordings) compare values\nwithout falling back to manual comparators.",
+          "oneOf": [
+            {
+              "properties": {
+                "type": {
+                  "const": "bool",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "void",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "error",
+                  "type": "string"
+                },
+                "value": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "u32",
+                  "type": "string"
+                },
+                "value": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "i32",
+                  "type": "string"
+                },
+                "value": {
+                  "format": "int32",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "64-bit unsigned. JSON-encoded as a string to avoid loss in\n53-bit-mantissa consumers.",
+              "properties": {
+                "type": {
+                  "const": "u64",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "64-bit signed. JSON-encoded as a string for the same reason.",
+              "properties": {
+                "type": {
+                  "const": "i64",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Timepoint (seconds since epoch, u64). JSON string.",
+              "properties": {
+                "type": {
+                  "const": "timepoint",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Duration (seconds, u64). JSON string.",
+              "properties": {
+                "type": {
+                  "const": "duration",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "128-bit unsigned. JSON string.",
+              "properties": {
+                "type": {
+                  "const": "u128",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "128-bit signed. JSON string.",
+              "properties": {
+                "type": {
+                  "const": "i128",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "256-bit unsigned. JSON string.",
+              "properties": {
+                "type": {
+                  "const": "u256",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "256-bit signed. JSON string.",
+              "properties": {
+                "type": {
+                  "const": "i256",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Raw bytes, hex-encoded.",
+              "properties": {
+                "type": {
+                  "const": "bytes",
+                  "type": "string"
+                },
+                "value": {
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "hex"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "UTF-8 string (`ScString`). Note: Soroban allows non-UTF-8 byte payloads\nin `ScString`; in that case we fall back to a hex representation here.",
+              "properties": {
+                "type": {
+                  "const": "string",
+                  "type": "string"
+                },
+                "value": {
+                  "properties": {
+                    "hex": {
+                      "type": "string"
+                    },
+                    "utf8": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "hex"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Symbol — restricted-alphabet UTF-8.",
+              "properties": {
+                "type": {
+                  "const": "symbol",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "`ScVec` — `None` distinguishes the empty-marker from `Some(vec![])`\nmatches the on-chain encoding (`Vec(Option<ScVec>)`).",
+              "properties": {
+                "type": {
+                  "const": "vec",
+                  "type": "string"
+                },
+                "value": {
+                  "items": {
+                    "$ref": "#/$defs/ArgValue"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "type": {
+                  "const": "map",
+                  "type": "string"
+                },
+                "value": {
+                  "items": {
+                    "$ref": "#/$defs/MapEntry"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "StrKey-encoded address (`C…` for contracts, `G…` for accounts,\n`M…` muxed, `B…` claimable balance, `L…` liquidity pool).",
+              "properties": {
+                "type": {
+                  "const": "address",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "`ScContractInstance` — emitted only when the host stores a contract\ninstance value (rare in user-facing args).",
+              "properties": {
+                "type": {
+                  "const": "contract_instance",
+                  "type": "string"
+                },
+                "value": {
+                  "properties": {
+                    "executable_kind": {
+                      "type": "string"
+                    },
+                    "executable_value": {
+                      "type": "string"
+                    },
+                    "storage": {
+                      "items": {
+                        "$ref": "#/$defs/MapEntry"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "executable_kind",
+                    "executable_value"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "System-reserved sentinel used in contract-data keys for the instance\npseudo-entry. No payload.",
+              "properties": {
+                "type": {
+                  "const": "ledger_key_contract_instance",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "System-reserved nonce key (auth replay protection).",
+              "properties": {
+                "type": {
+                  "const": "ledger_key_nonce",
+                  "type": "string"
+                },
+                "value": {
+                  "properties": {
+                    "nonce": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "nonce"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "AuthPayload": {
+          "description": "Auth payload handed to `__check_auth`. Mirrors the on-chain\n`AuthPayload` (see `docs/oz-internal-shapes.md` §10) but uses\nStrKey-encoded signer addresses + a typed `context_rule_ids` slice so\nthe type is wire-portable above the `soroban-env-host` boundary.\n\n`JsonSchema` is derived (Phase 5 Stream A) so the MCP `simulate_policy`\ntool can publish a structured input schema for `extra_deny_vectors`.",
+          "properties": {
+            "context_rule_ids": {
+              "description": "Per-context-rule IDs, aligned by index with the `contexts` vector\npassed alongside this payload into `invoke_check_auth`.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "signer_addresses": {
+              "description": "StrKey `G…` / `C…` addresses for each signer that participates in\nthis authorization. Order is preserved to mirror the recording's\nsigner composition.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "signer_addresses",
+            "context_rule_ids"
+          ],
+          "type": "object"
+        },
+        "DenyVector": {
+          "description": "One deny vector — a `(payload, contexts)` pair that the harness replays\nagainst `__check_auth` and expects to panic with `expected_error_code`.\n\nImplements `Serialize` + `Deserialize` so the Phase 4 determinism gate\n(`generate_deny_vectors_is_byte_equal_for_same_seed`) can JSON-encode two\nvectors and compare them as strings, and so the CLI's\n`simulate --extra-deny <json>` flag (Stream A's `run.rs`) can round-trip\nextra deny vectors through disk. `Eq` is derivable now that\n`oz_policy_core::ArgValue` is `Eq` (Phase 4 Stream-A extension; no float\nvariants exist in the `ScVal` shape — see `host.rs:134-136`).\n\n`JsonSchema` is derived (Phase 5 Stream A) so the MCP `simulate_policy`\ntool can publish a structured input schema for `extra_deny_vectors`.",
+          "properties": {
+            "contexts": {
+              "items": {
+                "$ref": "#/$defs/TestContext"
+              },
+              "type": "array"
+            },
+            "expected_error_code": {
+              "description": "Discriminant of the `PolicyError` / `*Error` enum variant the harness\nexpects the policy WASM to panic with.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "name": {
+              "description": "Stable identifier for this vector (`\"<primitive>_<mutation>\"`).\nRequired to be byte-equal across two invocations with the same\n`(spec, recording, seed)`.",
+              "type": "string"
+            },
+            "payload": {
+              "$ref": "#/$defs/AuthPayload"
+            }
+          },
+          "required": [
+            "name",
+            "payload",
+            "contexts",
+            "expected_error_code"
+          ],
+          "type": "object"
+        },
+        "MapEntry": {
+          "additionalProperties": false,
+          "description": "Map entry pair — explicit struct so JSON serialisation is unambiguous and\n`schemars` produces a clean schema (tuples land as 2-element arrays which\nhide field intent).",
+          "properties": {
+            "key": {
+              "$ref": "#/$defs/ArgValue"
+            },
+            "value": {
+              "$ref": "#/$defs/ArgValue"
+            }
+          },
+          "required": [
+            "key",
+            "value"
+          ],
+          "type": "object"
+        },
+        "TestContext": {
+          "description": "One decoded `Context::Contract { contract, fn_name, args }` invocation\npresented to `__check_auth`. The wrapper translates each `TestContext`\ninto a host-side `ScVal` shape during [`TestHost::invoke_check_auth`].\n\n`Eq` is derivable because [`ArgValue`] is now `Eq` (Phase 4 Stream-A\nextension; safe — no float variants exist in the `ScVal` shape).\n\n`JsonSchema` is derived (Phase 5 Stream A) so the MCP `simulate_policy`\ntool can publish a structured input schema for `extra_deny_vectors`.",
+          "properties": {
+            "args": {
+              "description": "Decoded call arguments.",
+              "items": {
+                "$ref": "#/$defs/ArgValue"
+              },
+              "type": "array"
+            },
+            "contract_address": {
+              "description": "Target contract StrKey `C…` address.",
+              "type": "string"
+            },
+            "function_name": {
+              "description": "Soroban function symbol (UTF-8, ≤ 32 ASCII chars).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "contract_address",
+            "function_name",
+            "args"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`simulate_policy` input.",
+      "properties": {
+        "extra_deny_vectors": {
+          "description": "Optional caller-supplied deny vectors appended to the generated\nboundary-mutation set. Default empty.",
+          "items": {
+            "$ref": "#/$defs/DenyVector"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "recording_id": {
+          "description": "Recording ID — the simhost replays this against the compiled\npolicy WASMs as the permit branch.",
+          "type": "string"
+        },
+        "spec_id": {
+          "description": "Spec ID returned by an earlier [`synthesize_policy`] call.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "spec_id",
+        "recording_id"
+      ],
+      "title": "SimulatePolicyInput",
+      "type": "object"
+    }
+  },
+  {
+    "description": "Materialize the spec's compiled Track-B WASM, generated Rust source, and/or signed install envelope (per `format`). Returns inline payloads plus `resource://` URIs.",
+    "name": "export_policy",
+    "parameters": {
+      "$defs": {
+        "AccountRevision": {
+          "description": "Caller-asserted statement about the target smart-account contract's\nrelease vintage. See module doc-comment for why a user-asserted flag is\nthe only feasible v1 strategy.\n\n`Serialize` + `Deserialize` + `JsonSchema` are derived (Phase 5 Stream A)\nso the MCP `export_policy` tool can accept this discriminator on its\nJSON input wire and publish a structured schema for it. The wire form\nis the snake_case variant name (`\"post_pr_655\"`, `\"pre_pr_655\"`,\n`\"unknown\"`), matching the rest of the policy IR convention.",
+          "oneOf": [
+            {
+              "const": "post_pr655",
+              "description": "Operator asserts the deployed smart-account WASM came from\n`stellar-contracts >= v0.7.0-rc.2` (the first tag containing the\nPR-#655 merge commit, per `docs/oz-internal-shapes.md` §8).",
+              "type": "string"
+            },
+            {
+              "const": "pre_pr655",
+              "description": "Operator asserts the deployed smart-account WASM predates PR-#655.\nAlways a hard refusal — installing onto a vulnerable account would\nexpose the user to the sponsor-substitution attack PR-#655 fixed.",
+              "type": "string"
+            },
+            {
+              "const": "unknown",
+              "description": "Operator does not know. Also a hard refusal in v1, since the v1.1\nWASM-hash whitelist (option 1 in `docs/oz-internal-shapes.md` §8) is\nnot yet wired up.",
+              "type": "string"
+            }
+          ]
+        },
+        "ExportFormat": {
+          "description": "`export_policy` artifact selector.",
+          "oneOf": [
+            {
+              "const": "rust_source",
+              "description": "Render Track-B Rust source for every `Generated` slot. No\nsandboxed build, no install envelope.",
+              "type": "string"
+            },
+            {
+              "const": "wasm",
+              "description": "Render Track-B Rust source AND drive it through the codegen\nsandbox so the output carries compiled WASM bytes + SHA-256.\nImplies [`ExportFormat::RustSource`].",
+              "type": "string"
+            },
+            {
+              "const": "install_envelope",
+              "description": "Build the install envelope only (Track-A path) — no Track-B\ncodegen, no WASM.",
+              "type": "string"
+            },
+            {
+              "const": "all",
+              "description": "Everything: source + WASM + install envelope.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`export_policy` input.",
+      "properties": {
+        "account_revision": {
+          "$ref": "#/$defs/AccountRevision",
+          "description": "Caller-asserted smart-account release vintage. The installer\nrefuses anything other than [`AccountRevision::PostPr655`] in v1\n(see `docs/oz-internal-shapes.md` §8)."
+        },
+        "format": {
+          "$ref": "#/$defs/ExportFormat",
+          "description": "Which artifacts to materialise."
+        },
+        "network_passphrase": {
+          "description": "Network passphrase the RPC endpoint is asserted to serve.",
+          "type": "string"
+        },
+        "rpc_url": {
+          "description": "Soroban RPC URL — the installer uses it for the\n`simulateTransaction` round-trip that fills in\n`transactionData` + auth.",
+          "type": "string"
+        },
+        "smart_account": {
+          "description": "Target smart-account StrKey `C…` address (where the policy will\ninstall).",
+          "type": "string"
+        },
+        "source_account": {
+          "description": "Source account StrKey `G…` paying fees + signing the envelope.",
+          "type": "string"
+        },
+        "spec_id": {
+          "description": "Spec ID returned by an earlier [`synthesize_policy`] call.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "spec_id",
+        "smart_account",
+        "source_account",
+        "rpc_url",
+        "network_passphrase",
+        "account_revision",
+        "format"
+      ],
+      "title": "ExportPolicyInput",
+      "type": "object"
+    }
+  },
+  {
+    "description": "Verify the on-chain context rule at `(smart_account, context_rule_id)` matches the expected `PolicySpec`. Returns a drift report (empty when matches=true).",
+    "name": "verify_install",
+    "parameters": {
+      "$defs": {
+        "NetworkKind": {
+          "description": "Stellar network discriminant. Selects passphrase + default RPC URL.",
+          "enum": [
+            "testnet",
+            "mainnet"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`verify_install` input.",
+      "properties": {
+        "context_rule_id": {
+          "description": "Context rule ID assigned by `add_context_rule` at install time.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expected_spec_id": {
+          "description": "Optional spec_id to compare against. When `None`, the handler\nreports the on-chain rule shape but cannot decide drift (the\n`matches` field is then `false` with a synthetic drift item\ndescribing the missing-spec condition).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkKind",
+          "description": "Network selector (drives passphrase + default RPC)."
+        },
+        "rpc_url": {
+          "description": "Optional RPC URL override.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "smart_account": {
+          "description": "Smart-account StrKey `C…` whose on-chain context rule we will\ninspect.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "smart_account",
+        "context_rule_id",
+        "network"
+      ],
+      "title": "VerifyInstallInput",
+      "type": "object"
+    }
+  }
+]
