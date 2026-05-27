@@ -4,3 +4,7 @@ Copyright 2026 OZ Policy Builder contributors
 This product includes software developed at OpenZeppelin (https://www.openzeppelin.com/)
 and incorporates work from kalepail/pollywallet — both used under their respective MIT
 licenses; see docs/oz-internal-shapes.md and plan.md for adoption details.
+
+The wallet-adapter package additionally depends on:
+  - passkey-kit (https://github.com/kalepail/passkey-kit) — MIT, Copyright (c) 2024
+    Tyler van der Hoeven. Used at runtime by `wallet-adapter/src/adapters/passkey.ts`.

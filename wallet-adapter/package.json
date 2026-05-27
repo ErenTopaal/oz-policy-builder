@@ -1,4 +1,5 @@
 {
+  "//license": "SPDX: Apache-2.0. Bundles MIT-licensed upstreams (passkey-kit); see ../NOTICE for the dual-license interaction (plan.md §Tech Stack).",
   "name": "@oz-policy-builder/wallet-adapter",
   "version": "0.0.0",
   "license": "Apache-2.0",
@@ -7,7 +8,8 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
-    "./freighter": "./dist/adapters/freighter.js"
+    "./freighter": "./dist/adapters/freighter.js",
+    "./passkey": "./dist/adapters/passkey.js"
   },
   "files": [
     "dist",
@@ -16,19 +18,23 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "test:integration": "INTEGRATION=1 vitest run"
+    "test:integration": "INTEGRATION=1 vitest run",
+    "example:blend": "tsx examples/01-blend-yield-headless.ts",
+    "example:sep41": "tsx examples/02-sep41-subscription-headless.ts",
+    "example:soroswap": "tsx examples/03-soroswap-bounded-headless.ts"
   },
   "peerDependencies": {
     "@stellar/stellar-sdk": "^12"
   },
   "dependencies": {
     "@stellar/freighter-api": "=6.0.1",
-    "passkey-kit": "0.12.0"
+    "passkey-kit": "=0.12.0"
   },
   "devDependencies": {
     "@stellar/stellar-sdk": "=12.3.0",
     "@types/node": "=22.19.19",
     "happy-dom": "=20.9.0",
+    "tsx": "=4.22.0",
     "typescript": "=5.6.3",
     "vitest": "=2.1.9"
   }
