@@ -8,9 +8,9 @@
  * Stream B exposes:
  *  - passkey-kit / headless-keypair adapter (`./adapters/passkey`)
  *
- * Stream C exposes the high-level install orchestration:
+ * Stream C exposes the high-level install/verify orchestration:
  *  - `installPolicy` + `WalletInstallError` (`./install`)
- * (`verifyInstall` lands in the next commit.)
+ *  - `verifyInstall` + `VerifyInstallReport` + `VerifyInstallError` (`./verify`)
  */
 
 export {
@@ -37,3 +37,12 @@ export {
   type InstallPolicyResult,
   type WalletInstallErrorCode,
 } from "./install.js";
+
+export {
+  verifyInstall,
+  VerifyInstallError,
+  type VerifyInstallParams,
+  type VerifyInstallReport,
+  type VerifyInstallDriftItem,
+  type VerifyInstallErrorCode,
+} from "./verify.js";
