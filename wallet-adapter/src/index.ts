@@ -8,8 +8,9 @@
  * Stream B exposes:
  *  - passkey-kit / headless-keypair adapter (`./adapters/passkey`)
  *
- * Stream C will append `installPolicy` + `verifyInstall` orchestration here
- * in its own commit set — do not pre-export those modules from this barrel.
+ * Stream C exposes the high-level install orchestration:
+ *  - `installPolicy` + `WalletInstallError` (`./install`)
+ * (`verifyInstall` lands in the next commit.)
  */
 
 export {
@@ -28,3 +29,11 @@ export {
   PasskeyWallet,
   type PasskeyWalletOptions,
 } from "./adapters/passkey.js";
+
+export {
+  installPolicy,
+  WalletInstallError,
+  type InstallPolicyParams,
+  type InstallPolicyResult,
+  type WalletInstallErrorCode,
+} from "./install.js";
