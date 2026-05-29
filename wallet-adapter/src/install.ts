@@ -214,10 +214,37 @@ export async function installPolicy(
     try {
       resp = await server.getTransaction(txHash);
     } catch (e) {
-      const detail = e instanceof Error ? e.message : "getTransaction threw";
+      // stellar-sdk 12.3.0 occasionally throws "Bad union switch: 4" (or
+      // similar XDR-decode errors) while decoding the rich
+      // `resultMetaXdr` payload of a FAILED Soroban tx — the SDK's XDR
+      // tables haven't caught up with every host-error variant. Fall
+      // back to a raw RPC call: if the raw status is FAILED, surface
+      // that as a clean E_INSTALL_SUBMIT_FAILED rather than the opaque
+      // XDR error.
+      const sdkErr =
+        e instanceof Error ? e.message : "getTransaction threw";
+      const rawStatus = await rawGetTransactionStatus(
+        params.rpcUrl,
+        txHash,
+      ).catch(() => null);
+      if (rawStatus === "FAILED") {
+        throw new WalletInstallError(
+          "E_INSTALL_SUBMIT_FAILED",
+          `transaction ${txHash} landed with status=FAILED (raw RPC) — ` +
+            `stellar-sdk decode of resultMetaXdr threw: ${sdkErr}`,
+        );
+      }
+      if (rawStatus === "SUCCESS") {
+        // SDK errored but raw says success — likely an SDK XDR bug; treat
+        // as a recoverable decode failure so the next poll iteration can
+        // re-attempt. If we never recover within the timeout, the timeout
+        // branch surfaces the SDK error.
+        await sleep(pollIntervalMs);
+        continue;
+      }
       throw new WalletInstallError(
         "E_INSTALL_SUBMIT_FAILED",
-        `getTransaction(${txHash}) threw: ${detail}`,
+        `getTransaction(${txHash}) threw: ${sdkErr}`,
       );
     }
 
@@ -319,4 +346,40 @@ export function extractContextRuleId(
 /** Awaits `ms` milliseconds. Test-overridable indirectly via fake timers. */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Plain `fetch` against Soroban RPC's `getTransaction` method, returning
+ * only the top-level `status` string. Used as the *fallback* when
+ * stellar-sdk's typed `getTransaction` throws an XDR-decode error on a
+ * FAILED transaction (the SDK occasionally trips on host-error variants
+ * its hand-rolled XDR tables haven't caught up to).
+ *
+ * NOT a replacement for the typed call — only used to surface the literal
+ * `status` so the caller can decide whether the underlying outcome was
+ * `"FAILED"` (we want to report it cleanly) vs `"NOT_FOUND"` (we should
+ * keep polling). Returns `null` on any network / parse error so the
+ * caller can fall through to the SDK error path.
+ */
+async function rawGetTransactionStatus(
+  rpcUrl: string,
+  txHash: string,
+): Promise<string | null> {
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "getTransaction",
+    params: { hash: txHash },
+  });
+  const resp = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+  if (!resp.ok) return null;
+  const json = (await resp.json()) as {
+    result?: { status?: unknown };
+  };
+  const status = json?.result?.status;
+  return typeof status === "string" ? status : null;
 }
