@@ -1,0 +1,32 @@
+{
+  "schema": "oz-policy-builder/v1",
+  "synthesis_mode": "codegen_only",
+  "context_rule": {
+    "name": "p7-rule",
+    "context_type": { "kind": "default" },
+    "valid_until": null
+  },
+  "signers": [
+    {
+      "kind": "delegated",
+      "address": "GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "generated",
+      "template_family": "function_allowlist",
+      "constraints": [
+        {
+          "kind": "function_allowlist",
+          "functions": ["transfer"]
+        }
+      ]
+    }
+  ],
+  "lifetime_ledgers": null,
+  "recording_ref": {
+    "hash": null,
+    "schema": "oz-policy-builder/v1"
+  }
+}
