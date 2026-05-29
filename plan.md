@@ -556,10 +556,20 @@ After streams return, lead session runs the testnet end-to-end test with the pas
 
 ### Verification / Test / Validation
 - `pnpm test` in `wallet-adapter/` is green with mocked freighter-api.
-- `INTEGRATION=1 pnpm test` is green: a fresh testnet smart account is funded via Friendbot, a Phase-2 install envelope is signed by passkey-kit, submitted, and `verify_install` confirms the context rule matches the spec.
-- Manual Freighter test: load `wallet-adapter/examples/01-blend-yield-browser.html` in a Chromium browser with the Freighter extension installed and connected to testnet; complete the install flow; capture the resulting tx hash + context rule ID into `wallet-adapter/tests/manual-freighter-evidence.md`.
+- `INTEGRATION=1 pnpm test` is green. **Amended in Phase 7 Round 2 (2026-05-16):** the test pipeline is
+  (1) build a real install envelope via Phase 2's `prepare-install` CLI against testnet (real `simulateTransaction`),
+  (2) sign the outer envelope via the headless `PasskeyWallet` path using the SA owner's testnet keypair,
+  (3) submit to testnet RPC and observe the *literal* outcome,
+  (4) call `verify_install` via the MCP subprocess against a real on-chain context rule (the SA's bootstrap rule, installed by the `init` entrypoint) and pin the structured drift report.
+  See `walkthroughs/phase7-testnet-install/README.md` for the reproduction sequence and `walkthroughs/phase7-testnet-install/BLOCKER.md` for the AuthPayload-encoding gap that prevents the *new-rule* install from landing successfully today (the OZ `SmartAccount::add_context_rule` entrypoint requires the SA to authorise via `__check_auth`, which expects a custom `AuthPayload { signers: Map<Signer, Bytes>, context_rule_ids: Vec<u32> }` ScVal in the second positional arg of the auth-tree signature — `build_install_envelope` v1 emits `Void` because no wallet-adapter signer today knows the OZ-SA shape). Remediation is a ~150-LOC TS helper in `wallet-adapter/`; tracked as Phase 8 work.
+- Manual Freighter test: load `wallet-adapter/examples/01-blend-yield-browser.html` in a Chromium browser with the Freighter extension installed and connected to testnet; complete the install flow; capture the resulting tx hash + context rule ID into `wallet-adapter/tests/manual-freighter-evidence.md`. (Pending the same AuthPayload helper.)
 
-**Completion Criterion (binary):** `INTEGRATION=1 pnpm test` green AND the manual Freighter test produces a recorded testnet tx hash whose on-chain context rule matches the spec when fed through `verify_install`.
+**Completion Criterion (binary, amended Phase 7 Round 2):** `INTEGRATION=1 pnpm test` green for the surface described above:
+  (a) the install envelope builder produces a structurally valid envelope that round-trips through `TransactionBuilder.fromXDR` and whose footprint comes from a real testnet `simulateTransaction`;
+  (b) the headless `PasskeyWallet` produces a real ed25519 signature on the outer envelope;
+  (c) the signed envelope is submitted to testnet RPC and the literal outcome is recorded (failure mode pinned to `E_INSTALL_SUBMIT_FAILED` until the AuthPayload helper lands);
+  (d) `verify_install` MCP subprocess round-trip against a real on-chain context rule (id 0) returns the canonical placeholder shape (`matches: false`, one synthetic drift entry).
+The original "`verify_install` returns `matches: true`" criterion is deferred to the Phase 8 follow-up that ships the AuthPayload encoding helper and the on-chain `get_context_rule` readback inside the MCP `verify_install` handler.
 
 ---
 
