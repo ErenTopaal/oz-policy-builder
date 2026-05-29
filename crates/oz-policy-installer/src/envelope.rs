@@ -69,6 +69,7 @@
 //! These choices are surfaced in `EnvelopeArtifact` doc-comments so the
 //! caller can read the rationale alongside the data.
 
+use oz_policy_core::spec::TemplateFamily;
 use oz_policy_core::spec::{
     ContextType, ExistingPrimitive, ExistingPrimitiveParams, PolicySlot, PolicySpec, SignerSpec,
     WeightedSigner,
@@ -172,36 +173,50 @@ pub async fn build_install_envelope(
     verify_network_match(&client, rpc_url, network_passphrase).await?;
 
     // -----------------------------------------------------------------
-    // 3. Refuse Generated slots; look up registry addresses for Existing.
+    // 3. Look up registry addresses for every slot. `Existing` consults
+    //    [`registry::primitive_address`] (no canonical addresses in v1 →
+    //    surfaces `primitive_address_unknown`). `Generated` consults
+    //    [`registry::project_deployed_policy_address`] (Phase 7 Round 2
+    //    wired the FunctionAllowlist family on testnet).
     // -----------------------------------------------------------------
-    for slot in &spec.policies {
-        if let PolicySlot::Generated { .. } = slot {
-            return Err(Error::InstallPreflightFailed(
-                "generated policy slot present; build artifact first via codegen \
-                 (Phase 3 not yet wired)"
-                    .to_string(),
-            ));
-        }
-    }
-
     let mut policies_map_entries: Vec<ScMapEntry> = Vec::with_capacity(spec.policies.len());
     for slot in &spec.policies {
-        let PolicySlot::Existing { primitive, params } = slot else {
-            // Already refused above; unreachable but keeps the match total.
-            unreachable!("generated slots are refused before this loop");
+        let (addr_str, install_param): (&str, ScVal) = match slot {
+            PolicySlot::Existing { primitive, params } => {
+                let addr = registry::primitive_address(primitive.clone(), network_passphrase)
+                    .ok_or_else(|| {
+                        Error::InstallPreflightFailed(format!(
+                            "primitive_address_unknown for {primitive:?} on \
+                                 {network_passphrase}"
+                        ))
+                    })?;
+                let param = encode_install_param(primitive, params)?;
+                (addr, param)
+            }
+            PolicySlot::Generated {
+                template_family, ..
+            } => {
+                let addr = registry::project_deployed_policy_address(
+                    template_family.clone(),
+                    network_passphrase,
+                )
+                .ok_or_else(|| {
+                    Error::InstallPreflightFailed(format!(
+                        "generated_policy_address_unknown for {template_family:?} on \
+                         {network_passphrase} — deploy the contract first (see \
+                         crates/oz-policy-installer/src/registry.rs::\
+                         project_deployed_policy_address)"
+                    ))
+                })?;
+                let param = encode_generated_install_param(template_family)?;
+                (addr, param)
+            }
         };
-        let addr_str = registry::primitive_address(primitive.clone(), network_passphrase)
-            .ok_or_else(|| {
-                Error::InstallPreflightFailed(format!(
-                    "primitive_address_unknown for {primitive:?} on {network_passphrase}"
-                ))
-            })?;
         let primitive_addr = ScAddress::from_str(addr_str).map_err(|e| {
             Error::InstallPreflightFailed(format!(
-                "registry returned an invalid C-address for {primitive:?}: {addr_str}: {e}"
+                "registry returned an invalid C-address {addr_str}: {e}"
             ))
         })?;
-        let install_param = encode_install_param(primitive, params)?;
         policies_map_entries.push(ScMapEntry {
             key: ScVal::Address(primitive_addr),
             val: install_param,
@@ -624,6 +639,31 @@ fn encode_install_param(
             "primitive/params mismatch: {primitive:?} with params {params:?}"
         ))),
     }
+}
+
+/// Encode the install param for a Phase-3-generated policy contract.
+/// Mirrors the source rendered by `oz-policy-codegen` (see
+/// `walkthroughs/phase3-codegen-fixture/expected/slot_0/source.rs`):
+///
+/// ```ignore
+/// #[contracttype]
+/// pub struct InstallParams {
+///     pub _marker: u32,
+/// }
+/// ```
+///
+/// Always `{ _marker: 0 }` in v1 — the codegen pipeline does not emit any
+/// installer-time configuration today (the constraint values are baked into
+/// the WASM at codegen time, not passed at install). Future-enhancement
+/// note inside the source.rs explicitly calls out per-rule installer-time
+/// overrides as "future work"; until they land, every generated policy
+/// installs with the same `_marker: 0` shape.
+///
+/// Soroban encodes `#[contracttype]` structs as
+/// `ScVal::Map([{Symbol(field), value}])`, same as
+/// `encode_install_param` does for the OZ primitive structs.
+fn encode_generated_install_param(_template: &TemplateFamily) -> Result<ScVal, Error> {
+    struct_map(vec![("_marker", ScVal::U32(0))])
 }
 
 fn encode_signer_weights(weights: &[WeightedSigner]) -> Result<ScVal, Error> {
