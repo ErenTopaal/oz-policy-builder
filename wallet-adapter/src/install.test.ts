@@ -481,6 +481,83 @@ describe("installPolicy — error branches", () => {
 });
 
 // =====================================================================
+// ozAuthPayloadEncoder hook
+// =====================================================================
+
+describe("installPolicy — ozAuthPayloadEncoder hook", () => {
+  it("runs the encoder on the signed XDR before fromXDR / sendTransaction", async () => {
+    const adapter = makeAdapter({
+      signedTxXdr: SIGNED_TX_XDR_B64,
+      signerAddress: G_SIGNER,
+    });
+    const REWRITTEN = "AAAAAg==REWRITTEN";
+    const encoder = vi.fn().mockResolvedValue(REWRITTEN);
+    sendTransactionMock.mockResolvedValue({
+      status: "PENDING",
+      hash: TX_HASH,
+      latestLedger: 100,
+      latestLedgerCloseTime: 0,
+    });
+    getTransactionMock.mockResolvedValue({
+      status: sorobanRpc.Api.GetTransactionStatus.SUCCESS,
+      ledger: 101,
+      latestLedger: 101,
+      latestLedgerCloseTime: 0,
+      oldestLedger: 99,
+      oldestLedgerCloseTime: 0,
+      createdAt: 0,
+      applicationOrder: 1,
+      feeBump: false,
+      envelopeXdr: {} as never,
+      resultXdr: {} as never,
+      resultMetaXdr: {} as never,
+      returnValue: { __kind: "scval" } as unknown,
+    });
+    scValToNativeMock.mockReturnValue({ id: 13 });
+
+    await installPolicy({
+      adapter,
+      envelopeXdrBase64: ENVELOPE_XDR_B64,
+      rpcUrl: "https://soroban-testnet.stellar.org",
+      network: "testnet",
+      networkPassphrase: TESTNET_PASSPHRASE,
+      pollIntervalMs: 1,
+      pollTimeoutMs: 1_000,
+      ozAuthPayloadEncoder: encoder,
+    });
+
+    // The encoder must run on the wallet's signed XDR.
+    expect(encoder).toHaveBeenCalledTimes(1);
+    expect(encoder).toHaveBeenCalledWith(SIGNED_TX_XDR_B64);
+    // The encoder's output must feed `TransactionBuilder.fromXDR`, NOT
+    // the wallet's signed XDR.
+    expect(fromXdrMock).toHaveBeenCalledWith(REWRITTEN, TESTNET_PASSPHRASE);
+  });
+
+  it("maps encoder failure to E_INSTALL_SUBMIT_FAILED", async () => {
+    const adapter = makeAdapter({
+      signedTxXdr: SIGNED_TX_XDR_B64,
+      signerAddress: G_SIGNER,
+    });
+    const encoder = vi.fn().mockRejectedValue(new Error("encoder boom"));
+    await expect(
+      installPolicy({
+        adapter,
+        envelopeXdrBase64: ENVELOPE_XDR_B64,
+        rpcUrl: "https://soroban-testnet.stellar.org",
+        network: "testnet",
+        networkPassphrase: TESTNET_PASSPHRASE,
+        ozAuthPayloadEncoder: encoder,
+      }),
+    ).rejects.toMatchObject({
+      code: "E_INSTALL_SUBMIT_FAILED",
+      detail: expect.stringContaining("encoder boom"),
+    });
+    expect(sendTransactionMock).not.toHaveBeenCalled();
+  });
+});
+
+// =====================================================================
 // Mainnet consent guard
 // =====================================================================
 

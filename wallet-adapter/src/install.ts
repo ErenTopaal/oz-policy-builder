@@ -65,6 +65,24 @@ export interface InstallPolicyParams {
    * tests so the timeout branch is reachable in <100 ms.
    */
   pollTimeoutMs?: number;
+  /**
+   * Optional post-sign encoder that runs AFTER the wallet returns the
+   * signed envelope but BEFORE submission. The encoder receives the
+   * signed `Transaction` and may rewrite its `InvokeHostFunction.auth`
+   * entries — used to inject OZ-SA `AuthPayload` ScVals into any auth
+   * entry whose credentials target an OZ-SA address (Phase 8 closes the
+   * Phase 7 Round 2 BLOCKER documented in
+   * `walkthroughs/phase7-testnet-install/BLOCKER.md`).
+   *
+   * Returns the rewritten signed XDR (base64). The returned envelope is
+   * what actually goes to `sendTransaction`. The default `installPolicy`
+   * path does NOT run any encoder — callers that target an OZ SA must
+   * supply this explicitly (a future revision may add a heuristic
+   * auto-encoder; see Phase 8 plan).
+   */
+  ozAuthPayloadEncoder?: (
+    signedEnvelopeXdrBase64: string,
+  ) => Promise<string>;
 }
 
 /** Successful result of {@link installPolicy}. */
@@ -156,6 +174,23 @@ export async function installPolicy(
     const detail =
       thrown instanceof Error ? thrown.message : "unknown signing failure";
     throw new WalletInstallError("E_INSTALL_SUBMIT_FAILED", detail);
+  }
+
+  // Optional post-sign encoder — rewrites the signed envelope before
+  // submission. Used to inject OZ-SA AuthPayload ScVals into auth
+  // entries whose credentials target an OZ SA's __check_auth (the
+  // Phase 7 Round 2 BLOCKER fix). See `oz_smart_account_auth.ts`.
+  if (params.ozAuthPayloadEncoder) {
+    try {
+      signedTxXdr = await params.ozAuthPayloadEncoder(signedTxXdr);
+    } catch (e) {
+      const detail =
+        e instanceof Error ? e.message : "ozAuthPayloadEncoder threw";
+      throw new WalletInstallError(
+        "E_INSTALL_SUBMIT_FAILED",
+        `ozAuthPayloadEncoder failed: ${detail}`,
+      );
+    }
   }
 
   // Re-hydrate the signed XDR into a Transaction so we can hand it to

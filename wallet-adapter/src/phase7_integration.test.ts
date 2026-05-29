@@ -58,12 +58,14 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
+  Keypair,
   Networks,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 
 import { PasskeyWallet } from "./adapters/passkey.js";
 import { installPolicy, WalletInstallError } from "./install.js";
+import { makeOzSmartAccountAuthEncoder } from "./oz_smart_account_auth.js";
 import { verifyInstall } from "./verify.js";
 
 const execFileAsync = promisify(execFile);
@@ -266,6 +268,25 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
           | undefined;
         let installError: WalletInstallError | undefined;
 
+        // Phase 8 Stream B: wire the OZ-SA AuthPayload encoder so the
+        // signed envelope's `SorobanAuthorizationEntry` targeting the SA
+        // carries a properly encoded AuthPayload (rather than the
+        // simulator's Void placeholder that traps __check_auth). The
+        // SA's bootstrap rule (id 0) authorises via Signer::Delegated(
+        // GCM2…) — same keypair as the outer envelope signer.
+        const ozKp = Keypair.fromSecret(ownerSecret);
+        const ozEncoder = makeOzSmartAccountAuthEncoder({
+          smartAccount: fx.smart_account,
+          contextRuleIds: [fx.bootstrap_context_rule_id],
+          networkPassphrase: fx.network_passphrase,
+          signers: [
+            {
+              signer: { kind: "delegated", address: ozKp.publicKey() },
+              keypair: ozKp,
+            },
+          ],
+        });
+
         try {
           installResult = await installPolicy({
             adapter: wallet,
@@ -275,6 +296,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
             networkPassphrase: fx.network_passphrase,
             pollIntervalMs: 1_000,
             pollTimeoutMs: 90_000,
+            ozAuthPayloadEncoder: ozEncoder,
           });
         } catch (err) {
           if (!(err instanceof WalletInstallError)) {
