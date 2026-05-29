@@ -39,6 +39,20 @@ export {
 } from "./install.js";
 
 export {
+  buildOzAuthEntry,
+  computeAuthDigest,
+  computeSignaturePayload,
+  encodeAuthPayload,
+  encodeContextRuleIdsScVal,
+  encodeSignerScVal,
+  makeOzSmartAccountAuthEncoder,
+  type BuildOzAuthEntryParams,
+  type OzAuthPayload,
+  type OzSigner,
+  type OzSignerWithKey,
+} from "./oz_smart_account_auth.js";
+
+export {
   verifyInstall,
   VerifyInstallError,
   type VerifyInstallParams,
