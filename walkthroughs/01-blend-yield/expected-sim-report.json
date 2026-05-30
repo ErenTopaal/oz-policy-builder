@@ -1,0 +1,18 @@
+{
+  "spec_id": "blend-claim",
+  "permit": {
+    "passed": true,
+    "error": null
+  },
+  "deny_results": [
+    {
+      "name": "slot0_c0_function_allowlist_wrong_function",
+      "passed": true,
+      "expected_error_code": 1010,
+      "actual_error_code": 1010
+    }
+  ],
+  "total_vectors": 1,
+  "passed": 1,
+  "timestamp_ledger": 2572326
+}

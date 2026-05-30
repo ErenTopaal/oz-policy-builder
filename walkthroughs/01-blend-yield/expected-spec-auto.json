@@ -1,0 +1,32 @@
+{
+  "schema": "oz-policy-builder/v1",
+  "synthesis_mode": "auto",
+  "context_rule": {
+    "name": "blend-claim",
+    "context_type": {
+      "kind": "call_contract",
+      "address": "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF"
+    },
+    "valid_until": null
+  },
+  "signers": [],
+  "policies": [
+    {
+      "kind": "generated",
+      "template_family": "function_allowlist",
+      "constraints": [
+        {
+          "kind": "function_allowlist",
+          "functions": [
+            "claim"
+          ]
+        }
+      ]
+    }
+  ],
+  "lifetime_ledgers": 432000,
+  "recording_ref": {
+    "hash": "5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e",
+    "schema": "oz-policy-builder/recording/v1"
+  }
+}
