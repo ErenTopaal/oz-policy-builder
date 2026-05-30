@@ -1,0 +1,29 @@
+{
+  "schema": "oz-policy-builder/v1",
+  "synthesis_mode": "auto",
+  "context_rule": {
+    "name": "sep41-subscription",
+    "context_type": {
+      "kind": "call_contract",
+      "address": "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH"
+    },
+    "valid_until": null
+  },
+  "signers": [],
+  "policies": [
+    {
+      "kind": "existing",
+      "primitive": "spending_limit",
+      "params": {
+        "kind": "spending_limit",
+        "period_ledgers": 432000,
+        "limit_stroops_string": "51613347"
+      }
+    }
+  ],
+  "lifetime_ledgers": 432000,
+  "recording_ref": {
+    "hash": "52b86b5393b9ee936aa7b62638fb9d40fdbbed93ea6ac685e925205f52d50fcf",
+    "schema": "oz-policy-builder/recording/v1"
+  }
+}

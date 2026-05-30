@@ -1,0 +1,30 @@
+{
+  "spec_id": "sep41-subscription",
+  "permit": {
+    "passed": true,
+    "error": null
+  },
+  "deny_results": [
+    {
+      "name": "slot0_spending_limit_amount_2x_cap",
+      "passed": false,
+      "expected_error_code": 3221,
+      "actual_error_code": null
+    },
+    {
+      "name": "slot0_spending_limit_amount_just_over_cap",
+      "passed": false,
+      "expected_error_code": 3221,
+      "actual_error_code": null
+    },
+    {
+      "name": "slot0_spending_limit_wrong_function",
+      "passed": false,
+      "expected_error_code": 3223,
+      "actual_error_code": null
+    }
+  ],
+  "total_vectors": 3,
+  "passed": 0,
+  "timestamp_ledger": 2566000
+}

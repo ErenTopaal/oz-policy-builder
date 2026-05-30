@@ -50,12 +50,15 @@ walkthrough on a known-good hash keeps the round-trip auditable.
 
 ## Files
 
-| File                          | Purpose                                                                                                   |
-|-------------------------------|-----------------------------------------------------------------------------------------------------------|
-| `source.json`                 | Minimal descriptor: hash + RPC + passphrase + on-chain context. The test harness reads this to drive the recorder. |
-| `recording.json`              | Frozen pretty-printed `Recording` for the hash above. Byte-equal to live recorder output (verified by re-running). |
-| `expected-spec-track-a.json`  | Frozen pretty-printed `PolicySpec` produced by `synthesize` under `mode=compose-only, tightness=exact, lifetime=432000, rule-name="sep41-subscription"`. |
-| `README.md`                   | This file.                                                                                                |
+| File                                       | Purpose                                                                                                                                                  |
+|--------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `source.json`                              | Minimal descriptor: hash + RPC + passphrase + on-chain context. The test harness reads this to drive the recorder.                                       |
+| `recording.json`                           | Frozen pretty-printed `Recording` for the hash above. Byte-equal to live recorder output (verified by re-running).                                       |
+| `expected-spec-track-a.json`               | Frozen `PolicySpec` produced by `synthesize --mode compose-only --tightness exact --lifetime 432000 --rule-name "sep41-subscription"`.                   |
+| `expected-spec-auto.json`                  | Frozen `PolicySpec` produced by `synthesize --mode auto …`. One-line diff vs. track-a: `synthesis_mode` changes `"compose_only"` → `"auto"`.            |
+| `expected-sim-report.json`                 | Phase 4 simhost report. Permit passes (Track-A primitive isn't installed in simhost; `replay_recording` short-circuits cleanly). Deny vectors fail open. |
+| `expected-install-envelope-error.txt`      | Literal `E_INSTALL_PREFLIGHT_FAILED` returned by `prepare-install`. SpendingLimit isn't deployed on testnet; envelope cannot be built.                   |
+| `README.md`                                | This file.                                                                                                                                               |
 
 ## Shape of the recording
 
@@ -145,3 +148,79 @@ Rotating the hash (or any field in `source.json`) requires:
    `source.json`.
 
 The old directory stays in the tree as a historical reference. Append-only.
+
+## Phase 8 — auto-mode spec, simulation, install attempt
+
+### Auto-mode spec
+
+Re-running `synthesize` under `--mode auto` produces the same spec as the
+Track-A run; the only diff is the `synthesis_mode` field:
+
+```diff
+- "synthesis_mode": "compose_only",
++ "synthesis_mode": "auto",
+```
+
+That is the correct outcome: the decision tree prefers Track-A composition
+when the constraint shape fits an existing OZ primitive, and SEP-41
+`transfer` with a single observable `i128` amount is the canonical
+`spending_limit` case.
+
+### Simulation outcome
+
+The Phase 4 simhost replays the recording and runs the deny generator:
+
+| Field                | Value                                                          |
+|----------------------|----------------------------------------------------------------|
+| `permit.passed`      | `true`                                                         |
+| `deny_results[0..3]` | three `slot0_spending_limit_*` vectors                         |
+| `deny_passed`        | `0` (see "Known gap" below)                                    |
+| `timestamp_ledger`   | `2566000`                                                      |
+
+**Known gap (committed honestly).** The simhost installs only Track-B
+(Generated) WASMs into the test contract host. The OZ `spending_limit`
+primitive's bytecode (Track-A) is not vendored under
+`crates/oz-policy-simhost/vendor/`, so when the deny generator emits
+`amount_2x_cap` / `amount_just_over_cap` / `wrong_function` vectors that
+expect `SpendingLimitExceeded (3221)` / `NotAllowed (3223)` panics, no
+SpendingLimit WASM is actually installed → the calls fall through to
+`Ok(())` and the vectors register as `actual_error_code: null, passed:
+false`. The permit case still passes because `replay_recording` is a
+no-op when no policies are installed for the contract under test.
+
+The committed `expected-sim-report.json` reflects this exactly. Closing
+the gap requires vendoring the OZ `spending_limit.wasm` from
+`stellar-accounts 0.7.1` into `crates/oz-policy-simhost/vendor/` and
+teaching `run::run_full_suite` to auto-install a per-primitive WASM for
+every `PolicySlot::Existing`. That is tracked as a Phase 9 follow-up
+(see `plan.md` § Phase 9 — Security hardening) and intentionally not
+backed into this corpus.
+
+### Install attempt
+
+`prepare-install` against the Phase 7 testnet smart-account fails at the
+preflight stage:
+
+```
+oz-policy-cli prepare-install walkthroughs/02-sep41-subscription/expected-spec-auto.json \
+  --smart-account CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A \
+  --source GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ \
+  --rpc https://soroban-testnet.stellar.org \
+  --network "Test SDF Network ; September 2015" \
+  --account-revision post-pr-655
+# → exit 14
+# E_INSTALL_PREFLIGHT_FAILED: primitive_address_unknown for SpendingLimit on Test SDF Network ; September 2015
+```
+
+The error is captured byte-for-byte in
+`expected-install-envelope-error.txt`. This is the expected current state:
+Phase 7 Round 2 only deployed the `function_allowlist` Generated policy to
+testnet (see `walkthroughs/phase7-testnet-install/deployed-addresses.json`).
+The `spending_limit` Track-A primitive has no deployed address in the
+installer's registry, so the install envelope cannot resolve the policy
+contract address and refuses to build. Deploying `spending_limit.wasm` on
+testnet and registering its address is a Phase 9 follow-up.
+
+This is NOT the Phase 7 BLOCKER (the `__check_auth` AuthPayload trap) —
+the SEP-41 walkthrough never reaches that codepath because the envelope
+build itself short-circuits.
