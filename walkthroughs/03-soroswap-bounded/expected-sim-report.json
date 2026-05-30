@@ -1,0 +1,24 @@
+{
+  "spec_id": "soroswap-bounded",
+  "permit": {
+    "passed": true,
+    "error": null
+  },
+  "deny_results": [
+    {
+      "name": "slot0_c0_function_allowlist_wrong_function",
+      "passed": true,
+      "expected_error_code": 1010,
+      "actual_error_code": 1010
+    },
+    {
+      "name": "slot0_c1_asset_allowlist_wrong_asset",
+      "passed": false,
+      "expected_error_code": 1040,
+      "actual_error_code": null
+    }
+  ],
+  "total_vectors": 2,
+  "passed": 1,
+  "timestamp_ledger": 2575524
+}

@@ -1,0 +1,898 @@
+{
+  "schema": "oz-policy-builder/recording/v1",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "ingest": {
+    "kind": "hash",
+    "hash": "7475b1690d155f114129e193503fef8a529e6c492f65c835a3a49a0242abf382"
+  },
+  "ledger": 2575524,
+  "contracts": [
+    {
+      "address": "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+      "function": "swap_exact_tokens_for_tokens",
+      "args": [
+        {
+          "type": "i128",
+          "value": "100000000"
+        },
+        {
+          "type": "i128",
+          "value": "1"
+        },
+        {
+          "type": "vec",
+          "value": [
+            {
+              "type": "address",
+              "value": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+            },
+            {
+              "type": "address",
+              "value": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F"
+            }
+          ]
+        },
+        {
+          "type": "address",
+          "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+        },
+        {
+          "type": "u64",
+          "value": "1778890165"
+        }
+      ]
+    }
+  ],
+  "auth_tree": {
+    "roots": [
+      {
+        "credentials": {
+          "kind": "source_account"
+        },
+        "root_invocation": {
+          "function": {
+            "kind": "contract",
+            "address": "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "function": "swap_exact_tokens_for_tokens",
+            "args": [
+              {
+                "type": "i128",
+                "value": "100000000"
+              },
+              {
+                "type": "i128",
+                "value": "1"
+              },
+              {
+                "type": "vec",
+                "value": [
+                  {
+                    "type": "address",
+                    "value": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+                  },
+                  {
+                    "type": "address",
+                    "value": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F"
+                  }
+                ]
+              },
+              {
+                "type": "address",
+                "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+              },
+              {
+                "type": "u64",
+                "value": "1778890165"
+              }
+            ]
+          },
+          "sub_invocations": [
+            {
+              "function": {
+                "kind": "contract",
+                "address": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+                "function": "transfer",
+                "args": [
+                  {
+                    "type": "address",
+                    "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+                  },
+                  {
+                    "type": "address",
+                    "value": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB"
+                  },
+                  {
+                    "type": "i128",
+                    "value": "100000000"
+                  }
+                ]
+              },
+              "sub_invocations": []
+            }
+          ]
+        },
+        "source_op_index": 0
+      }
+    ]
+  },
+  "state_changes": [
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Account"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Account"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Account"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": null,
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "symbol",
+        "value": "ledger_entry:Ttl"
+      },
+      "contract": null,
+      "before": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      },
+      "after": {
+        "type": "symbol",
+        "value": "ledger_entry_value:Ttl"
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "Balance"
+          },
+          {
+            "type": "address",
+            "value": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB"
+          }
+        ]
+      },
+      "contract": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F",
+      "before": {
+        "type": "i128",
+        "value": "2598921468"
+      },
+      "after": {
+        "type": "i128",
+        "value": "2597310788"
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "Balance"
+          },
+          {
+            "type": "address",
+            "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+          }
+        ]
+      },
+      "contract": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F",
+      "before": null,
+      "after": {
+        "type": "i128",
+        "value": "1610680"
+      }
+    },
+    {
+      "key": {
+        "type": "vec",
+        "value": [
+          {
+            "type": "symbol",
+            "value": "Balance"
+          },
+          {
+            "type": "address",
+            "value": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB"
+          }
+        ]
+      },
+      "contract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "before": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "amount"
+            },
+            "value": {
+              "type": "i128",
+              "value": "160771677438"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "authorized"
+            },
+            "value": {
+              "type": "bool",
+              "value": true
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "clawback"
+            },
+            "value": {
+              "type": "bool",
+              "value": false
+            }
+          }
+        ]
+      },
+      "after": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "amount"
+            },
+            "value": {
+              "type": "i128",
+              "value": "160871677438"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "authorized"
+            },
+            "value": {
+              "type": "bool",
+              "value": true
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "clawback"
+            },
+            "value": {
+              "type": "bool",
+              "value": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "key": {
+        "type": "ledger_key_contract_instance"
+      },
+      "contract": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB",
+      "before": {
+        "type": "contract_instance",
+        "value": {
+          "executable_kind": "Wasm",
+          "executable_value": "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464",
+          "storage": [
+            {
+              "key": {
+                "type": "u32",
+                "value": 0
+              },
+              "value": {
+                "type": "address",
+                "value": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 1
+              },
+              "value": {
+                "type": "address",
+                "value": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 2
+              },
+              "value": {
+                "type": "i128",
+                "value": "2598921468"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 3
+              },
+              "value": {
+                "type": "i128",
+                "value": "160771677438"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 4
+              },
+              "value": {
+                "type": "address",
+                "value": "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY"
+              }
+            },
+            {
+              "key": {
+                "type": "symbol",
+                "value": "METADATA"
+              },
+              "value": {
+                "type": "map",
+                "value": [
+                  {
+                    "key": {
+                      "type": "symbol",
+                      "value": "decimal"
+                    },
+                    "value": {
+                      "type": "u32",
+                      "value": 7
+                    }
+                  },
+                  {
+                    "key": {
+                      "type": "symbol",
+                      "value": "name"
+                    },
+                    "value": {
+                      "type": "string",
+                      "value": {
+                        "utf8": "USDC-native Soroswap LP Token",
+                        "hex": "555344432d6e617469766520536f726f73776170204c5020546f6b656e"
+                      }
+                    }
+                  },
+                  {
+                    "key": {
+                      "type": "symbol",
+                      "value": "symbol"
+                    },
+                    "value": {
+                      "type": "string",
+                      "value": {
+                        "utf8": "USDC-native-SOROSWAP-LP",
+                        "hex": "555344432d6e61746976652d534f524f535741502d4c50"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "key": {
+                "type": "vec",
+                "value": [
+                  {
+                    "type": "symbol",
+                    "value": "TotalSupply"
+                  }
+                ]
+              },
+              "value": {
+                "type": "i128",
+                "value": "20375777614"
+              }
+            }
+          ]
+        }
+      },
+      "after": {
+        "type": "contract_instance",
+        "value": {
+          "executable_kind": "Wasm",
+          "executable_value": "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464",
+          "storage": [
+            {
+              "key": {
+                "type": "u32",
+                "value": 0
+              },
+              "value": {
+                "type": "address",
+                "value": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 1
+              },
+              "value": {
+                "type": "address",
+                "value": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 2
+              },
+              "value": {
+                "type": "i128",
+                "value": "2597310788"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 3
+              },
+              "value": {
+                "type": "i128",
+                "value": "160871677438"
+              }
+            },
+            {
+              "key": {
+                "type": "u32",
+                "value": 4
+              },
+              "value": {
+                "type": "address",
+                "value": "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY"
+              }
+            },
+            {
+              "key": {
+                "type": "symbol",
+                "value": "METADATA"
+              },
+              "value": {
+                "type": "map",
+                "value": [
+                  {
+                    "key": {
+                      "type": "symbol",
+                      "value": "decimal"
+                    },
+                    "value": {
+                      "type": "u32",
+                      "value": 7
+                    }
+                  },
+                  {
+                    "key": {
+                      "type": "symbol",
+                      "value": "name"
+                    },
+                    "value": {
+                      "type": "string",
+                      "value": {
+                        "utf8": "USDC-native Soroswap LP Token",
+                        "hex": "555344432d6e617469766520536f726f73776170204c5020546f6b656e"
+                      }
+                    }
+                  },
+                  {
+                    "key": {
+                      "type": "symbol",
+                      "value": "symbol"
+                    },
+                    "value": {
+                      "type": "string",
+                      "value": {
+                        "utf8": "USDC-native-SOROSWAP-LP",
+                        "hex": "555344432d6e61746976652d534f524f535741502d4c50"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "key": {
+                "type": "vec",
+                "value": [
+                  {
+                    "type": "symbol",
+                    "value": "TotalSupply"
+                  }
+                ]
+              },
+              "value": {
+                "type": "i128",
+                "value": "20375777614"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "contract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "kind": "contract",
+      "topics": [
+        {
+          "type": "symbol",
+          "value": "transfer"
+        },
+        {
+          "type": "address",
+          "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+        },
+        {
+          "type": "address",
+          "value": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB"
+        },
+        {
+          "type": "string",
+          "value": {
+            "utf8": "native",
+            "hex": "6e6174697665"
+          }
+        }
+      ],
+      "data": {
+        "type": "i128",
+        "value": "100000000"
+      }
+    },
+    {
+      "contract": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F",
+      "kind": "contract",
+      "topics": [
+        {
+          "type": "symbol",
+          "value": "transfer"
+        },
+        {
+          "type": "address",
+          "value": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB"
+        },
+        {
+          "type": "address",
+          "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+        }
+      ],
+      "data": {
+        "type": "i128",
+        "value": "1610680"
+      }
+    },
+    {
+      "contract": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB",
+      "kind": "contract",
+      "topics": [
+        {
+          "type": "string",
+          "value": {
+            "utf8": "SoroswapPair",
+            "hex": "536f726f7377617050616972"
+          }
+        },
+        {
+          "type": "symbol",
+          "value": "sync"
+        }
+      ],
+      "data": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "new_reserve_0"
+            },
+            "value": {
+              "type": "i128",
+              "value": "2597310788"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "new_reserve_1"
+            },
+            "value": {
+              "type": "i128",
+              "value": "160871677438"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "contract": "CDVAIOYHCD4RUSLQNVFI7RIZBFT2JZMJWM4RTOLQZQXL4QAVXU5RFKDB",
+      "kind": "contract",
+      "topics": [
+        {
+          "type": "string",
+          "value": {
+            "utf8": "SoroswapPair",
+            "hex": "536f726f7377617050616972"
+          }
+        },
+        {
+          "type": "symbol",
+          "value": "swap"
+        }
+      ],
+      "data": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "amount_0_in"
+            },
+            "value": {
+              "type": "i128",
+              "value": "0"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "amount_0_out"
+            },
+            "value": {
+              "type": "i128",
+              "value": "1610680"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "amount_1_in"
+            },
+            "value": {
+              "type": "i128",
+              "value": "100000000"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "amount_1_out"
+            },
+            "value": {
+              "type": "i128",
+              "value": "0"
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "to"
+            },
+            "value": {
+              "type": "address",
+              "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "contract": "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+      "kind": "contract",
+      "topics": [
+        {
+          "type": "string",
+          "value": {
+            "utf8": "SoroswapRouter",
+            "hex": "536f726f73776170526f75746572"
+          }
+        },
+        {
+          "type": "symbol",
+          "value": "swap"
+        }
+      ],
+      "data": {
+        "type": "map",
+        "value": [
+          {
+            "key": {
+              "type": "symbol",
+              "value": "amounts"
+            },
+            "value": {
+              "type": "vec",
+              "value": [
+                {
+                  "type": "i128",
+                  "value": "100000000"
+                },
+                {
+                  "type": "i128",
+                  "value": "1610680"
+                }
+              ]
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "path"
+            },
+            "value": {
+              "type": "vec",
+              "value": [
+                {
+                  "type": "address",
+                  "value": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+                },
+                {
+                  "type": "address",
+                  "value": "CB3TLW74NBIOT3BUWOZ3TUM6RFDF6A4GVIRUQRQZABG5KPOUL4JJOV2F"
+                }
+              ]
+            }
+          },
+          {
+            "key": {
+              "type": "symbol",
+              "value": "to"
+            },
+            "value": {
+              "type": "address",
+              "value": "GB6L7TKI77ZTTYAMQ2Z2YVSNLSADRFWNKTL5CPPNE7LDDZEKD6KI5C5K"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
