@@ -1,0 +1,7 @@
+# cargo-fuzz private artifacts — see crates/oz-policy-codegen/fuzz/.gitignore
+# for the full rationale.
+target/
+corpus/
+artifacts/
+coverage/
+Cargo.lock
