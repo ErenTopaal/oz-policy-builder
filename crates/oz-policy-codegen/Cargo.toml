@@ -43,6 +43,23 @@ tempfile = "=3.27.0"
 # dirs: resolves `${HOME}/.cache/oz-policy-codegen` on Linux/macOS for the
 # sandbox cache root when `OZ_POLICY_CODEGEN_CACHE_DIR` is unset.
 dirs = "=6.0.0"
+# syn: AST-based parser used exclusively by `audit_lints.rs` to walk the
+# rendered Rust source before sandbox compile. We need the `full` feature so
+# expression-level constructs (`match`, `if let`, method-call chains, attribute
+# macros) parse — the rendered policy source is a full crate, not just a few
+# items. `visit` adds the immutable `Visit` trait we use to walk method-call
+# chains. We do not enable `extra-traits` (debug derives) or `visit-mut` (we
+# walk, we don't rewrite). Pinned to the version already resolved transitively
+# by proc-macro deps in this workspace (`Cargo.lock`) so we don't introduce a
+# second `syn 2.x` patch version.
+syn = { version = "=2.0.117", features = ["full", "visit"] }
+# proc-macro2 with `span-locations`: syn's spans are opaque outside a
+# proc-macro context unless this feature is enabled. The audit lints need
+# `Span::start().line` to report 1-based line numbers for each violation
+# (so MCP clients / CI can grep the rendered source for the offending
+# region). The version is pinned to the value already resolved transitively
+# elsewhere in the workspace (`Cargo.lock`).
+proc-macro2 = { version = "=1.0.106", features = ["span-locations"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["process", "fs"] }
