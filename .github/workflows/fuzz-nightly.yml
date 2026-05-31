@@ -1,0 +1,103 @@
+# fuzz-nightly.yml — Phase 9 Stream A nightly cargo-fuzz run.
+#
+# Two shipped fuzz targets live under `crates/<crate>/fuzz/`:
+#   * `oz-policy-codegen/fuzz/fuzz_targets/spec_to_wasm_panic_free.rs` —
+#     `Arbitrary` `PolicySpec` -> `render_contract`; asserts panic-freedom
+#     and that any error is `Error::CodegenCompileFailed`.
+#   * `oz-policy-recorder/fuzz/fuzz_targets/recording_decode_panic_free.rs` —
+#     `Arbitrary` envelope/meta byte blobs -> `decode_from_xdr_blobs`; asserts
+#     panic-freedom and that errors are recorder-family.
+#
+# `crates/oz-policy-simhost/fuzz/enforce_arbitrary_ctx.rs` is INTENTIONALLY
+# NOT WIRED in Phase 9 — see Stream A notes; the in-process `soroban-env-host`
+# integration requires per-iteration host reconstruction that runs at ~10
+# iter/sec, well below the libFuzzer feedback rate needed for useful coverage.
+# Plan.md tracks this as a TODO for Phase 10 once an AuthPayload encoder + a
+# reusable-host harness exist.
+#
+# Workflow schedule: 03:00 UTC nightly. Hard timeout 90m so the job can never
+# wedge a runner. `workflow_dispatch` is enabled for manual triggering during
+# audit follow-ups.
+
+name: Fuzz Nightly
+
+on:
+  schedule:
+    # 03:00 UTC every day. Chosen to land after the daily `Walkthroughs`
+    # workflow so any walkthrough-fixture drift surfaces first.
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: cargo-fuzz (nightly) — codegen + recorder
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # actions/checkout@v4 — pinned to the same commit SHA used by
+      # .github/workflows/ci.yml so the toolchain audit trail stays unified.
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      # dtolnay/rust-toolchain — pinned to the same SHA as ci.yml. cargo-fuzz
+      # requires a nightly toolchain because the `-Zsanitizer=address` and
+      # `-Zinstrument-coverage` flags are nightly-only; the workspace itself
+      # stays on 1.89.0 (see /rust-toolchain.toml).
+      - name: Install nightly Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: nightly
+          # `rust-src` is required by cargo-fuzz for sanitizer instrumentation
+          # of the standard library.
+          components: rust-src
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/oz-policy-codegen/fuzz/target
+            crates/oz-policy-recorder/fuzz/target
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('**/Cargo.lock', 'crates/*/fuzz/Cargo.toml') }}
+
+      # Pinned to =0.13.1 per plan.md § Tech Stack. `--locked` enforces the
+      # lockfile carried by cargo-fuzz so a transitive dependency drift can't
+      # silently swap libfuzzer versions across runs.
+      - name: Install cargo-fuzz (pinned)
+        run: cargo install cargo-fuzz --version =0.13.1 --locked
+
+      # Run each target for 600s (10 minutes). cargo-fuzz's `-max_total_time`
+      # is honored by libFuzzer; the run terminates cleanly at that mark even
+      # if no crash has been found, which is the success path. A real crash
+      # exits non-zero and the workflow fails immediately.
+      - name: Fuzz oz-policy-codegen / spec_to_wasm_panic_free
+        run: cargo +nightly fuzz run spec_to_wasm_panic_free -- -max_total_time=600
+        working-directory: crates/oz-policy-codegen/fuzz
+
+      - name: Fuzz oz-policy-recorder / recording_decode_panic_free
+        run: cargo +nightly fuzz run recording_decode_panic_free -- -max_total_time=600
+        working-directory: crates/oz-policy-recorder/fuzz
+
+      # On failure, upload every artifact libFuzzer wrote (corpus + crash
+      # input + minimized repro). Path glob covers both fuzz subcrates.
+      # actions/upload-artifact@v4 — pinned to commit SHA ea165f8d65b6e75b540449e92b4886f43607fa02
+      # (v4.6.2, 2025-05-15).
+      - name: Upload crash corpus on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fuzz-corpus
+          path: |
+            crates/oz-policy-codegen/fuzz/artifacts/**
+            crates/oz-policy-codegen/fuzz/corpus/**
+            crates/oz-policy-recorder/fuzz/artifacts/**
+            crates/oz-policy-recorder/fuzz/corpus/**
+          if-no-files-found: ignore
