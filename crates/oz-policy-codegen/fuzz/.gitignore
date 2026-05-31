@@ -1,0 +1,9 @@
+# cargo-fuzz private artifacts (corpus + crash inputs) — these are generated
+# at fuzzing time and persist locally. They are uploaded by the nightly CI
+# workflow only on failure (see .github/workflows/fuzz-nightly.yml) and the
+# `fuzz-corpora` branch carries the long-lived corpus per Phase 9 plan.
+target/
+corpus/
+artifacts/
+coverage/
+Cargo.lock

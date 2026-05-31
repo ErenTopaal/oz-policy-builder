@@ -1872,6 +1872,7 @@ dependencies = [
 name = "oz-policy-core"
 version = "0.0.0"
 dependencies = [
+ "arbitrary",
  "schemars 1.0.5",
  "serde",
  "serde_json",

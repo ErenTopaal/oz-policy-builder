@@ -60,6 +60,7 @@ pub const MAX_EXTERNAL_KEY_SIZE: u32 = 256;
 /// Root document — everything the Phase 2 installer and Phase 3 codegen
 /// need to install or render a policy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct PolicySpec {
     /// Schema URI — always [`POLICY_SCHEMA_URI`] when produced by this crate.
     pub schema: String,
@@ -94,6 +95,7 @@ pub struct PolicySpec {
 ///   end-to-end against constraints that *could* compose to
 ///   `simple_threshold` etc.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum SynthesisMode {
     Auto,
@@ -109,6 +111,7 @@ pub enum SynthesisMode {
 /// fields (`id`, `policies: Map<Address, Val>`) — those are resolved at install
 /// time by the installer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct ContextRuleSpec {
     /// Human-readable name (≤ [`MAX_NAME_SIZE`] UTF-8 bytes).
     pub name: String,
@@ -134,6 +137,7 @@ pub struct ContextRuleSpec {
 /// *"cannot serialize tagged newtype variant ... containing a string"*).
 /// The on-chain semantics are unchanged; the wire shape is just `{kind,address}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ContextType {
     /// Matches all invocations of the smart account.
@@ -156,6 +160,7 @@ pub enum ContextType {
 /// exactly 65 bytes (130 hex chars); both must fit under
 /// [`MAX_EXTERNAL_KEY_SIZE`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SignerSpec {
     /// External Ed25519 signer. `public_key_hex` is a 64-character hex string
@@ -178,6 +183,7 @@ pub enum SignerSpec {
 /// Track-B generated contract (described by a template family and a list of
 /// constraints — Phase 3 codegen turns this into compilable Rust).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PolicySlot {
     /// Track A: reuse one of the audited OZ primitives.
@@ -195,6 +201,7 @@ pub enum PolicySlot {
 /// Discriminator for which existing OZ primitive a Track-A slot reuses.
 /// One of `simple_threshold`, `weighted_threshold`, `spending_limit`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum ExistingPrimitive {
     SimpleThreshold,
@@ -210,6 +217,7 @@ pub enum ExistingPrimitive {
 /// `ArgValue::I128`). The installer parses it back into `i128` when building
 /// the `IntoVal` payload for `add_policy`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExistingPrimitiveParams {
     /// `SimpleThresholdAccountParams { threshold }` — minimum number of
@@ -236,6 +244,7 @@ pub enum ExistingPrimitiveParams {
 /// (not a `(SignerSpec, u32)` tuple) so the JSON shape has named fields and
 /// the JSON Schema produced by `schemars` keeps field intent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct WeightedSigner {
     pub signer: SignerSpec,
     pub weight: u32,
@@ -248,6 +257,7 @@ pub struct WeightedSigner {
 /// Which template family a Track-B slot uses. Each family corresponds to one
 /// `.rs.jinja` template under `oz-policy-codegen/templates/constraints/`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(rename_all = "snake_case")]
 pub enum TemplateFamily {
     FunctionAllowlist,
@@ -263,6 +273,7 @@ pub enum TemplateFamily {
 /// these into compiled WASM; the simulator (Phase 4) interprets them
 /// directly to verify the spec before installation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Constraint {
     /// Only the listed functions may be invoked. Function names are
@@ -304,6 +315,7 @@ pub enum Constraint {
 /// `Constraint::AmountRange`); `Allowlist` / `Blocklist` carry `ArgValue`
 /// vectors so heterogeneous types (address, symbol, etc.) can be expressed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArgMatcher {
     Exact {
@@ -331,6 +343,7 @@ pub enum ArgMatcher {
 /// consumer that finds a spec without the source Recording can at least
 /// verify the schema version it was produced against.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RecordingRef {
     pub hash: Option<String>,
     pub schema: String,

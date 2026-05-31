@@ -1,0 +1,56 @@
+# Phase 9 Stream A — cargo-fuzz harness for `oz-policy-codegen::render`.
+#
+# This crate is DELIBERATELY EXCLUDED from the workspace (`/Cargo.toml`
+# `[workspace] exclude = […]`) for two reasons:
+#
+#   1. `libfuzzer-sys` is built with the nightly compiler under the
+#      `-Zsanitizer=...` family. Pulling it into the stable workspace would
+#      break `cargo +1.89.0 build`.
+#   2. cargo-fuzz writes its own `Cargo.lock` and a private target dir under
+#      `fuzz/target/`, so workspace inclusion would fight cargo-fuzz on
+#      lockfile + target-dir conventions.
+#
+# The nightly CI workflow (`.github/workflows/fuzz-nightly.yml`) builds and
+# runs the targets via `cargo +nightly fuzz`. The library + smoke tests in
+# `src/lib.rs` are *stable*-buildable (`cargo test --manifest-path
+# crates/oz-policy-codegen/fuzz/Cargo.toml`) so the Arbitrary plumbing can be
+# exercised in regular CI without spinning up a fuzzer.
+
+[package]
+name = "oz-policy-codegen-fuzz"
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "cargo-fuzz harness for oz-policy-codegen render pipeline (Phase 9)"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+# `arbitrary`: structured-input crate. Pinned to the same `=1.4.2` the
+# workspace declares so the version in `oz-policy-core --features arbitrary`
+# unifies with this one through cargo's resolver.
+arbitrary = { version = "=1.4.2", features = ["derive"] }
+# `libfuzzer-sys`: cargo-fuzz's libFuzzer wrapper. Required by the
+# `fuzz_target!` macro inside `fuzz_targets/*.rs`. Pinned to `=0.4.12`,
+# the workspace-declared version (see `/Cargo.toml`
+# `[workspace.dependencies] libfuzzer-sys`).
+libfuzzer-sys = "=0.4.12"
+# Production crates under test. The `arbitrary` feature on `oz-policy-core`
+# turns on the `#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]`
+# attributes on the spec types so the fuzz target can mint `PolicySpec`s
+# straight from libFuzzer's byte stream.
+oz-policy-codegen = { path = ".." }
+oz-policy-core = { path = "../../oz-policy-core", features = ["arbitrary"] }
+
+# Each `[[bin]]` becomes one cargo-fuzz target. `test = false` + `doc = false`
+# mirror the convention written by `cargo fuzz add` so this manifest stays
+# byte-equivalent to what cargo-fuzz expects.
+
+[[bin]]
+name = "spec_to_wasm_panic_free"
+path = "fuzz_targets/spec_to_wasm_panic_free.rs"
+test = false
+doc = false
+bench = false

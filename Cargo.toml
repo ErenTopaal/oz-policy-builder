@@ -1,6 +1,17 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# Fuzz subcrates live under `crates/<crate>/fuzz/` and use a nightly-only
+# toolchain via cargo-fuzz. They are deliberately excluded from the workspace
+# so the stable 1.89.0 workspace build (and `cargo deny`) never tries to
+# resolve `libfuzzer-sys`, which requires nightly + an asm runtime. The
+# nightly job in `.github/workflows/fuzz-nightly.yml` builds them directly
+# via `cargo +nightly fuzz build`. See Phase 9 Stream A.
+exclude = [
+    "crates/oz-policy-codegen/fuzz",
+    "crates/oz-policy-recorder/fuzz",
+    "crates/oz-policy-simhost/fuzz",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -30,6 +41,18 @@ schemars = "=1.0"
 
 # --- Testing ---
 proptest = "=1.11.0"
+# arbitrary: structured-input generator for cargo-fuzz harnesses (Phase 9
+# Stream A). Used as an OPT-IN feature on `oz-policy-core` so the workspace
+# build (stable 1.89.0) never pulls it in. The fuzz subcrates under
+# `crates/<crate>/fuzz/` enable the feature explicitly. Version 1.4.2 is the
+# latest stable on crates.io as of 2026-05; the `derive` feature provides
+# the `#[derive(Arbitrary)]` proc-macro consumed by spec/recording types.
+arbitrary = { version = "=1.4.2", features = ["derive"] }
+# libfuzzer-sys: cargo-fuzz's libFuzzer wrapper. Pinned to 0.4.12 (latest
+# stable on crates.io 2026-05). Consumed ONLY by fuzz subcrates that are
+# excluded from the workspace; declared here so all fuzz subcrates pin to
+# the same version.
+libfuzzer-sys = "=0.4.12"
 
 # --- General-purpose deps (verified latest stable on crates.io 2026-05-15) ---
 # serde 1.0.228 — latest stable (https://crates.io/crates/serde/1.0.228, MSRV 1.56)

@@ -42,6 +42,7 @@ use serde::{Deserialize, Serialize};
 /// `DenyVector`, set / map collections of recordings) compare values
 /// without falling back to manual comparators.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum ArgValue {
     Bool(bool),
@@ -108,6 +109,7 @@ pub enum ArgValue {
 /// `schemars` produces a clean schema (tuples land as 2-element arrays which
 /// hide field intent).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(deny_unknown_fields)]
 pub struct MapEntry {
     pub key: ArgValue,

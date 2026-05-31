@@ -16,3 +16,15 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
+# Optional `arbitrary` derive for fuzz harnesses (Phase 9 Stream A). When
+# the `arbitrary` feature is OFF (workspace default), this dep is not pulled
+# in and the spec/arg_value types have no `Arbitrary` impl. Fuzz subcrates
+# in `crates/<crate>/fuzz/` enable it explicitly.
+arbitrary = { workspace = true, optional = true }
+
+[features]
+default = []
+# Derives `arbitrary::Arbitrary` on `PolicySpec`, `ArgValue`, and every
+# transitive type so cargo-fuzz harnesses can mint structured inputs. Opt-in
+# only — the workspace build never enables it.
+arbitrary = ["dep:arbitrary"]
