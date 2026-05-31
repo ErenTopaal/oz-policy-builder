@@ -20,11 +20,13 @@
 
 #![forbid(unsafe_code)]
 
+pub mod audit_lints;
 pub mod context;
 pub mod placeholder;
 pub mod render;
 pub mod sandbox;
 
+pub use audit_lints::{lint_rendered_source, AuditLintError};
 pub use render::render_contract;
 pub use sandbox::{compile, CompiledArtifact, RenderedCrate, SandboxError};
 
@@ -59,6 +61,19 @@ pub async fn synthesize_track_b(
             continue;
         }
         let rendered = render_contract(spec, idx)?;
+        // Phase 9 audit-lint gate. The lints run before the sandbox compile
+        // so an unsafe / unkeyed / panic-leaking template surfaces as
+        // `E_CODEGEN_COMPILE_FAILED` with a structured violation list,
+        // instead of being silently masked by an obscure rustc message
+        // (or worse — passing rustc and shipping). See `audit_lints.rs`
+        // for the rule set.
+        if let Err(violations) = lint_rendered_source(&rendered.src_lib_rs) {
+            let mut detail = format!("audit lints failed: {} violation(s)\n", violations.len());
+            for v in &violations {
+                detail.push_str(&format!("  - {v}\n"));
+            }
+            return Err(oz_policy_core::Error::CodegenCompileFailed(detail));
+        }
         let artifact = compile(&rendered).await?;
         artifacts.push(artifact);
     }
