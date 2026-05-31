@@ -218,11 +218,19 @@ impl PolicyTrait for Policy {
         .get(&freq_key)
         .unwrap_or_else(|| Vec::new(e));
 
-    // Evict entries strictly older than the rolling-window cutoff.
+    // Evict entries strictly older than the rolling-window cutoff. Note the
+    // `get(i)` lookup is in-bounds by construction (`0..history.len()`) so it
+    // can never return `None`; we still route the None branch through
+    // `panic_with_error!` because the audit-lint rule (`panic_uses_policy_error`)
+    // forbids any bare `.unwrap()` in generated source — `PolicyError::Default`
+    // is the canonical default-reject error and matches the "should be
+    // unreachable" doc comment on the variant.
     let cutoff = current.saturating_sub(17280u32);
     let mut kept: Vec<u32> = Vec::new(e);
     for i in 0..history.len() {
-        let seq = history.get(i).unwrap();
+        let seq = history
+            .get(i)
+            .unwrap_or_else(|| panic_with_error!(e, PolicyError::Default));
         if seq > cutoff {
             kept.push_back(seq);
         }
