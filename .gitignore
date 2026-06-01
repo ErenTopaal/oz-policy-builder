@@ -27,3 +27,12 @@ dist/
 # Logs and tmp
 *.log
 tmp/
+
+# Reproducible-build manifests are per-release artifacts (uploaded to the
+# GitHub release, not committed). See scripts/reproducible-build.sh and
+# .github/workflows/reproducible-build.yml.
+reproducible-build-manifest-*.json
+# Docker-side cargo/target caches used by the reproducible-build workflow
+# when invoked locally with the recipe in docs/reproducible-build.md.
+.docker-cargo-home/
+.docker-target/
