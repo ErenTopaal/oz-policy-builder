@@ -1,0 +1,64 @@
+# Dockerfile.runtime — multi-stage build for the hosted MCP endpoint.
+#
+# Stage 1 (`builder`): pinned Rust 1.89.0 compiles `oz-policy-mcp` in
+# release mode against the committed `Cargo.lock`.
+# Stage 2 (`runtime`): debian:bookworm-slim carries ONLY the compiled
+# binary + `ca-certificates` (so the recorder/installer's outbound
+# TLS connections to Soroban RPC succeed) + a non-root user.
+#
+# No package manager, no compiler, no shell-only binaries in the final
+# image. `oz-policy-mcp` is the literal ENTRYPOINT — anyone with
+# `fly ssh console` access still drops into a near-empty image.
+
+# ---------- Stage 1: build ----------
+FROM rust:1.89.0-slim-bookworm AS builder
+
+# System deps needed for the build only (linkers + git for any path-dep
+# fetches; pkg-config + libssl-dev are NOT needed because the workspace
+# uses `rustls-tls`, not openssl, end-to-end).
+RUN apt-get update \
+ && apt-get install --no-install-recommends -y \
+        ca-certificates \
+        git \
+        pkg-config \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# Copy the entire workspace. We deliberately do NOT do the
+# `Cargo.toml`-then-`src/`-then-`build` cache-dance because the
+# workspace has many member crates and the dance breaks down for
+# any nontrivial graph. Fly's BuildKit layer cache keeps the rebuild
+# fast on subsequent deploys anyway.
+COPY . .
+
+# Build only the MCP binary in release mode. `--locked` pins to the
+# committed `Cargo.lock`, refusing any dependency resolution that
+# would silently bump a transitive version.
+RUN cargo build --release --locked -p oz-policy-mcp
+
+# ---------- Stage 2: runtime ----------
+FROM debian:bookworm-slim AS runtime
+
+# `ca-certificates` is the only runtime dep — the MCP server reaches
+# out to Soroban RPC over rustls-tls and needs the system trust store
+# to validate the upstream cert chain.
+RUN apt-get update \
+ && apt-get install --no-install-recommends -y \
+        ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin mcp
+
+COPY --from=builder /src/target/release/oz-policy-mcp /usr/local/bin/oz-policy-mcp
+
+USER mcp
+
+EXPOSE 8080
+
+# Fly injects OZ_POLICY_MCP_TOKEN via `fly secrets set …`. We expand
+# it at process-start time via a `sh -c` shim because Docker's exec
+# form does not interpolate env vars. If the operator forgot the
+# secret, the binary fails fast with a clear error from
+# `oz-policy-mcp`'s clap parser (the `--token` flag is required when
+# `--http` is set).
+ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/oz-policy-mcp --http 8080 --token \"$OZ_POLICY_MCP_TOKEN\""]
