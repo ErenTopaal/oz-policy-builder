@@ -735,7 +735,17 @@ Streams A, B, C run in **parallel** as soon as Phase 9 is complete. Stream D run
 - npm `@oz-policy-builder/wallet-adapter` is installable: `pnpm add @oz-policy-builder/wallet-adapter` in a fresh project works and the package's TypeScript types resolve.
 - crates.io: each workspace member crate is fetchable via `cargo install` (CLI) or `cargo add` (libs).
 
-**Completion Criterion (binary):** The hosted MCP endpoint passes the 5-tool scripted-session smoke test from a remote machine, AND the `v1.0.0` release is published with all artifacts AND `SHA256SUMS.asc` verifies AND the mainnet canary tx hash returns `matches: true` from `verify_install`.
+**Completion Criterion (binary, automatable):**
+- The release workflow `.github/workflows/release.yml` produces a v0.0.0-dev tag artifact bundle when manually dispatched: 4 OS×arch binaries + walkthrough WASM bundle + SHA256SUMS. (Verifies the release pipeline structurally; v1.0.0 publication is human-gated.)
+- `scripts/reproducible-build.sh` re-derives every pinned walkthrough WASM byte-equally from a fresh clone. (Phase 9.)
+- All Phase 1-9 binary completion gates pass.
+
+**Completion Criterion (human-required, not gated in CI):** See [`docs/mainnet-readiness.md`](docs/mainnet-readiness.md) for the human-runnable runbook covering every item below.
+- A Fly.io (or equivalent) deployment of `oz-policy-mcp` responds on `/healthz` and to a 5-tool scripted session under bearer auth. **Requires**: cloud account, DNS, TLS, `OZ_POLICY_MCP_TOKEN`.
+- The v1.0.0 release is published to GitHub Releases with attached binaries; `SHA256SUMS.asc` verifies against the project's GPG fingerprint. **Requires**: GPG signing key.
+- The npm `@oz-policy-builder/wallet-adapter` is installable at v1.0.0. **Requires**: npm token.
+- The crates.io publish of all 7 member crates succeeds at v1.0.0. **Requires**: crates.io token.
+- The mainnet canary install completes end-to-end and `verify_install` returns `matches: true`. **Requires**: mainnet XLM + GPG-signed canary commit. Tx hash recorded in `docs/mainnet-readiness.md` under "Completed canaries".
 
 ---
 
