@@ -17,8 +17,18 @@ exclude = [
 version = "0.0.0"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/oz-policy-builder/oz-policy-builder"
 authors = ["OZ Policy Builder contributors"]
+# The org segment below is a deliberate `<org-placeholder>` until the
+# project moves to its public GitHub home. Phase 10 Stream C did not pick
+# a name; the maintainers must replace `<org-placeholder>` in this file
+# (and in `CHANGELOG.md`, `wallet-adapter/package.json`, and any docs
+# under `docs/`) before the first crates.io / npm publish runs. Pinned
+# here at the workspace level so every member crate inherits the same URL
+# via `repository.workspace = true`.
+repository = "https://github.com/<org-placeholder>/oz-policy-builder"
+homepage = "https://github.com/<org-placeholder>/oz-policy-builder"
+documentation = "https://docs.rs/oz-policy-core"
+readme = "README.md"
 
 # All dependency versions are pinned with `=` to enforce reproducible builds
 # (per plan.md Phase 9 reproducible-build requirement). Member crates consume

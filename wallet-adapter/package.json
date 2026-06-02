@@ -1,8 +1,10 @@
 {
   "//license": "SPDX: Apache-2.0. Bundles MIT-licensed upstreams (passkey-kit); see ../NOTICE for the dual-license interaction (plan.md §Tech Stack).",
+  "//placeholder": "The `<org-placeholder>` segments below MUST be replaced with the published org name before the first `pnpm publish`. Phase 10 Stream C did not pick a name; keep these tagged so a grep over the worktree finds them.",
   "name": "@oz-policy-builder/wallet-adapter",
   "version": "0.0.0",
   "license": "Apache-2.0",
+  "description": "SEP-43 wallet adapter + install / verify orchestration for the OZ Accounts Policy Builder.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,8 +15,19 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "README.md",
+    "LICENSE-APACHE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<org-placeholder>/oz-policy-builder.git",
+    "directory": "wallet-adapter"
+  },
+  "homepage": "https://github.com/<org-placeholder>/oz-policy-builder/tree/main/wallet-adapter",
+  "bugs": {
+    "url": "https://github.com/<org-placeholder>/oz-policy-builder/issues"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
