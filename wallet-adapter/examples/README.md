@@ -51,39 +51,32 @@ the script reports `status: "network_error"` and exits non-zero. CI can opt in
 to running these under an `INTEGRATION=1` (or similar) gate; default `pnpm test`
 **does not** run them — see `vitest.config.ts`.
 
-## Known preflight blocker: `primitive_address_unknown`
+## Per-script preflight behaviour
 
-Until Phase 7 ships a per-network deployment registry of the OpenZeppelin
-account-policy primitive contracts (`simple_threshold`, `weighted_threshold`,
-`spending_limit`), `oz-policy-cli prepare-install` will return:
+The Track-B `function_allowlist` policy is deployed on testnet (see
+`walkthroughs/phase7-testnet-install/deployed-addresses.json`), so example
+01 (Blend) runs through preflight successfully. The Track-A primitives
+(`simple_threshold`, `weighted_threshold`, `spending_limit`) are **not**
+yet deployed on testnet, so example 02 (SEP-41 subscription)
+short-circuits at preflight with:
 
 ```
 Error: E_INSTALL_PREFLIGHT_FAILED('primitive_address_unknown spending_limit on Test SDF Network ; September 2015')
 ```
 
-This is honest, expected behavior — see
-`crates/oz-policy-installer/src/registry.rs` for the rationale. The example
-scripts surface this verbatim as `status: "preflight_failed"`. They do **not**
-suppress, retry, or paper over it.
-
-Until that registry lands the examples are useful for:
-
-- Validating that the headless signing path produces a structurally valid
-  envelope (signing succeeds even if preflight fails, because the failure is
-  before signing).
-- Smoke-testing Friendbot funding + RPC reachability in CI.
-- Exercising the JSON report contract that downstream tools depend on.
-
-When the registry lands, the same scripts will start reporting `submitted`
-without code changes.
+The example scripts surface this verbatim as `status: "preflight_failed"`;
+they do **not** suppress, retry, or paper over it. Deploying the OZ
+Track-A primitive WASMs on testnet and registering their addresses is a
+Phase 9 follow-up — see
+`crates/oz-policy-installer/src/registry.rs` for the rationale.
 
 ## Scripts
 
 | Script                                | Walkthrough                                | Status notes |
 |---------------------------------------|--------------------------------------------|--------------|
-| `01-blend-yield-headless.ts`          | `walkthroughs/01-blend-yield/`             | Real recording frozen; preflight blocked. |
-| `02-sep41-subscription-headless.ts`   | `walkthroughs/02-sep41-subscription/`      | Real recording frozen; preflight blocked. |
-| `03-soroswap-bounded-headless.ts`     | `walkthroughs/03-soroswap-bounded/` (TBD)  | **Placeholder.** Phase 8 must freeze the corpus first. |
+| `01-blend-yield-headless.ts`          | `walkthroughs/01-blend-yield/`             | Real recording frozen; `function_allowlist` registry hit ready (testnet install verified 2026-05-18). |
+| `02-sep41-subscription-headless.ts`   | `walkthroughs/02-sep41-subscription/`      | Real recording frozen; preflight returns `E_INSTALL_PREFLIGHT_FAILED` (spending_limit not in registry yet). |
+| `03-soroswap-bounded-headless.ts`     | `walkthroughs/03-soroswap-bounded/`        | **Placeholder script** — corpus is frozen (Phase 8); the script still exits `status: "placeholder"` pending the same wiring as examples 01/02. |
 
 ## Running
 

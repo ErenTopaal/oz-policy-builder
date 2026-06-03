@@ -1,31 +1,27 @@
 <!--
 SPDX-License-Identifier: Apache-2.0
 Copyright 2026 OZ Policy Builder contributors
-
-Phase 10 Stream C — contributor onboarding. See plan.md §Phase 10 for the
-authoritative scope; this file is the human-readable surface that points
-new contributors at the gates a PR must clear.
 -->
 
 # Contributing to the OZ Accounts Policy Builder
 
-Thank you for your interest in contributing. This document describes how to
-fork, branch, test, and open a pull request, plus the project-specific rules
-that protect the security posture and reproducibility guarantees we sell to
-downstream integrators.
+How to fork, branch, test, and open a pull request, plus the
+project-specific rules that protect the security posture and
+reproducibility guarantees.
 
-Every contribution is accepted under the project's
-[Apache License 2.0](./LICENSE-APACHE). By submitting a PR you also affirm
-that you have the right to do so (DCO — see *Signed-off-by* below).
+Audience: external contributors. After reading: open a PR that clears
+the six CI gates listed below. Every contribution is accepted under
+[Apache License 2.0](./LICENSE-APACHE); submitting a PR also affirms the
+DCO (see *Signed-off-by*).
 
 ---
 
 ## Code of Conduct
 
 This project follows the [Contributor Covenant v2.1](./CODE_OF_CONDUCT.md).
-By participating you are expected to uphold it. Report unacceptable behaviour
-to the contact address listed in `CODE_OF_CONDUCT.md` (currently a
-**placeholder** that the maintainers must replace before public launch).
+Report unacceptable behaviour to the contact address listed there
+(currently a **placeholder** that the maintainers must replace before
+public launch).
 
 ---
 

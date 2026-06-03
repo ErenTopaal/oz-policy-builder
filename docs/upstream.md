@@ -1,16 +1,14 @@
 # Upstream proposals
 
-Per [`plan.md`](../plan.md) Phase 10 Stream A's "stretch enhancements"
-note, two template families currently emitted by our codegen pipeline
-are generic enough that they would make sense as primitives shipped by
-OpenZeppelin upstream (`stellar-accounts`). Today they are
-**codegen-only** because no OZ primitive covers them.
+Two template families our codegen pipeline emits today
+(`function_allowlist`, `bounded_swap`) are generic enough that they
+would make sense as primitives shipped by OpenZeppelin upstream in
+`stellar-accounts`. Today they live in our codegen path because no OZ
+primitive covers them.
 
-This page is a **soft proposal**. It is not actioned without OZ
-engagement, and any upstream contribution must go through OZ's own
-contribution process. The proposal exists so the design rationale is
-captured in one place and so reviewers can compare the codegen surface
-against the upstream surface.
+This page is a **soft proposal** — design rationale captured for OZ
+engagement and reviewer comparison; not actioned without an upstream
+contribution agreement.
 
 ---
 

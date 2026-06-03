@@ -36,12 +36,12 @@ been booked yet.
   are frozen at Phase 8 — every byte is re-derivable in CI and no manual
   edits land after freeze. Evidence: the `walkthroughs.yml` workflow's
   green run on the handoff commit.
-- [ ] **AuthPayload encoder verified end-to-end on testnet.** The Phase 7
-  BLOCKER (the `add_context_rule` AuthPayload encoding) is resolved by
-  Phase 8 Stream B; `wallet-adapter/src/phase7_integration.test.ts` runs
-  green with `INTEGRATION=1` against testnet. Evidence: the
-  `phase7-testnet-install` walkthrough's recorded tx hash and the
-  integration-test log.
+- [x] **AuthPayload encoder verified end-to-end on testnet.** Closed
+  2026-05-18 by RFP-deliverable-5 dispatch. Evidence:
+  [`../walkthroughs/phase7-testnet-install/install-result.json`](../walkthroughs/phase7-testnet-install/install-result.json)
+  (tx `038583fa…ce90bb`, `context_rule_id=4`,
+  `verifyInstall.matches=true`); `wallet-adapter/src/phase7_integration.test.ts`
+  green with `INTEGRATION=1` against testnet.
 - [ ] **OZ engagement plan in place.** A named contact at OpenZeppelin
   and an agreed review cadence is recorded in
   [`../plan.md`](../plan.md) Open Questions section.

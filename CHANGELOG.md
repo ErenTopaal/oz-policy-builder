@@ -1,19 +1,14 @@
 <!--
 SPDX-License-Identifier: Apache-2.0
 Copyright 2026 OZ Policy Builder contributors
-
-Phase 10 Stream C — initial CHANGELOG snapshot. Format follows
-Keep a Changelog (https://keepachangelog.com/en/1.1.0/) and semver
-(https://semver.org/spec/v2.0.0.html). Every release tag MUST add a
-section above the `[Unreleased]` header on the day it is cut.
 -->
 
 # Changelog
 
-All notable changes to this project are documented in this file.
-
-The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Format: [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
+Versioning: [SemVer 2.0](https://semver.org/spec/v2.0.0.html). Every
+release tag MUST add a section above `[Unreleased]` on the day it is
+cut.
 
 The walkthrough corpus is the regression suite: any rotation of a frozen
 `wasm_hash.txt`, `expected-spec-*.json`, `expected-sim-report.json`, or
@@ -66,7 +61,8 @@ install-envelope XDR MUST appear here with a causal explanation
 
 - `wallet-adapter/`: TypeScript SEP-43 adapter package
   (`@oz-policy-builder/wallet-adapter`) with Freighter primary and
-  passkey-kit secondary, 80 tests green.
+  passkey-kit secondary, 78 tests passing + 2 skipped (the testnet
+  `INTEGRATION=1` suite + one upstream-gated passkey skip).
 
 ### Added — Phase 8: End-to-end walkthroughs
 

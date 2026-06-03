@@ -1,43 +1,15 @@
 # Threat Model — OZ Accounts Policy Builder
 
-This document reproduces the threat model from
-[`researches/technical-research.md`](../researches/technical-research.md)
-§12 ("Security / audit") and maps each threat to (1) the mitigation in the
-codebase, (2) the specific test that exercises that mitigation. It is
-structured so an external auditor can walk the table top-to-bottom and find
-both the engineering control and the verifying test for every claim.
+Audience: external auditor. Each threat below pairs (1) a mitigation in
+the codebase with (2) the test that exercises it. Walk top-to-bottom and
+every claim has both an engineering control and a verifying signal.
 
-The synthesizer-side and generated-policy-side threats are kept in the same
-order as research §12. Where the mitigation depends on work from a sibling
-Phase 9 stream (Stream A — fuzz, Stream B — audit lints, Stream C —
-reproducible build), the dependency is flagged inline.
-
-> **Source quotation (research §12, verbatim):**
->
-> *"Threat model — synthesizer: spec underspecification (mitigation:
-> clarification prompts + plain-English replay + explicit approval);
-> codegen template bug (mitigation: per-constraint property tests,
-> cross-check against sim deny cases, audit of templates); reproducibility
-> failure (mitigation: pinned toolchain + `wasm-opt` + Cargo.lock);
-> LLM-in-loop non-determinism (mitigation: deterministic template path is
-> primary; LLM is restricted to clarification/summarization surfaces
-> only)."*
->
-> *"Threat model — generated policies: cross-rule replay (mitigation:
-> `(smart_account, context_rule_id)` storage segregation); i128 overflow
-> (mitigation: `overflow-checks = true` in Cargo profile, matching Blend's
-> guidance verbatim: \"Under no circumstances should the overflow-checks
-> flag be removed otherwise contract math will become unsafe\");
-> unauthorized state mutation (mitigation: template always emits
-> `smart_account.require_auth()` in mutating hooks); TTL exhaustion
-> (mitigation: enforce-time TTL bumps); sponsor `context_rule_ids`
-> substitution (mitigation: OZ PR #655 fixes at the smart-account layer;
-> synthesizer refuses to install on pre-fix versions)."*
-
-A tenth threat — **AuthPayload encoding bug** — is documented separately
-below; it was surfaced as the Phase 7 BLOCKER (resolved in Phase 8) and is
-in scope because the wallet adapter's `oz_smart_account_auth.ts` encoder
-sits on the auth path of every policy install.
+The synthesizer-side and generated-policy-side threats follow the order
+of [`researches/technical-research.md`](../researches/technical-research.md)
+§12. A tenth threat — **AuthPayload encoding bug**, surfaced as the
+Phase 7 BLOCKER (resolved 2026-05-18) — is included because the wallet
+adapter's `oz_smart_account_auth.ts` encoder sits on the auth path of
+every policy install.
 
 ---
 
@@ -255,8 +227,10 @@ ScVal as the second positional arg in the auth-tree signature; the SA's
 `__check_auth` recomputes a SHA-256 digest over a canonical encoding and
 rejects any mismatch. A wrong encoding fails closed (no rule lands), but a
 *subtly* wrong encoding that the SA accepts could authorise the wrong
-rule. This was the Phase 7 BLOCKER; resolution is in Phase 8
-(`wallet-adapter/src/oz_smart_account_auth.ts`).
+rule. Surfaced as the Phase 7 BLOCKER; resolved end-to-end on testnet
+2026-05-18 via `wallet-adapter/src/oz_smart_account_auth.ts` (commit
+`bd60009`) — see
+[`../walkthroughs/phase7-testnet-install/install-result.json`](../walkthroughs/phase7-testnet-install/install-result.json).
 
 **Mitigation.** The wallet adapter exports a single encoder
 (`buildOzAuthEntry`, `computeAuthDigest`, `encodeAuthPayload`,

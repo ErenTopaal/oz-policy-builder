@@ -1,9 +1,8 @@
 # Security
 
-This page is an **index** into the project's security artefacts. The
-primary disclosure policy lives at [`SECURITY.md`](../SECURITY.md) in the
-worktree root; this page cross-references the supporting infrastructure
-that backs it.
+Index into the project's security artefacts. The disclosure policy
+itself lives at [`SECURITY.md`](../SECURITY.md) in the worktree root;
+this page points to the supporting infrastructure.
 
 ---
 
@@ -63,7 +62,8 @@ The threat model is structured so an external auditor can walk the table
 top-to-bottom and find both the engineering control and the verifying
 test for every claim. It covers the nine synthesizer / generated-policy
 threats from research §12 plus a tenth threat — **AuthPayload encoding
-bug** — surfaced as the Phase 7 BLOCKER and resolved in Phase 8.
+bug** — surfaced as the Phase 7 BLOCKER and closed 2026-05-18 (see
+[`audits/THREAT_MODEL.md`](../audits/THREAT_MODEL.md) §T10).
 
 ---
 

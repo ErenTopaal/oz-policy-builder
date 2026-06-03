@@ -1,10 +1,6 @@
 <!--
 SPDX-License-Identifier: Apache-2.0
 Copyright 2026 OZ Policy Builder contributors
-
-Phase 10 Stream C — community standards. We adopt the Contributor Covenant
-v2.1 by reference rather than inlining the full text; the canonical URL
-remains the authoritative source. See plan.md §Phase 10.
 -->
 
 # Code of Conduct
