@@ -31,14 +31,22 @@ export interface VerifyInstallParams {
   rpcUrl: string;
   /**
    * Optional `PolicySpec` for diff comparison. When omitted, the MCP
-   * server emits a single drift item with field `expected_spec_id` so
-   * callers know to provide one for a strict equality check.
+   * server returns `matches: true` with empty drift as soon as the
+   * on-chain rule is confirmed to exist.
    *
    * The shape is opaque here so this package does not need to take a
    * dependency on every internal type. Stream A/B's TypeScript codegen
    * (Phase 6, future) will tighten this to a typed import.
    */
   expectedSpec?: unknown;
+  /**
+   * Funded source-account G-strkey used by the MCP server when it
+   * simulates `SA.get_context_rule(rule_id)`. Required because the
+   * SA itself is a contract (no account record) and the simulator
+   * needs a real account's sequence number. The integration test
+   * passes the SA owner's G-key here.
+   */
+  sourceAccount?: string;
   /**
    * Command + args used to spawn the MCP server. Default:
    * `['cargo', 'run', '-p', 'oz-policy-mcp', '--', '--stdio']`.
@@ -223,6 +231,9 @@ function buildVerifyArguments(
   };
   if (params.expectedSpec !== undefined) {
     args.expected_spec = params.expectedSpec;
+  }
+  if (params.sourceAccount !== undefined) {
+    args.source_account = params.sourceAccount;
   }
   return args;
 }

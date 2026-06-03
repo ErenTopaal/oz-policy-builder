@@ -33,8 +33,10 @@ const hoisted = vi.hoisted(() => {
   return {
     sendTransactionMock: vi.fn(),
     getTransactionMock: vi.fn(),
+    simulateTransactionMock: vi.fn(),
     fromXdrMock: vi.fn(),
     scValToNativeMock: vi.fn(),
+    assembleTransactionMock: vi.fn(),
   };
 });
 
@@ -47,6 +49,7 @@ vi.mock("@stellar/stellar-sdk", async () => {
   class FakeServer {
     sendTransaction = hoisted.sendTransactionMock;
     getTransaction = hoisted.getTransactionMock;
+    simulateTransaction = hoisted.simulateTransactionMock;
     constructor(_url: string) {
       void _url;
     }
@@ -57,6 +60,7 @@ vi.mock("@stellar/stellar-sdk", async () => {
     rpc: {
       ...real.rpc,
       Server: FakeServer,
+      assembleTransaction: hoisted.assembleTransactionMock,
     },
     TransactionBuilder: {
       ...real.TransactionBuilder,
@@ -86,8 +90,10 @@ import {
 
 const sendTransactionMock = hoisted.sendTransactionMock;
 const getTransactionMock = hoisted.getTransactionMock;
+const simulateTransactionMock = hoisted.simulateTransactionMock;
 const fromXdrMock = hoisted.fromXdrMock;
 const scValToNativeMock = hoisted.scValToNativeMock;
+const assembleTransactionMock = hoisted.assembleTransactionMock;
 
 const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
 const ENVELOPE_XDR_B64 = "AAAAAg=="; // placeholder; mocked out anyway
@@ -121,8 +127,10 @@ function makeAdapter(signResult: unknown, throwInstead = false): MockedAdapter {
 beforeEach(() => {
   sendTransactionMock.mockReset();
   getTransactionMock.mockReset();
+  simulateTransactionMock.mockReset();
   fromXdrMock.mockReset();
   scValToNativeMock.mockReset();
+  assembleTransactionMock.mockReset();
   fromXdrMock.mockImplementation((..._args: unknown[]) => ({
     __kind: "fake-tx",
   }));
@@ -485,13 +493,81 @@ describe("installPolicy — error branches", () => {
 // =====================================================================
 
 describe("installPolicy — ozAuthPayloadEncoder hook", () => {
-  it("runs the encoder on the signed XDR before fromXDR / sendTransaction", async () => {
+  it("wipes op.auth[], re-simulates, runs encoder, then wallet signs (RFP #5)", async () => {
+    // 2026-05-18: this test pins the THREE-step OZ-SA refresh pipeline
+    // documented in install.ts. Earlier attempts (post-sign encoder; pre-
+    // sign encoder + re-simulate of encoded envelope) failed against
+    // testnet — the first with `tx_bad_auth`, the second with
+    // `Unauthorized function call for address GCM2…`. See
+    // `walkthroughs/phase7-testnet-install/CLOSURE_ATTEMPT_2026-05-18.md`
+    // for the literal diagnostic events that drove this final design.
+    const real =
+      await vi.importActual<typeof import("@stellar/stellar-sdk")>(
+        "@stellar/stellar-sdk",
+      );
+    // Build a minimal real Soroban v1 envelope so `clearOpAuthEntries`'
+    // XDR-decode path runs over real bytes (the wipe-and-resimulate
+    // pipeline parses the envelope before passing to the encoder).
+    const sourceKp = real.Keypair.random();
+    const account = new real.Account(sourceKp.publicKey(), "1");
+    const realEnvelope = new real.TransactionBuilder(account, {
+      fee: "100",
+      networkPassphrase: TESTNET_PASSPHRASE,
+    })
+      .addOperation(
+        real.Operation.invokeContractFunction({
+          contract:
+            "CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A",
+          function: "noop",
+          args: [],
+        }),
+      )
+      .setTimeout(0)
+      .build();
+    const realEnvelopeXdr = realEnvelope.toXDR();
+
     const adapter = makeAdapter({
       signedTxXdr: SIGNED_TX_XDR_B64,
       signerAddress: G_SIGNER,
     });
-    const REWRITTEN = "AAAAAg==REWRITTEN";
-    const encoder = vi.fn().mockResolvedValue(REWRITTEN);
+    const ENCODED_OUTPUT = "AAAAAg==ENCODED_OUTPUT";
+    const encoder = vi.fn().mockResolvedValue(ENCODED_OUTPUT);
+
+    const assembledTx = Object.create(
+      real.Transaction.prototype,
+    ) as InstanceType<typeof real.Transaction>;
+    let assembledXdrCaptured = "";
+    (assembledTx as unknown as { toXDR: () => string }).toXDR = () => {
+      assembledXdrCaptured = "AAAAAg==ASSEMBLED_PLACEHOLDER";
+      return assembledXdrCaptured;
+    };
+    fromXdrMock.mockImplementation((_xdrIn: string) => {
+      // The install path calls fromXDR twice: once on the wiped
+      // envelope (must be a real Transaction so `instanceof` check
+      // passes) and once on the wallet's signed XDR (any opaque).
+      // We return a real-prototype object for both — the wallet-
+      // signed path uses sendTransaction which just forwards.
+      return Object.create(
+        real.Transaction.prototype,
+      ) as InstanceType<typeof real.Transaction>;
+    });
+    simulateTransactionMock.mockResolvedValue({
+      results: [{ auth: [], xdr: {} as never }],
+      transactionData: {} as never,
+      minResourceFee: "1000",
+    } as unknown as Awaited<
+      ReturnType<sorobanRpc.Server["simulateTransaction"]>
+    >);
+    const builderMock = {
+      setTimeout: function () {
+        return this;
+      },
+      build: () => assembledTx,
+    };
+    assembleTransactionMock.mockReturnValue(
+      builderMock as unknown as ReturnType<typeof assembleTransactionMock>,
+    );
+
     sendTransactionMock.mockResolvedValue({
       status: "PENDING",
       hash: TX_HASH,
@@ -517,7 +593,7 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
 
     await installPolicy({
       adapter,
-      envelopeXdrBase64: ENVELOPE_XDR_B64,
+      envelopeXdrBase64: realEnvelopeXdr,
       rpcUrl: "https://soroban-testnet.stellar.org",
       network: "testnet",
       networkPassphrase: TESTNET_PASSPHRASE,
@@ -526,15 +602,70 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
       ozAuthPayloadEncoder: encoder,
     });
 
-    // The encoder must run on the wallet's signed XDR.
+    // Pipeline ordering:
+    //   1. `clearOpAuthEntries` produces a wiped envelope.
+    //   2. `simulateTransaction` is called once on the wiped tx.
+    //   3. `assembleTransaction` is called once to bake sim results.
+    //   4. The encoder runs on the ASSEMBLED envelope XDR.
+    //   5. The wallet adapter signs the encoder's output.
+    expect(simulateTransactionMock).toHaveBeenCalledTimes(1);
+    expect(assembleTransactionMock).toHaveBeenCalledTimes(1);
     expect(encoder).toHaveBeenCalledTimes(1);
-    expect(encoder).toHaveBeenCalledWith(SIGNED_TX_XDR_B64);
-    // The encoder's output must feed `TransactionBuilder.fromXDR`, NOT
-    // the wallet's signed XDR.
-    expect(fromXdrMock).toHaveBeenCalledWith(REWRITTEN, TESTNET_PASSPHRASE);
+    expect(encoder).toHaveBeenCalledWith(assembledXdrCaptured);
+    expect(adapter.signTransaction).toHaveBeenCalledWith(ENCODED_OUTPUT, {
+      networkPassphrase: TESTNET_PASSPHRASE,
+    });
   });
 
   it("maps encoder failure to E_INSTALL_SUBMIT_FAILED", async () => {
+    const real =
+      await vi.importActual<typeof import("@stellar/stellar-sdk")>(
+        "@stellar/stellar-sdk",
+      );
+    const sourceKp = real.Keypair.random();
+    const account = new real.Account(sourceKp.publicKey(), "1");
+    const realEnvelopeXdr = new real.TransactionBuilder(account, {
+      fee: "100",
+      networkPassphrase: TESTNET_PASSPHRASE,
+    })
+      .addOperation(
+        real.Operation.invokeContractFunction({
+          contract:
+            "CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A",
+          function: "noop",
+          args: [],
+        }),
+      )
+      .setTimeout(0)
+      .build()
+      .toXDR();
+    // The wipe + re-simulate path runs BEFORE the encoder, so we need
+    // working mocks for simulateTransaction + assembleTransaction even
+    // though we expect the encoder itself to throw.
+    fromXdrMock.mockImplementation(() =>
+      Object.create(
+        real.Transaction.prototype,
+      ) as InstanceType<typeof real.Transaction>,
+    );
+    simulateTransactionMock.mockResolvedValue({
+      results: [{ auth: [], xdr: {} as never }],
+      transactionData: {} as never,
+      minResourceFee: "1000",
+    } as unknown as Awaited<
+      ReturnType<sorobanRpc.Server["simulateTransaction"]>
+    >);
+    const assembledTx = Object.create(
+      real.Transaction.prototype,
+    ) as InstanceType<typeof real.Transaction>;
+    (assembledTx as unknown as { toXDR: () => string }).toXDR = () =>
+      "AAAAAg==ASSEMBLED";
+    assembleTransactionMock.mockReturnValue({
+      setTimeout: function () {
+        return this;
+      },
+      build: () => assembledTx,
+    } as unknown as ReturnType<typeof assembleTransactionMock>);
+
     const adapter = makeAdapter({
       signedTxXdr: SIGNED_TX_XDR_B64,
       signerAddress: G_SIGNER,
@@ -543,7 +674,7 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
     await expect(
       installPolicy({
         adapter,
-        envelopeXdrBase64: ENVELOPE_XDR_B64,
+        envelopeXdrBase64: realEnvelopeXdr,
         rpcUrl: "https://soroban-testnet.stellar.org",
         network: "testnet",
         networkPassphrase: TESTNET_PASSPHRASE,

@@ -346,12 +346,9 @@ export function makeOzSmartAccountAuthEncoder(args: {
   contextRuleIds: number[];
   /** Network passphrase the envelope was signed against. */
   networkPassphrase: string;
-}): (signedEnvelopeXdrBase64: string) => Promise<string> {
-  return async (signedEnvelopeXdrBase64: string): Promise<string> => {
-    const env = xdr.TransactionEnvelope.fromXDR(
-      signedEnvelopeXdrBase64,
-      "base64",
-    );
+}): (envelopeXdrBase64: string) => Promise<string> {
+  return async (envelopeXdrBase64: string): Promise<string> => {
+    const env = xdr.TransactionEnvelope.fromXDR(envelopeXdrBase64, "base64");
     // Only Soroban v1 envelopes carry InvokeHostFunctionOp + auth.
     if (env.switch() !== xdr.EnvelopeType.envelopeTypeTx()) {
       throw new Error(
@@ -361,6 +358,38 @@ export function makeOzSmartAccountAuthEncoder(args: {
     const v1 = env.v1();
     const tx = v1.tx();
     const ops = tx.operations();
+    // Append ContextRuleData(<id>) read_only footprint entries for each
+    // rule used to authorise — Soroban's recording-mode simulator
+    // doesn't discover these because it shims out `__check_auth`'s
+    // storage reads. Without these entries the enforce-mode host trap
+    // would fire with `outside the footprint` on `has_contract_data(
+    // ContextRuleData(<id>))`. See
+    // walkthroughs/phase7-testnet-install/CLOSURE_ATTEMPT_2026-05-18.md
+    // for the live testnet repro.
+    appendContextRuleDataToFootprint(tx, args.smartAccount, args.contextRuleIds);
+    // Also append the Account ledger entries for each Delegated signer.
+    // The host's enforce-mode `account_authentication` reads the account
+    // entry to fetch the ED25519 public key for signature verification;
+    // recording mode shims that out so the footprint is missing them.
+    const delegatedGs: string[] = [];
+    for (const s of args.signers) {
+      if (s.signer.kind === "delegated") delegatedGs.push(s.signer.address);
+    }
+    appendAccountEntriesToFootprint(tx, delegatedGs);
+    // For each nested Account-credentials auth entry, the host also
+    // reads a `LedgerKeyContractData(<G>, LedgerKeyNonce(<nonce>),
+    // temporary)` to consume the nonce. We compute the per-G nonce the
+    // same way `makeOzSmartAccountAuthEncoder` does (sa_nonce + index
+    // offset) so the footprint key matches the actual host read.
+    const saNoncesByIndex = collectSaNonces(tx, args.smartAccount);
+    appendNonceEntriesToFootprint(tx, delegatedGs, saNoncesByIndex);
+    // Bump the `readBytes` budget + instruction count + fee to cover
+    // the entries we just added.
+    const addedEntries =
+      args.contextRuleIds.length +
+      delegatedGs.length +
+      delegatedGs.length * saNoncesByIndex.length;
+    bumpReadBytesBudget(tx, addedEntries * 1024);
     let rewroteAny = false;
     for (const op of ops) {
       const body = op.body();
@@ -370,6 +399,16 @@ export function makeOzSmartAccountAuthEncoder(args: {
       const targetAddr = new Address(args.smartAccount).toScAddress();
       const targetXdr = targetAddr.toXDR();
       const newAuths: xdr.SorobanAuthorizationEntry[] = [];
+      // Track the nested Delegated-signer entries we need to APPEND for
+      // each rewritten SA entry — `__check_auth` calls
+      // `addr.require_auth_for_args((auth_digest,))` for each
+      // `Signer::Delegated(addr)` entry it observes, and the host
+      // requires a matching `SorobanAuthorizationEntry` (with Account
+      // credentials + standard ed25519 signature) at the SAME op.auth[]
+      // level for that nested call to succeed. See
+      // `walkthroughs/phase7-testnet-install/CLOSURE_ATTEMPT_2026-05-18.md`
+      // for the live testnet repro that drove this fix.
+      const nestedEntries: xdr.SorobanAuthorizationEntry[] = [];
       for (const a of auths) {
         const c = a.credentials();
         if (c.switch().name !== "sorobanCredentialsAddress") {
@@ -377,12 +416,28 @@ export function makeOzSmartAccountAuthEncoder(args: {
           continue;
         }
         const addrCreds = c.address();
-        if (
-          Buffer.compare(addrCreds.address().toXDR(), targetXdr) !== 0
-        ) {
+        if (Buffer.compare(addrCreds.address().toXDR(), targetXdr) !== 0) {
           newAuths.push(a);
           continue;
         }
+        // Compute the auth digest the SA's `__check_auth` uses (signature
+        // payload XOR'd with context_rule_ids per OZ PR-#655 — see
+        // computeAuthDigest doc). Both the SA AuthPayload signature AND
+        // the nested Account-auth `__check_auth(auth_digest)` arg need
+        // this value.
+        const saNonce = addrCreds.nonce().toBigInt();
+        const saExp = addrCreds.signatureExpirationLedger();
+        const signaturePayload = computeSignaturePayload({
+          networkPassphrase: args.networkPassphrase,
+          nonce: saNonce,
+          signatureExpirationLedger: saExp,
+          invocation: a.rootInvocation(),
+        });
+        const authDigest = computeAuthDigest(
+          signaturePayload,
+          args.contextRuleIds,
+        );
+
         // Match — rewrite.
         const replaced = await buildOzAuthEntry({
           rootInvocation: a.rootInvocation(),
@@ -390,22 +445,152 @@ export function makeOzSmartAccountAuthEncoder(args: {
           signers: args.signers,
           contextRuleIds: args.contextRuleIds,
           networkPassphrase: args.networkPassphrase,
-          nonce: addrCreds.nonce().toBigInt(),
-          signatureExpirationLedger: addrCreds.signatureExpirationLedger(),
+          nonce: saNonce,
+          signatureExpirationLedger: saExp,
         });
         newAuths.push(replaced);
+        // For every Delegated(G) signer with a Keypair on hand, emit
+        // the nested entry that satisfies the `G.require_auth_for_args(
+        // auth_digest)` call inside `__check_auth`. Each nested entry
+        // uses a DERIVED nonce (sa_nonce + per-signer offset) so two
+        // different signers don't collide on the same (G, nonce) pair
+        // when the SA has multiple Delegated signers.
+        for (let i = 0; i < args.signers.length; i++) {
+          const entry = args.signers[i]!;
+          if (entry.signer.kind !== "delegated") continue;
+          const gNonce = saNonce + BigInt(i + 1);
+          const kp = entry.keypair;
+          if (!kp) {
+            throw new Error(
+              `makeOzSmartAccountAuthEncoder: signer ${JSON.stringify(entry.signer)} ` +
+                `needs a Keypair so the nested Account auth entry can be signed`,
+            );
+          }
+          const gEntry = buildDelegatedAccountAuthEntry({
+            account: entry.signer.address,
+            keypair: kp,
+            rootInvocation: a.rootInvocation(),
+            smartAccount: args.smartAccount,
+            authDigest,
+            nonce: gNonce,
+            signatureExpirationLedger: saExp,
+            networkPassphrase: args.networkPassphrase,
+          });
+          nestedEntries.push(gEntry);
+        }
         rewroteAny = true;
       }
+      // Append all nested entries AFTER the rewritten ones — order
+      // doesn't matter for the host, but keeping SA entries first
+      // matches what the simulator's record mode would produce.
+      for (const ne of nestedEntries) newAuths.push(ne);
       ihf.auth(newAuths);
     }
     if (!rewroteAny) {
       throw new Error(
         `makeOzSmartAccountAuthEncoder: no SorobanCredentials::Address ` +
-          `entry targeted smartAccount=${args.smartAccount} in the signed envelope`,
+          `entry targeted smartAccount=${args.smartAccount} in the envelope`,
       );
     }
     return env.toXDR("base64");
   };
+}
+
+/**
+ * Build a `SorobanAuthorizationEntry` for a standalone Account-address
+ * `require_auth_for_args(args)` call. Used to satisfy the nested
+ * `G.require_auth_for_args((auth_digest,))` invocation triggered by the
+ * OZ SA's `__check_auth` for each `Signer::Delegated(G)`.
+ *
+ * Conforms to the standard Stellar-CLI/SDK Account-auth shape:
+ *   credentials.signature = ScVal::Vec([ ScVal::Map([
+ *     { Symbol("public_key"), Bytes(pk) },
+ *     { Symbol("signature"), Bytes(ed25519_sig) },
+ *   ]) ])
+ * where the signed payload is `sha256(HashIdPreimageSorobanAuthorization.toXDR())`.
+ *
+ * The auth tree shape (derived from soroban-env-host-25.0.1
+ * `auth.rs::to_authorized_function`):
+ *
+ *   rootInvocation:
+ *     function = ContractFn(SA, "add_context_rule", [..outer args..])
+ *     sub_invocations = [
+ *       {
+ *         function = ContractFn(SA, "__check_auth", [auth_digest]),
+ *         sub_invocations = []
+ *       }
+ *     ]
+ *
+ * The host's auth-matching algorithm (`maybe_extend_invocation_match`)
+ * matches the current frame's `to_authorized_function(args)` result
+ * — which for a contract calling `address.require_auth_for_args(args)`
+ * is `ContractFn { contract_address: <current_contract>, function_name:
+ * <current_fn>, args }`. For the OZ SA, the current frame when the
+ * nested call fires is `__check_auth`, hence the sub_invocation shape
+ * above. The closure-attempt log on 2026-05-18 pinned this discovery.
+ */
+function buildDelegatedAccountAuthEntry(params: {
+  account: string;
+  keypair: Keypair;
+  rootInvocation: xdr.SorobanAuthorizedInvocation;
+  smartAccount: string;
+  authDigest: Uint8Array;
+  nonce: bigint;
+  signatureExpirationLedger: number;
+  networkPassphrase: string;
+}): xdr.SorobanAuthorizationEntry {
+  // The host's auth-tree matcher (`maybe_extend_invocation_match` in
+  // `soroban-env-host-25.0.1/src/auth.rs:1663`) only checks the entry's
+  // ROOT invocation directly: `root_authorized_invocation.function ==
+  // function` where `function` is built from the CURRENT call frame's
+  // `to_authorized_function(args)`. The current frame when
+  // `addr.require_auth_for_args((auth_digest,))` is invoked inside the
+  // SA's `__check_auth` is `SA::__check_auth` itself. Hence the entry's
+  // rootInvocation MUST be `ContractFn(SA, "__check_auth",
+  // [auth_digest])` — NOT a wrapping of the outer add_context_rule
+  // invocation. (The closure-attempt log on 2026-05-18 pinned this
+  // requirement.)
+  const nestedRoot = new xdr.SorobanAuthorizedInvocation({
+    function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+      new xdr.InvokeContractArgs({
+        contractAddress: new Address(params.smartAccount).toScAddress(),
+        functionName: "__check_auth",
+        args: [xdr.ScVal.scvBytes(toBuf(params.authDigest))],
+      }),
+    ),
+    subInvocations: [],
+  });
+
+  const signaturePayload = computeSignaturePayload({
+    networkPassphrase: params.networkPassphrase,
+    nonce: params.nonce,
+    signatureExpirationLedger: params.signatureExpirationLedger,
+    invocation: nestedRoot,
+  });
+  const sig = params.keypair.sign(signaturePayload);
+  const pk = params.keypair.rawPublicKey();
+  const sigScVal = xdr.ScVal.scvVec([
+    xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("public_key"),
+        val: xdr.ScVal.scvBytes(toBuf(pk)),
+      }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("signature"),
+        val: xdr.ScVal.scvBytes(toBuf(sig)),
+      }),
+    ]),
+  ]);
+  const addrCreds = new xdr.SorobanAddressCredentials({
+    address: new Address(params.account).toScAddress(),
+    nonce: new xdr.Int64(params.nonce),
+    signatureExpirationLedger: params.signatureExpirationLedger,
+    signature: sigScVal,
+  });
+  return new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(addrCreds),
+    rootInvocation: nestedRoot,
+  });
 }
 
 /**
@@ -485,4 +670,201 @@ export async function buildOzAuthEntry(
     credentials,
     rootInvocation: params.rootInvocation,
   });
+}
+
+/**
+ * Bump the `transactionData.resources.readBytes` budget by `addBytes`.
+ * Required after appending footprint entries: the budget is enforced
+ * per-operation by Soroban, so adding read entries without bumping
+ * the budget triggers `budget_exceeded` traps.
+ */
+function bumpReadBytesBudget(tx: xdr.Transaction, addBytes: number): void {
+  const ext = tx.ext();
+  if (Number(ext.switch()) !== 1) return;
+  const sorobanData = ext.sorobanData();
+  const resources = sorobanData.resources();
+  // Bump readBytes for the extra footprint entries.
+  const currentRead = resources.readBytes();
+  resources.readBytes(currentRead + addBytes);
+  // Bump writeBytes too — the host's enforce-mode auth path may need
+  // to write a fresh TTL entry for the consumed nonce, plus the
+  // simulator's recording walker under-counts the write footprint for
+  // the SA's storage map updates that happen after auth succeeds.
+  // 2 KiB headroom is gross but well under the per-op write-bytes
+  // budget cap (130 KiB).
+  const currentWrite = resources.writeBytes();
+  resources.writeBytes(currentWrite + 2048);
+  // Bump instructions to account for the runtime cost of the auth
+  // path that the simulator's recording shim under-counted. The shim
+  // skipped __check_auth's body, so the enforce-mode pass needs the
+  // headroom — 5 million instructions is generous enough to cover an
+  // ED25519 signature verification per Delegated signer plus the
+  // contract data reads, and well under the per-op cap (100M).
+  const currentInstr = resources.instructions();
+  resources.instructions(currentInstr + 5_000_000);
+  // The resource_fee covers cpu/bytes/storage — bump it generously.
+  // 200,000 stroops (~$0.002 USD per submission) is plenty for the
+  // extra ED25519 verifies + a handful of contract-data reads.
+  const feeBumpStroops = 200_000;
+  const currentFee = sorobanData.resourceFee().toBigInt();
+  sorobanData.resourceFee(
+    new xdr.Int64(currentFee + BigInt(feeBumpStroops)),
+  );
+  // Also bump the tx envelope's `fee` (= resource_fee + inclusion_fee)
+  // so the outer fee check passes.
+  const txFee = tx.fee();
+  tx.fee(txFee + feeBumpStroops);
+}
+
+/**
+ * Walk the transaction's auth entries and collect every nonce assigned
+ * to an Address-credentials entry whose target is `smartAccount`. Used
+ * downstream to compute the per-Delegated G nonces (sa_nonce + i +
+ * 1) that the encoder uses for nested entries.
+ */
+function collectSaNonces(
+  tx: xdr.Transaction,
+  smartAccount: string,
+): bigint[] {
+  const saScAddr = new Address(smartAccount).toScAddress().toXDR();
+  const nonces: bigint[] = [];
+  for (const op of tx.operations()) {
+    const body = op.body();
+    if (body.switch() !== xdr.OperationType.invokeHostFunction()) continue;
+    for (const a of body.invokeHostFunctionOp().auth()) {
+      const c = a.credentials();
+      if (c.switch().name !== "sorobanCredentialsAddress") continue;
+      const addrCreds = c.address();
+      if (Buffer.compare(addrCreds.address().toXDR(), saScAddr) === 0) {
+        nonces.push(addrCreds.nonce().toBigInt());
+      }
+    }
+  }
+  return nonces;
+}
+
+/**
+ * Append `LedgerKeyContractData(<g>, LedgerKeyNonce(<derived_nonce>),
+ * temporary)` entries to the transaction's `read_write` footprint —
+ * the host consumes the nested Account-credentials nonces as part of
+ * the auth-verification path. The derived nonces follow the encoder's
+ * scheme: `sa_nonce + i + 1` for the i-th Delegated signer of each SA
+ * auth entry.
+ */
+function appendNonceEntriesToFootprint(
+  tx: xdr.Transaction,
+  accounts: string[],
+  saNonces: bigint[],
+): void {
+  const ext = tx.ext();
+  if (Number(ext.switch()) !== 1) return;
+  const sorobanData = ext.sorobanData();
+  const resources = sorobanData.resources();
+  const footprint = resources.footprint();
+  const readWrite = footprint.readWrite();
+  for (let i = 0; i < accounts.length; i++) {
+    const g = accounts[i]!;
+    const gScAddr = new Address(g).toScAddress();
+    for (const saNonce of saNonces) {
+      const gNonce = saNonce + BigInt(i + 1);
+      const lk = xdr.LedgerKey.contractData(
+        new xdr.LedgerKeyContractData({
+          contract: gScAddr,
+          key: xdr.ScVal.scvLedgerKeyNonce(
+            new xdr.ScNonceKey({ nonce: new xdr.Int64(gNonce) }),
+          ),
+          durability: xdr.ContractDataDurability.temporary(),
+        }),
+      );
+      const lkXdr = lk.toXDR();
+      const already = readWrite.some(
+        (existing) => Buffer.compare(existing.toXDR(), lkXdr) === 0,
+      );
+      if (!already) readWrite.push(lk);
+    }
+  }
+  footprint.readWrite(readWrite);
+}
+
+/**
+ * Append `LedgerKeyAccount(<g_strkey>)` entries to the transaction's
+ * `read_only` footprint. Required because the host's enforce-mode
+ * account-auth path reads the Account ledger entry to fetch the
+ * ED25519 public key for verification, and recording mode shims that
+ * read out — so the footprint omits it.
+ */
+function appendAccountEntriesToFootprint(
+  tx: xdr.Transaction,
+  accounts: string[],
+): void {
+  const ext = tx.ext();
+  if (Number(ext.switch()) !== 1) return;
+  const sorobanData = ext.sorobanData();
+  const resources = sorobanData.resources();
+  const footprint = resources.footprint();
+  const readOnly = footprint.readOnly();
+  for (const g of accounts) {
+    const pk = new Address(g);
+    const scAddr = pk.toScAddress();
+    if (scAddr.switch().name !== "scAddressTypeAccount") continue;
+    const accountId = scAddr.accountId();
+    const lk = xdr.LedgerKey.account(
+      new xdr.LedgerKeyAccount({ accountId }),
+    );
+    const lkXdr = lk.toXDR();
+    const already = readOnly.some(
+      (existing) => Buffer.compare(existing.toXDR(), lkXdr) === 0,
+    );
+    if (!already) readOnly.push(lk);
+  }
+  footprint.readOnly(readOnly);
+}
+
+/**
+ * Append `ContractData(<smartAccount>, ScVal::Vec([Symbol("ContextRuleData"), U32(id)]), persistent)`
+ * entries to the transaction's `read_only` footprint for every
+ * `contextRuleId` supplied. Required because Soroban's recording-mode
+ * simulator shims out `__check_auth`'s contract-data reads — the
+ * actual enforce-mode host trap fires with `outside the footprint` on
+ * `has_contract_data(ContextRuleData(<id>))` if these are missing.
+ *
+ * No-op when the transaction has no SorobanData ext (e.g., a classic tx).
+ * Idempotent: skips entries already present in `read_only`.
+ */
+function appendContextRuleDataToFootprint(
+  tx: xdr.Transaction,
+  smartAccount: string,
+  contextRuleIds: number[],
+): void {
+  const ext = tx.ext();
+  // `TransactionExt` is an XDR union; switch 0 = V0 (no Soroban data),
+  // 1 = V1 (carries `SorobanTransactionData`).
+  if (Number(ext.switch()) !== 1) {
+    return; // Classic tx (no Soroban resources) — nothing to do.
+  }
+  const sorobanData = ext.sorobanData();
+  const resources = sorobanData.resources();
+  const footprint = resources.footprint();
+  const readOnly = footprint.readOnly();
+  const saAddr = new Address(smartAccount).toScAddress();
+  for (const id of contextRuleIds) {
+    const key = new xdr.LedgerKeyContractData({
+      contract: saAddr,
+      key: xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("ContextRuleData"),
+        xdr.ScVal.scvU32(id),
+      ]),
+      durability: xdr.ContractDataDurability.persistent(),
+    });
+    const lk = xdr.LedgerKey.contractData(key);
+    const lkXdr = lk.toXDR();
+    // Dedup: skip if an entry with the same XDR-encoded key is present.
+    const already = readOnly.some(
+      (existing) => Buffer.compare(existing.toXDR(), lkXdr) === 0,
+    );
+    if (!already) {
+      readOnly.push(lk);
+    }
+  }
+  footprint.readOnly(readOnly);
 }
