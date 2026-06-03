@@ -158,7 +158,7 @@ npm token create --read-only=false --cidr=0.0.0.0/0 --otp=<2fa>
 ```
 
 If unset, the `publish-npm` job emits a warning and skips. **Before
-running, replace the `<org-placeholder>` segments in
+running, replace the `oz-policy-builder` segments in
 `wallet-adapter/package.json` with the published org name** — see the
 file's leading `//placeholder` comment.
 

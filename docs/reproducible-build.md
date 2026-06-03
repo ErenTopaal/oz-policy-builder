@@ -62,7 +62,7 @@ install via the upstream tarball with the SHA verification step from
 `ci/Dockerfile`.
 
 ```bash
-git clone https://github.com/<org-placeholder>/oz-policy-builder
+git clone https://github.com/oz-policy-builder/oz-policy-builder
 cd oz-policy-builder
 ./scripts/reproducible-build.sh local-$(date +%Y-%m-%d)
 ```
@@ -81,7 +81,7 @@ Use this when reviewing a release or filing a "didn't reproduce" report,
 since this is the configuration the published manifest was generated in.
 
 ```bash
-git clone https://github.com/<org-placeholder>/oz-policy-builder
+git clone https://github.com/oz-policy-builder/oz-policy-builder
 cd oz-policy-builder
 
 docker build -t oz-policy-builder/reproducible:local -f ci/Dockerfile ci/

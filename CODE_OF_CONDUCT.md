@@ -22,8 +22,9 @@ any related community space — you agree to abide by that document.
 
 Unacceptable behaviour should be reported to the project maintainers at:
 
-> **`conduct@<placeholder.example>`** — *placeholder address; the maintainers
-> must replace this with a real, monitored mailbox before public launch.*
+> **`conduct@example.com`** — **DUMMY** address (`example.com` is RFC-2606
+> reserved). TODO(pre-v1.0.0): the maintainers must replace this with a
+> real, monitored mailbox before public launch.
 
 All reports are reviewed and investigated promptly and fairly. Reporter
 identity is kept confidential to the extent permitted by applicable law.

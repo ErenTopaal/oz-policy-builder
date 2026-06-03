@@ -100,5 +100,5 @@ artifacts; nothing in this snapshot is API-stable.
 
 <!-- Release-tag link template. The placeholder org MUST be replaced before
      the first published release. -->
-[Unreleased]: https://github.com/<org-placeholder>/oz-policy-builder/compare/v0.0.0...HEAD
-[0.0.0]: https://github.com/<org-placeholder>/oz-policy-builder/releases/tag/v0.0.0
+[Unreleased]: https://github.com/oz-policy-builder/oz-policy-builder/compare/v0.0.0...HEAD
+[0.0.0]: https://github.com/oz-policy-builder/oz-policy-builder/releases/tag/v0.0.0

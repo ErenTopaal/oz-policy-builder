@@ -15,11 +15,13 @@ date we acknowledge your report. If a fix lands sooner and is shipped to
 users we will publish jointly; if more time is needed for a coordinated fix
 we will request an extension in writing.
 
-- **Email:** `security@<placeholder.example>`
-  &nbsp; *(`<placeholder>` — project will set its real address before
-  `v1.0.0`. Do not rely on this address; if you are reading this in a
-  pre-release commit, open a private GitHub Security Advisory on the
-  repository instead.)*
+- **Email:** `security@example.com` &nbsp; **(DUMMY — `example.com` is
+  an RFC-2606-reserved documentation TLD; this address does not receive
+  mail.)**
+  &nbsp; *TODO(pre-v1.0.0): replace with a real, monitored mailbox before
+  the first tagged release. Until then, if you are reading this in a
+  pre-release commit, please open a **private GitHub Security Advisory**
+  on the repository instead of emailing.*
 - **GPG fingerprint:** `<placeholder — project signing key not yet
   generated; will be published with the first tagged release and mirrored
   here>`.
