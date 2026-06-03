@@ -150,13 +150,17 @@ See walkthrough README "Install outcome".
 
 ---
 
-## Expected outcome on testnet
+## Outcome on testnet
 
-The build path works end-to-end through `simulateTransaction`. On-chain
-submission unblocks via the wallet-adapter `AuthPayload` encoder
-([`wallet-adapter/src/oz_smart_account_auth.ts`](../../wallet-adapter/src/oz_smart_account_auth.ts))
-and the `installPolicy` integration hook (commit `bd60009`) — the same
-unblock as walkthrough 01.
+The build path works end-to-end through `simulateTransaction`. The
+on-chain `add_context_rule` happy path is closed for the function-allowlist
+template family on testnet (2026-05-18, see walkthrough 01's frozen
+evidence at
+[`walkthroughs/phase7-testnet-install/install-result.json`](../../walkthroughs/phase7-testnet-install/install-result.json));
+this walkthrough's envelope uses the same registry hit and the same
+wallet-adapter encoder
+([`wallet-adapter/src/oz_smart_account_auth.ts`](../../wallet-adapter/src/oz_smart_account_auth.ts),
+`installPolicy` hook in commit `bd60009`).
 
 The Phase-10 hosted endpoint and the mainnet canary that exercises a
 real bounded-swap policy are TBD — track in [Operations](../operations.md)

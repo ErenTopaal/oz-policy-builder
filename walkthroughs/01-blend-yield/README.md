@@ -160,10 +160,10 @@ resolved via the `oz-policy-installer` registry hit for the
 `function_allowlist` testnet deployment at
 `CDBE67MNNVIOAD5RSKO6IECOGIVK45L3NRP4PS2DMCI3GPDYOLY7CWAR`).
 
-**On-chain submission is BLOCKED by the same Phase 7 issue documented in
-`walkthroughs/phase7-testnet-install/BLOCKER.md`** — the SA's
-`__check_auth` trap on a `Void` `AuthPayload`. The envelope here is
-correct; landing it requires the AuthPayload-encoder helper that Stream B
-of Phase 8 is shipping in `wallet-adapter/`. No `expected-install-envelope-error.txt`
-exists because the *build* succeeded; the failure mode is described
-once, centrally, in the Phase 7 BLOCKER doc.
+**On-chain submission is verified end-to-end as of 2026-05-18.** The
+historical `__check_auth` trap (see
+`walkthroughs/phase7-testnet-install/BLOCKER.md`) is closed by the
+AuthPayload-encoder helper at `wallet-adapter/src/oz_smart_account_auth.ts`
+plus the `installPolicy` `ozAuthPayloadEncoder` hook (commit `bd60009`).
+The frozen testnet SUCCESS evidence lives at
+`walkthroughs/phase7-testnet-install/install-result.json`.

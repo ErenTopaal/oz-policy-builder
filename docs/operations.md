@@ -137,25 +137,30 @@ starts.
 
 ---
 
-## Phase 7 BLOCKER status (resolved)
+## Phase 7 BLOCKER status (resolved 2026-05-18)
 
-For historical context: Phase 7 Round 2 hit a `__check_auth` trap on
-`Void` `AuthPayload` signatures. The trap was documented in
-[`walkthroughs/phase7-testnet-install/BLOCKER.md`](../walkthroughs/phase7-testnet-install/BLOCKER.md)
-together with the remediation path.
+The `__check_auth` trap on `Void` `AuthPayload` signatures is closed.
+The full record → install → verify flow lands a SUCCESS transaction on
+testnet — frozen evidence in
+[`walkthroughs/phase7-testnet-install/install-result.json`](../walkthroughs/phase7-testnet-install/install-result.json)
+(tx `038583fa…ce90bb`, `context_rule_id=4`, `verifyInstall.matches=true`).
 
-**Status today:** the AuthPayload encoder
-([`wallet-adapter/src/oz_smart_account_auth.ts`](../wallet-adapter/src/oz_smart_account_auth.ts))
-implements the post-PR-#655 encoding + digest computation in TypeScript
-(Option A from the BLOCKER doc). The `installPolicy`
-`ozAuthPayloadEncoder` hook (commit `bd60009`) wires it into the
-sign-then-encode-then-submit flow, and the Phase 7 integration test
-demonstrates that the SA's `add_context_rule` submission lands on
-testnet.
+The fix has two pieces, both client-side from the MCP server's
+perspective:
+
+1. **Write path** — the AuthPayload encoder
+   ([`wallet-adapter/src/oz_smart_account_auth.ts`](../wallet-adapter/src/oz_smart_account_auth.ts))
+   computes the post-PR-#655 digest and injects the encoded payload via
+   the `installPolicy` `ozAuthPayloadEncoder` hook (commit `bd60009`).
+2. **Read path** — `verify_install` now performs a real on-chain
+   readback via `simulateTransaction(SA.get_context_rule(rule_id))` and
+   diffs the decoded `ContextRule` against the supplied `PolicySpec`
+   (commit `2606f84`, `crates/oz-policy-mcp/src/verify_chain.rs`).
 
 Operators do not need to do anything special — the encoder runs
-client-side in the wallet adapter, transparently. The MCP server itself
-plays no role in the encoding step.
+client-side in the wallet adapter, transparently. See
+[`walkthroughs/phase7-testnet-install/BLOCKER.md`](../walkthroughs/phase7-testnet-install/BLOCKER.md)
+for the historical diagnostic.
 
 ---
 

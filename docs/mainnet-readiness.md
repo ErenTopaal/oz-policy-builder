@@ -191,12 +191,13 @@ cd wallet-adapter
 INTEGRATION=1 pnpm test
 ```
 
-The Phase 7 integration test still pins the current `verify_install`
-behavior (which returns synthetic drift pending the on-chain readback
-swap-in described in
-[`walkthroughs/phase7-testnet-install/BLOCKER.md`](../walkthroughs/phase7-testnet-install/BLOCKER.md)).
-That is expected. Confirm the suite ends green; do **not** proceed
-otherwise.
+The Phase 7 integration test asserts the full record → install → verify
+flow lands a SUCCESS transaction on testnet with `verifyInstall.matches:
+true`. As of 2026-05-18 the on-chain readback path is wired (commit
+`2606f84`, `crates/oz-policy-mcp/src/verify_chain.rs`); the frozen
+SUCCESS evidence is at
+[`walkthroughs/phase7-testnet-install/install-result.json`](../walkthroughs/phase7-testnet-install/install-result.json).
+Confirm the suite ends green; do **not** proceed otherwise.
 
 ### Step 2 — Set GHA secrets
 
@@ -356,15 +357,14 @@ Assert `matches: true`. **If `matches: false`, do not proceed** — capture
 the drift items and treat as a P0 bug per
 [`SECURITY.md`](../SECURITY.md).
 
-> **Caveat (load-bearing):** the current MCP `verify_install` handler
-> returns synthetic drift pending the on-chain readback swap-in described
-> in [`walkthroughs/phase7-testnet-install/BLOCKER.md`](../walkthroughs/phase7-testnet-install/BLOCKER.md)
-> §"What the integration test does today". The mainnet canary is the
-> forcing function for that swap-in. If you reach this step before the
-> readback path is wired, the canary is **not** complete — the
-> code-level fix in Stream B (the `oz_smart_account_auth` encoder) is
-> only half of the story; the read side must also be wired before the
-> canary tx hash carries weight.
+> **Note:** both halves of the verify path are wired as of 2026-05-18 —
+> the write side (`oz_smart_account_auth` encoder, commit `bd60009`) and
+> the read side (real on-chain `simulateTransaction(SA.get_context_rule)`
+> readback in `crates/oz-policy-mcp/src/verify_chain.rs`, commit
+> `2606f84`). On testnet they land `matches: true` end-to-end (see
+> [`walkthroughs/phase7-testnet-install/install-result.json`](../walkthroughs/phase7-testnet-install/install-result.json)).
+> A mainnet `matches: false` therefore represents a real drift, not a
+> pending implementation gap.
 
 ### Step 9 — Freeze the evidence
 
@@ -555,10 +555,6 @@ the SA's runtime state, not the ledger history).
 
 - Network congestion / submission lag: wait for confirmation, do not
   re-submit.
-- `verify_install` returns `matches: false` because the on-chain
-  readback path is not yet wired (the known gap from
-  [`walkthroughs/phase7-testnet-install/BLOCKER.md`](../walkthroughs/phase7-testnet-install/BLOCKER.md)).
-  That is a verify-side bug, not an install-side bug.
 
 ---
 

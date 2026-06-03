@@ -1,6 +1,8 @@
 # Handoff — What You Need to Do
 
-The autonomous implementation phase is complete: 273 Rust tests + 80 wallet-adapter tests = **353 total passing**, all 4 phase-completion gates green, reproducible-build script re-derives all 3 walkthrough WASMs byte-equally. 139 commits on `phase-1-foundations`, tree clean.
+The autonomous implementation phase is complete: 285 Rust tests + 78 wallet-adapter tests = **363 total passing** (10 Rust `#[ignore]` gates + 2 wallet-adapter skips), all 4 phase-completion gates green, reproducible-build script re-derives all 3 pinned WASMs (walkthroughs 01 + 03 + the phase3 codegen fixture) byte-equally. 145 commits on `phase-1-foundations`, tree clean.
+
+The Phase 7 BLOCKER (RFP deliverable #5) closed 2026-05-18: the full record → install → verify flow lands a SUCCESS transaction on testnet end-to-end. See [`walkthroughs/phase7-testnet-install/install-result.json`](walkthroughs/phase7-testnet-install/install-result.json).
 
 Five items remain that genuinely require your input or action. They are ordered: each step unblocks the next.
 

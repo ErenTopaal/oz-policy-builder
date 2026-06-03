@@ -179,14 +179,14 @@ the deployed instance's compiled set is **a known open question**: tracked
 as Phase 9 work (per-spec WASM hash verification, or per-deployment
 constraint pinning).
 
-**On-chain submission is BLOCKED by the same Phase 7 issue documented in
-`walkthroughs/phase7-testnet-install/BLOCKER.md`** — the SA's
-`__check_auth` traps on a `Void` `AuthPayload`. The envelope here is
-correct shape-wise; landing it requires the AuthPayload-encoder helper
-that Stream B of Phase 8 is shipping in `wallet-adapter/`. No
-`expected-install-envelope-error.txt` exists because the *build*
-succeeded; the failure mode is described once, centrally, in the Phase 7
-BLOCKER doc.
+**On-chain submission is verified end-to-end as of 2026-05-18.** The
+historical `__check_auth` trap (see
+`walkthroughs/phase7-testnet-install/BLOCKER.md`) is closed by the
+AuthPayload-encoder helper at `wallet-adapter/src/oz_smart_account_auth.ts`
+plus the `installPolicy` `ozAuthPayloadEncoder` hook (commit `bd60009`).
+The frozen testnet SUCCESS evidence lives at
+`walkthroughs/phase7-testnet-install/install-result.json`. This
+walkthrough's envelope rides the same registry hit and encoder.
 
 ## Stability contract — append-only
 

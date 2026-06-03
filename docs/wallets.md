@@ -2,8 +2,12 @@
 
 The `@oz-policy-builder/wallet-adapter` TypeScript package implements
 SEP-43 for two signing surfaces and provides the **OZ smart-account
-`AuthPayload` encoder** that closes the Phase 7 BLOCKER documented in
-[`walkthroughs/phase7-testnet-install/BLOCKER.md`](../walkthroughs/phase7-testnet-install/BLOCKER.md).
+`AuthPayload` encoder** that closed the historical Phase 7 BLOCKER
+(resolved 2026-05-18 — see
+[`walkthroughs/phase7-testnet-install/install-result.json`](../walkthroughs/phase7-testnet-install/install-result.json)
+for the frozen testnet SUCCESS evidence;
+[`BLOCKER.md`](../walkthroughs/phase7-testnet-install/BLOCKER.md) for
+the diagnostic).
 
 Sections:
 
@@ -156,7 +160,8 @@ The encoder
 [`wallet-adapter/src/oz_smart_account_auth.ts`](../wallet-adapter/src/oz_smart_account_auth.ts)
 is the client-side post-processor that converts a Void-signature auth
 entry into a properly encoded `AuthPayload` ScVal plus computes the
-post-PR-#655 auth digest each signer must actually sign.
+post-PR-#655 auth digest each signer must actually sign. It is the
+fix that closed the historical BLOCKER above.
 
 The exported surface
 ([`wallet-adapter/src/oz_smart_account_auth.ts`](../wallet-adapter/src/oz_smart_account_auth.ts)):

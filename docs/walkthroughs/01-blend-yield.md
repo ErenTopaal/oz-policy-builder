@@ -116,18 +116,20 @@ captured in
 
 ---
 
-## Expected outcome on testnet
+## Outcome on testnet
 
-The build path is complete and verified end-to-end through testnet
-`simulateTransaction`. On-chain submission was historically blocked by the
-Phase 7 `__check_auth` trap on a `Void` `AuthPayload` signature
-([`walkthroughs/phase7-testnet-install/BLOCKER.md`](../../walkthroughs/phase7-testnet-install/BLOCKER.md)).
-
-The wallet-adapter `AuthPayload` encoder
+The build path is verified end-to-end through testnet
+`simulateTransaction`, and on-chain submission of an `add_context_rule`
+transaction lands a SUCCESS on testnet — the Phase 7 happy path is
+closed as of 2026-05-18 (see
+[`walkthroughs/phase7-testnet-install/install-result.json`](../../walkthroughs/phase7-testnet-install/install-result.json)
+for the frozen evidence, and
+[`BLOCKER.md`](../../walkthroughs/phase7-testnet-install/BLOCKER.md)
+for the historical diagnostic that drove the fix). The wallet-adapter
+`AuthPayload` encoder
 ([`wallet-adapter/src/oz_smart_account_auth.ts`](../../wallet-adapter/src/oz_smart_account_auth.ts))
-and the `installPolicy` integration hook (commit `bd60009`) close that
-gap. The happy-path branch is reachable; the signed envelope lands as a
-successful `add_context_rule` transaction on testnet.
+and the `installPolicy` integration hook (commit `bd60009`) are the
+load-bearing pieces of the unblock.
 
 A Phase-10 hosted endpoint and a recurring mainnet canary that exercises
 this exact walkthrough are TBD — tracked in [Operations](../operations.md).

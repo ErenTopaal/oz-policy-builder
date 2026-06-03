@@ -85,8 +85,8 @@ see [`docs/concepts.md`](docs/concepts.md) and the per-walkthrough docs.
 
 | Area                              | Status                                                                                                                            |
 |-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| Phases 1–9 binary completion      | Green. All 273 workspace tests + 80 wallet-adapter tests + 9 gates pass.                                                          |
-| Phase 7 testnet install BLOCKER   | **Resolved.** AuthPayload encoder ships in `wallet-adapter`; `installPolicy` integration hook landed in commit `bd60009`.        |
+| Phases 1–9 binary completion      | Green. All 285 workspace tests + 78 wallet-adapter tests + 9 gates pass.                                                          |
+| Phase 7 testnet install           | **Resolved 2026-05-18.** Full record → install → verify flow lands a SUCCESS tx on testnet (`038583fa…ce90bb`, ledger 2617998, `context_rule_id=4`, `verifyInstall.matches=true`). See [`walkthroughs/phase7-testnet-install/install-result.json`](walkthroughs/phase7-testnet-install/install-result.json). |
 | Phase 10 hosted MCP endpoint      | **TBD.** Stream B; see `infra/README.md` once it lands.                                                                            |
 | Phase 10 mainnet canary           | **TBD.** Stream D; see `docs/mainnet-readiness.md` once it lands.                                                                  |
 | Phase 10 release (`v1.0.0`)       | **TBD.** Stream C; tag + GitHub release + crates.io + npm publish.                                                                 |
