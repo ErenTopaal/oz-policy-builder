@@ -153,3 +153,43 @@ Every tx above is verifiable on the public testnet explorer:
 * Smart-account contract page: <https://stellar.expert/explorer/testnet/contract/CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A>
 * Policy contract page: <https://stellar.expert/explorer/testnet/contract/CDBE67MNNVIOAD5RSKO6IECOGIVK45L3NRP4PS2DMCI3GPDYOLY7CWAR>
 * SA owner G-key: <https://stellar.expert/explorer/testnet/account/GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ>
+
+---
+
+## Phase 7 closure (RFP deliverable #5, 2026-05-18)
+
+The BLOCKER documented above is now **resolved**. The full
+record → generate → simulate → install → use flow lands a SUCCESS
+transaction on testnet end-to-end. See
+[`install-result.json`](./install-result.json) for the frozen evidence;
+the executive summary is at the top of [`BLOCKER.md`](./BLOCKER.md).
+
+| Field                | Value                                                              |
+| -------------------- | ------------------------------------------------------------------ |
+| Install tx hash      | `038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb` |
+| Install status       | `SUCCESS`                                                          |
+| Install ledger       | `2617998`                                                          |
+| `context_rule_id`    | `4`                                                                |
+| `verifyInstall.matches` | `true`                                                          |
+| `verifyInstall.drift` | `[]`                                                              |
+
+Explorer: <https://stellar.expert/explorer/testnet/tx/038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb>
+
+### Reproducing closure (real testnet — requires `sa-owner-p7r2` seed)
+
+```bash
+# From the worktree root.
+cargo build -p oz-policy-mcp -p oz-policy-cli
+cd wallet-adapter
+export PHASE7_SA_OWNER_SECRET=$(stellar keys show sa-owner-p7r2 2>/dev/null)
+INTEGRATION=1 pnpm test phase7_integration
+```
+
+This drives the `prepare-install` CLI against live testnet RPC, signs
+the envelope via the OZ-SA AuthPayload encoder
+(`wallet-adapter/src/oz_smart_account_auth.ts`), submits, polls, then
+runs `verifyInstall` against the new context rule. The test does NOT
+re-use the `038583fa…` tx — it issues a **fresh** install each run so
+the closure assertion is reproducible. The frozen artefact is the
+*first* SUCCESS landed under the new pipeline (2026-05-18). Each
+subsequent run produces a new tx hash with a new `context_rule_id`.

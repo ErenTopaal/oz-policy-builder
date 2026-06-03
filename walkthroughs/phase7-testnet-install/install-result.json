@@ -1,0 +1,26 @@
+{
+  "schema": "oz-policy-builder/phase7-install-result/v1",
+  "captured_at": "2026-05-18",
+  "network": "testnet",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "rpc_url": "https://soroban-testnet.stellar.org",
+
+  "smart_account": "CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A",
+  "policy_function_allowlist": "CDBE67MNNVIOAD5RSKO6IECOGIVK45L3NRP4PS2DMCI3GPDYOLY7CWAR",
+
+  "install_tx_hash": "038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb",
+  "install_status": "SUCCESS",
+  "install_ledger": 2617998,
+  "context_rule_id": 4,
+
+  "verify_install_report": {
+    "matches": true,
+    "drift": []
+  },
+
+  "explorer_url": "https://stellar.expert/explorer/testnet/tx/038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb",
+
+  "_provenance": "Closed by RFP-deliverable-5 dispatch on 2026-05-18. The Phase 7 Round 2 BLOCKER (AuthPayload Void trap on __check_auth) was resolved by Phase 8 Stream B's makeOzSmartAccountAuthEncoder (wallet-adapter/src/oz_smart_account_auth.ts), which: (a) clears op.auth[] to force record-mode re-simulation, (b) injects a properly encoded AuthPayload ScVal into the SA's auth entry, (c) emits matching nested Account-credentials auth entries for each Signer::Delegated G so __check_auth's require_auth_for_args call resolves, (d) appends the missing read/write footprint entries (ContextRuleData, account ledger entries, nested-G nonce entries) that the recording-mode simulator under-counts, and (e) bumps readBytes/writeBytes/instructions/resourceFee budgets accordingly. The MCP server's verify_install handler (crates/oz-policy-mcp/src/verify_chain.rs) now performs a real on-chain readback via simulateTransaction(SA.get_context_rule(rule_id)) and field-for-field diffs the decoded ContextRule against the supplied PolicySpec.",
+
+  "_invariants": "APPEND-ONLY. The install_tx_hash + context_rule_id are immutable on-chain artifacts; do not rotate them. A future RFP-deliverable-5 re-validation should append a sibling install-result-vN.json next to this file rather than overwriting it."
+}

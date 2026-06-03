@@ -1,5 +1,41 @@
 # Phase 7 Round 2 — Honest BLOCKER report
 
+## RESOLVED 2026-05-18 — RFP deliverable #5 closed
+
+The AuthPayload `Void` trap documented below has been closed. The full
+record → generate → simulate → install → use flow now lands a SUCCESS
+transaction on Stellar testnet end-to-end.
+
+**Closure artifacts:**
+* `walkthroughs/phase7-testnet-install/install-result.json` — frozen
+  install evidence: tx hash `038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb`,
+  status `SUCCESS`, ledger `2617998`, `context_rule_id = 4`,
+  `verifyInstall: { matches: true, drift: [] }`.
+* `wallet-adapter/src/oz_smart_account_auth.ts` — `makeOzSmartAccountAuthEncoder`
+  (Phase 8 Stream B). Implements the OZ-SA-specific AuthPayload encoder
+  + nested `require_auth_for_args` entries + footprint refresh.
+* `wallet-adapter/src/install.ts` — wired the encoder into `installPolicy`
+  via the `ozAuthPayloadEncoder` hook (three-step refresh:
+  clear → re-simulate → encode).
+* `crates/oz-policy-mcp/src/verify_chain.rs` — real on-chain `ContextRule`
+  readback via `simulateTransaction(SA.get_context_rule(rule_id))` +
+  typed field-for-field drift comparator. Replaces the Phase-5 synthetic
+  placeholder.
+* `wallet-adapter/src/phase7_integration.test.ts` — integration test now
+  asserts SUCCESS (rather than the previous documented FAILED shape).
+  Verified with `INTEGRATION=1 pnpm test phase7_integration` (live
+  testnet, real ed25519 signing, real RPC round-trip; 11.6 s wall
+  clock).
+
+**Transaction on explorer:**
+https://stellar.expert/explorer/testnet/tx/038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb
+
+The remainder of this document describes the pre-closure state and the
+diagnostic that drove the fix. It is preserved verbatim for historical
+context — do NOT delete it.
+
+---
+
 Captured 2026-05-16 during Phase 7 Round 2 work.
 
 ## TL;DR
