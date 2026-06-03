@@ -66,6 +66,16 @@ sha2 = "=0.10.9"
 # encoding stays consistent.
 hex = "=0.4.3"
 
+# --- verify_install on-chain readback (RFP deliverable #5, 2026-05-18) ---
+# `verify_install` simulates `SA.get_context_rule(rule_id)` against a
+# Soroban RPC endpoint and decodes the returned `ContextRule` ScVal. The
+# implementation lives in `tools.rs` next to the handler; these three
+# crates carry the RPC client, the XDR types, and the StrKey ↔ raw bytes
+# converters respectively.
+stellar-rpc-client = { workspace = true }
+stellar-xdr = { workspace = true, features = ["curr", "std", "base64", "serde"] }
+stellar-strkey = "=0.0.15"
+
 # --- HTTP transport hosting + bearer-auth middleware (Stream C) ---
 # axum 0.8.9 hosts the rmcp `StreamableHttpService` under `nest_service("/mcp", ...)`
 # and exposes the unauthenticated `GET /healthz` probe used by k8s liveness

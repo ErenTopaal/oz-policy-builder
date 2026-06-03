@@ -27,6 +27,8 @@ pub mod store;
 // --- Stream A (owned) ------------------------------------------------------
 pub mod error_mapping;
 pub mod tools;
+// --- RFP deliverable #5 (2026-05-18) — on-chain readback for verify_install
+pub mod verify_chain;
 
 // --- Stream C (this stream) ------------------------------------------------
 pub mod auth;
