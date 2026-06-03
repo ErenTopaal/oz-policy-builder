@@ -632,6 +632,13 @@ pub async fn export_policy(
 // =========================================================================
 
 /// `verify_install` input.
+///
+/// **2026-05-18 (RFP deliverable #5):** the handler now performs a real
+/// on-chain readback via `simulateTransaction` of
+/// `SA.get_context_rule(rule_id)`. `expected_spec` may be supplied
+/// inline (preferred — used by the wallet-adapter integration test) or
+/// looked up by `expected_spec_id` against the in-memory store (legacy
+/// path retained for compositional pipelines).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct VerifyInstallInput {
@@ -644,11 +651,21 @@ pub struct VerifyInstallInput {
     pub network: NetworkKind,
     /// Optional RPC URL override.
     pub rpc_url: Option<String>,
-    /// Optional spec_id to compare against. When `None`, the handler
-    /// reports the on-chain rule shape but cannot decide drift (the
-    /// `matches` field is then `false` with a synthetic drift item
-    /// describing the missing-spec condition).
+    /// Funded source account (G-strkey) used as the simulator's `source`
+    /// when invoking `SA.get_context_rule(rule_id)`. The simulator only
+    /// needs a valid sequence number — no funds are spent. Defaults to
+    /// `smart_account` when omitted (the SA contract itself does not have
+    /// an account record, so callers SHOULD pass the SA owner's G-key on
+    /// testnet; mainnet callers pass any funded G-key).
+    pub source_account: Option<String>,
+    /// Optional spec_id to compare against. When supplied AND in store,
+    /// the stored spec drives the comparison.
     pub expected_spec_id: Option<String>,
+    /// Optional inline expected `PolicySpec`. Takes precedence over
+    /// `expected_spec_id` when both are present. When neither is set,
+    /// the handler reports `matches: true` with empty drift as soon as
+    /// the rule is confirmed to exist on-chain.
+    pub expected_spec: Option<PolicySpec>,
 }
 
 /// `verify_install` output.
@@ -676,31 +693,33 @@ pub struct DriftItem {
     pub actual: serde_json::Value,
 }
 
-/// `verify_install` handler.
+/// `verify_install` handler — **closed by RFP deliverable #5
+/// (2026-05-18).** Performs a real on-chain readback of the SA's
+/// `ContextRule` via `simulateTransaction(SA.get_context_rule(rule_id))`
+/// and compares the decoded fields against an expected `PolicySpec`.
 ///
-/// **v1 scope.** The on-chain `get_context_rule(rule_id)` RPC call lives
-/// in Phase 7's wallet-adapter integration (alongside the `verify_install`
-/// CLI command). Phase 5's MCP handler therefore implements the
-/// **comparison engine** (typed expected vs typed actual → `DriftItem`s)
-/// and returns a synthetic "rpc-readback-not-yet-wired" drift item when
-/// no spec is supplied for comparison. Once Phase 7 ships the
-/// `read_context_rule_from_chain` RPC helper, this handler swaps the
-/// placeholder for the real read. Tests pin the comparison engine
-/// (typed spec vs typed mock-actual) so the on-chain swap is a pure
-/// data-source change.
+/// Resolution order for the expected spec:
+///   1. `expected_spec` (inline, preferred).
+///   2. `expected_spec_id` (looked up in the in-memory store).
+///   3. Neither — handler returns `matches: true` with empty drift after
+///      confirming the rule exists on-chain.
 ///
 /// Errors:
-/// * `E_VERIFY_DRIFT` — surfaced only when an upstream caller wants the
-///   handler to FAIL on drift (today: never; v1 reports drift in the
-///   structured output). The error code is reserved.
+/// * [`oz_policy_core::Error::VerifyDrift`] → `E_VERIFY_DRIFT` — surfaced
+///   when the rule does not exist on-chain (`detail = "rule-not-found"`)
+///   or when the RPC readback fails for transport reasons. The handler
+///   does **not** return `E_VERIFY_DRIFT` for field-level drift; that
+///   surfaces structurally in `matches: false` + `drift: [...]`.
 /// * `ErrorData::invalid_params` — `expected_spec_id` provided but not
 ///   found in store.
 pub async fn verify_install(
     store: &McpStore,
     input: VerifyInstallInput,
 ) -> Result<VerifyInstallOutput, ErrorData> {
-    let expected_spec = match &input.expected_spec_id {
-        Some(id) => Some(store.get_spec(id).ok_or_else(|| {
+    // ----- 1. Resolve the expected spec (inline > store) -----------------
+    let expected_spec: Option<PolicySpec> = match (&input.expected_spec, &input.expected_spec_id) {
+        (Some(inline), _) => Some(inline.clone()),
+        (None, Some(id)) => Some(store.get_spec(id).ok_or_else(|| {
             ErrorData::invalid_params(
                 format!(
                     "verify_install: expected_spec_id {:?} not found in store",
@@ -709,33 +728,61 @@ pub async fn verify_install(
                 None,
             )
         })?),
-        None => None,
+        (None, None) => None,
     };
 
-    // Placeholder: until Phase 7 wires the on-chain `get_context_rule`
-    // read, we emit a single drift item naming the missing capability.
-    // The `expected` payload still carries the rich spec data so MCP
-    // clients can render a useful diff once the actual side is wired.
-    let drift = match (&expected_spec, &input.rpc_url) {
-        (Some(spec), _) => vec![DriftItem {
-            field: "on_chain_rule".to_string(),
-            expected: serde_json::to_value(spec).unwrap_or(serde_json::Value::Null),
-            actual: serde_json::json!({
-                "status": "rpc-readback-not-yet-wired",
-                "smart_account": input.smart_account,
-                "context_rule_id": input.context_rule_id,
-                "network_passphrase": input.network.passphrase(),
-            }),
-        }],
-        (None, _) => vec![DriftItem {
-            field: "expected_spec_id".to_string(),
-            expected: serde_json::Value::String("required".into()),
-            actual: serde_json::Value::Null,
-        }],
+    // ----- 2. Resolve effective RPC URL + source account -----------------
+    let rpc_url = input
+        .rpc_url
+        .as_deref()
+        .unwrap_or_else(|| input.network.default_rpc())
+        .to_string();
+    let passphrase = input.network.passphrase();
+    // Source-account default: when none is supplied, fall back to the
+    // smart account itself. The SA is a contract (not an account
+    // record), so `getAccount` will fail in that case and surface a
+    // typed error — callers SHOULD pass a real funded G-key. We accept
+    // the default here so the smoke tests that drive verify_install
+    // without a source still get a clear E_VERIFY_DRIFT diagnostic
+    // rather than an opaque 500.
+    let source = input
+        .source_account
+        .clone()
+        .unwrap_or_else(|| input.smart_account.clone());
+
+    // ----- 3. Live readback ---------------------------------------------
+    let actual = match crate::verify_chain::read_context_rule_via_simulate(
+        &rpc_url,
+        passphrase,
+        &input.smart_account,
+        input.context_rule_id,
+        &source,
+    )
+    .await
+    {
+        Ok(rule) => rule,
+        Err(crate::verify_chain::ReadError::RuleNotFound(detail)) => {
+            return Err(error_to_jsonrpc(&oz_policy_core::Error::VerifyDrift(
+                format!("rule-not-found: {detail}"),
+            )));
+        }
+        Err(other) => {
+            return Err(error_to_jsonrpc(&oz_policy_core::Error::VerifyDrift(
+                format!("rpc-readback-failed: {other}"),
+            )));
+        }
+    };
+
+    // ----- 4. Drift computation -----------------------------------------
+    let drift = match &expected_spec {
+        Some(spec) => {
+            crate::verify_chain::compute_drift(spec, &spec.context_rule.name, &actual, passphrase)
+        }
+        None => Vec::new(),
     };
 
     Ok(VerifyInstallOutput {
-        matches: false,
+        matches: drift.is_empty(),
         drift,
     })
 }
@@ -1185,61 +1232,87 @@ mod tests {
 
     // -----------------------------------------------------------------
     // verify_install
+    //
+    // RFP deliverable #5 (2026-05-18): the handler now hits a real RPC
+    // for the on-chain readback. The unit tests below cover only the
+    // INPUT-LAYER gates (store miss → invalid_params; bogus RPC → typed
+    // E_VERIFY_DRIFT). The decode + drift comparator are unit-tested
+    // pure in `verify_chain::tests`; the end-to-end success path is
+    // integration-tested in `wallet-adapter/src/phase7_integration.test.ts`
+    // (INTEGRATION=1 gate; hits real testnet).
     // -----------------------------------------------------------------
 
+    /// Bogus RPC URL → `E_VERIFY_DRIFT` with `rpc-readback-failed` detail.
+    /// Uses a non-routable URL so the test never hits a live endpoint and
+    /// fails fast (under the 30 s RPC timeout via DNS).
     #[tokio::test]
-    async fn verify_install_without_expected_spec_returns_drift_marker() {
+    async fn verify_install_unreachable_rpc_returns_e_verify_drift() {
         let store = McpStore::new();
         let input = VerifyInstallInput {
-            smart_account: "C".repeat(56),
+            smart_account: "CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A".to_string(),
             context_rule_id: 0,
             network: NetworkKind::Testnet,
-            rpc_url: None,
+            // 192.0.2.0/24 (TEST-NET-1) is reserved by IANA and never
+            // routable; `client.get_network()` returns the connection
+            // error immediately.
+            rpc_url: Some("http://192.0.2.1:1".to_string()),
+            source_account: Some(
+                "GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ".to_string(),
+            ),
             expected_spec_id: None,
+            expected_spec: None,
         };
-        let out = verify_install(&store, input).await.expect("ok");
-        assert!(!out.matches);
-        assert_eq!(out.drift.len(), 1);
-        assert_eq!(out.drift[0].field, "expected_spec_id");
-    }
-
-    #[tokio::test]
-    async fn verify_install_with_expected_spec_returns_rpc_placeholder_drift() {
-        let store = McpStore::new();
-        let sid = store.new_id("spec");
-        store.put_spec(&sid, sample_spec("rule"));
-        let input = VerifyInstallInput {
-            smart_account: "C".repeat(56),
-            context_rule_id: 0,
-            network: NetworkKind::Testnet,
-            rpc_url: None,
-            expected_spec_id: Some(sid.clone()),
-        };
-        let out = verify_install(&store, input).await.expect("ok");
-        assert!(!out.matches);
-        assert_eq!(out.drift.len(), 1);
-        assert_eq!(out.drift[0].field, "on_chain_rule");
-        assert_eq!(
-            out.drift[0].actual.get("status").and_then(|v| v.as_str()),
-            Some("rpc-readback-not-yet-wired")
-        );
+        let err = verify_install(&store, input)
+            .await
+            .expect_err("unreachable rpc must surface E_VERIFY_DRIFT");
+        assert_eq!(err.code.0, -32106, "code must be E_VERIFY_DRIFT (-32106)");
     }
 
     #[tokio::test]
     async fn verify_install_missing_expected_spec_id_invalid_params() {
         let store = McpStore::new();
         let input = VerifyInstallInput {
-            smart_account: "C".repeat(56),
+            smart_account: "CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A".to_string(),
             context_rule_id: 0,
             network: NetworkKind::Testnet,
             rpc_url: None,
+            source_account: Some(
+                "GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ".to_string(),
+            ),
             expected_spec_id: Some("spec_bogus".to_string()),
+            expected_spec: None,
         };
         let err = verify_install(&store, input)
             .await
             .expect_err("missing spec must error");
         assert_eq!(err.code.0, -32602);
         assert!(err.message.contains("expected_spec_id"));
+    }
+
+    /// Inline `expected_spec` takes precedence over `expected_spec_id`
+    /// lookup. We exercise the precedence by passing a bogus id ALONG
+    /// with an inline spec — the handler must use the inline spec and
+    /// only fail later (at the RPC) rather than rejecting the id lookup.
+    #[tokio::test]
+    async fn verify_install_prefers_inline_expected_spec_over_store_id() {
+        let store = McpStore::new();
+        let input = VerifyInstallInput {
+            smart_account: "CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A".to_string(),
+            context_rule_id: 0,
+            network: NetworkKind::Testnet,
+            rpc_url: Some("http://192.0.2.1:1".to_string()),
+            source_account: Some(
+                "GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ".to_string(),
+            ),
+            expected_spec_id: Some("spec_bogus_would_otherwise_404".to_string()),
+            expected_spec: Some(sample_spec("rule")),
+        };
+        let err = verify_install(&store, input)
+            .await
+            .expect_err("unreachable rpc must surface E_VERIFY_DRIFT");
+        // The store lookup is skipped (inline spec preferred) → fall
+        // through to the RPC layer, which surfaces E_VERIFY_DRIFT.
+        assert_eq!(err.code.0, -32106, "code must be E_VERIFY_DRIFT (-32106)");
     }
 
     // -----------------------------------------------------------------
