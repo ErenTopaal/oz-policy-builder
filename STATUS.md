@@ -9,7 +9,7 @@ Copyright 2026 OZ Policy Builder contributors
 **State:** alpha, pre-v1.0.0
 **Date:** 2026-05-18
 **Branch:** `phase-1-foundations`
-**Total commits:** 145
+**Total commits:** 149
 **Total tests:** **363** (285 Rust workspace + 78 `wallet-adapter` passing; 2 wallet-adapter tests skipped — `INTEGRATION=1` testnet + one passkey-kit upstream remediation). 10 Rust tests are `#[ignore]`-gated on external resources (testnet RPC, sandbox compile).
 
 This is a single-page snapshot of where development sits at the end of
