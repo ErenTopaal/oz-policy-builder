@@ -102,7 +102,8 @@ From
   `actual_error_code: null, passed: false`.
 
 **Known deny-generator gap.** The `asset_allowlist` deny vector
-([`crates/oz-policy-simhost/src/deny.rs:452`](../../crates/oz-policy-simhost/src/deny.rs))
+(`crates/oz-policy-simhost/src/deny.rs`, around line 454 — the
+`CDISALLOWEDXXX…` literal)
 substitutes an invalid C-StrKey placeholder
 (`"CDISALLOWEDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"`). The
 generated policy's `Address::from_string(allowlist_entry)` traps inside

@@ -134,7 +134,7 @@ The Phase 4 deny generator emits two regression vectors:
 | `slot0_c1_asset_allowlist_wrong_asset`          | `AssetNotAllowed (1040)`     | FAIL open (panics with host error)  |
 
 **Known gap (committed honestly).** The `asset_allowlist` deny vector
-generator (`crates/oz-policy-simhost/src/deny.rs:452`) builds a "wrong
+generator (`crates/oz-policy-simhost/src/deny.rs` around line 454) builds a "wrong
 asset" payload by substituting an invalid C-StrKey placeholder
 (`"CDISALLOWEDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"`). The
 generated policy's `Address::from_string(allowlist_entry)` succeeds,

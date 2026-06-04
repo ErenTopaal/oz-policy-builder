@@ -47,7 +47,7 @@ install-envelope XDR MUST appear here with a causal explanation
 
 ### Added — Phase 5: MCP server surface
 
-- `oz-policy-mcp`: five MCP tools (`record_transaction`, `propose_policy`,
+- `oz-policy-mcp`: five MCP tools (`record_transaction`, `synthesize_policy`,
   `simulate_policy`, `export_policy`, `verify_install`) over STDIO and
   Streamable HTTP transports.
 - Static bearer-token auth on the HTTP path (`OZ_POLICY_MCP_TOKEN`).

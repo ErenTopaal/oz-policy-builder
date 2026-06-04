@@ -253,11 +253,11 @@ curl -fsS -H "Authorization: Bearer $TOKEN" \
      -H 'Content-Type: application/json' \
      --data '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
      "$URL" | jq '.result.tools[].name'
-# Expected (sorted): codegen_policy export_install_envelope record_transaction
-#                    simulate_policy synthesize_policy verify_install
+# Expected (sorted): export_policy record_transaction simulate_policy
+#                    synthesize_policy verify_install
 
 # 2. record_transaction → 3. synthesize_policy → 4. simulate_policy
-#    → 5. export_install_envelope. Use the testnet inputs from
+#    → 5. export_policy. Use the testnet inputs from
 #    walkthroughs/01-blend-yield/ to keep this hermetic — see
 #    docs/mcp-clients.md for the full per-tool JSON-RPC examples.
 ```
