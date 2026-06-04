@@ -11,11 +11,12 @@ been booked yet.
 
 ## Required before engagement
 
-- [ ] **Fuzz harness clean for ≥ 7 nights.** Stream A's three fuzz
-  targets (`enforce_arbitrary_ctx`, `spec_to_wasm_panic_free`,
-  `recording_decode`) run in the nightly CI job without any findings for
-  at least seven consecutive nights. Evidence: the nightly job's run
-  history on the `fuzz-nightly.yml` workflow.
+- [ ] **Fuzz harness clean for ≥ 7 nights.** The two fuzz targets that
+  ship today (`crates/oz-policy-codegen/fuzz/fuzz_targets/spec_to_wasm_panic_free.rs`,
+  `crates/oz-policy-recorder/fuzz/fuzz_targets/recording_decode_panic_free.rs`)
+  run in the nightly CI job without any findings for at least seven
+  consecutive nights. Evidence: the nightly job's run history on the
+  `fuzz-nightly.yml` workflow.
 - [ ] **Audit lints pass on every committed template.** Stream B's lint
   suite (`crates/oz-policy-codegen/src/audit_lints.rs`) runs green
   against every `.rs.jinja` in `templates/` and against every golden

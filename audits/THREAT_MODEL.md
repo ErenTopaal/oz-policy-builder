@@ -264,9 +264,11 @@ The following are enforced workspace-wide and apply to every threat above.
   output of every supported constraint shape.
 - **Audit lints** (Stream B) run before sandbox compile and surface lint
   failures as `E_CODEGEN_COMPILE_FAILED`.
-- **Fuzz harnesses** (Stream A, nightly CI) cover `enforce` against
-  arbitrary `ScVal` contexts, `PolicySpec` → WASM panic-freedom, and the
-  recorder's XDR decoder.
+- **Fuzz harnesses** (nightly CI) cover `PolicySpec` → WASM
+  panic-freedom (`crates/oz-policy-codegen/fuzz/`) and the recorder's
+  XDR decoder (`crates/oz-policy-recorder/fuzz/`). A simhost-side
+  `enforce`-against-arbitrary-`ScVal` target is a Phase 9 follow-up,
+  not yet implemented.
 
 ## Threats deliberately not enumerated
 

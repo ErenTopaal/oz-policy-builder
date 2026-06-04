@@ -6,10 +6,10 @@ Accounts Policy Builder synthesizer.
 ## Status
 
 **No external audit completed yet.** Self-audit by the lint suite
-(Phase 9 Stream B, `crates/oz-policy-codegen/src/audit_lints.rs`) and the
-fuzz harness (Phase 9 Stream A, `crates/oz-policy-codegen/fuzz/`,
-`crates/oz-policy-recorder/fuzz/`, `crates/oz-policy-simhost/fuzz/`) is in
-place.
+(`crates/oz-policy-codegen/src/audit_lints.rs`) and two fuzz harnesses
+(`crates/oz-policy-codegen/fuzz/`, `crates/oz-policy-recorder/fuzz/`)
+is in place. A simhost-side fuzz target is on the Phase 9 follow-up
+list but not yet implemented.
 
 External audit engagement is **pending**. Prerequisites are tracked in
 [`READY.md`](READY.md). The handoff package the auditor will receive is

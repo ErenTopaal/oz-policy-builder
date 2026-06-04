@@ -87,10 +87,12 @@ generated WASM hash, the simhost report, and the install envelope.
 
 ## Fuzz harness + accumulated corpora (Stream A)
 
-- `../../crates/oz-policy-codegen/fuzz/` — the codegen-side harness.
+- `../../crates/oz-policy-codegen/fuzz/` — the codegen-side harness
+  (target `spec_to_wasm_panic_free`).
 - `../../crates/oz-policy-recorder/fuzz/` — the recorder XDR-decode
-  harness.
-- `../../crates/oz-policy-simhost/fuzz/` — the simhost-side harness.
+  harness (target `recording_decode_panic_free`).
+- A simhost-side fuzz target is a Phase 9 follow-up; not yet
+  implemented.
 - The persisted corpora live on the `fuzz-corpora` branch; the auditor
   receives the latest snapshot at the pinned-commit time.
 
