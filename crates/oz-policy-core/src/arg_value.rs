@@ -1,46 +1,11 @@
-//! Typed mirror of Soroban's `ScVal` discriminated union.
-//!
-//! `ArgValue` is the deterministic, fully-decoded representation of a
-//! Soroban `ScVal`. It is the lingua franca between the recorder
-//! (`oz-policy-recorder`), the policy IR ([`crate::spec`]) and any downstream
-//! consumer (decision tree, MCP server) that needs to reason about contract
-//! arguments without re-parsing XDR.
-//!
-//! ## History
-//!
-//! In Phase 1 this enum lived in `oz-policy-recorder::recording`. It was
-//! moved into `oz-policy-core` in Phase 2 (P2-T1) so [`crate::spec`] can
-//! reference `ArgValue` (e.g. inside `Constraint::ArgumentPattern` /
-//! `ArgMatcher::Exact`) without introducing a `core -> recorder` cycle. The
-//! recorder still re-exports `ArgValue` from its public surface so existing
-//! consumers (CLI, tests, walkthroughs) keep compiling unchanged.
-//!
-//! ## Wire-format stability
-//!
-//! * `#[serde(tag = "type", content = "value", rename_all = "snake_case")]` is
-//!   load-bearing: every Recording document already on disk depends on this
-//!   exact serialisation. Do NOT change variant names, field names, or the
-//!   tag/content scheme without bumping
-//!   `oz-policy-recorder::recording::RECORDING_SCHEMA_URI`.
-//! * `i128` / `u128` / `i256` / `u256` are serialised as JSON **strings** to
-//!   preserve full precision for consumers (browsers, jq < 1.7) that lack
-//!   arbitrary-precision integer support.
+//! typed mirror of soroban's `ScVal` enum. wire-stable serde tags — do not
+//! rename without bumping `RECORDING_SCHEMA_URI`. 128/256-bit ints serialise
+//! as json strings.
 
 use serde::{Deserialize, Serialize};
 
-/// Fully decoded `ScVal` mirror. Every Soroban `ScVal` variant maps to one of
-/// these. Large integers serialise as JSON strings to preserve precision;
-/// bytes as hex; addresses as StrKey.
-///
-/// If the Soroban host ever introduces an `ScVal` variant we cannot decode
-/// (none exist today for `stellar-xdr 25.0.0`), the recorder must surface
-/// `Error::RecorderXdrDecodeFailed` rather than emit `Unsupported`.
-///
-/// `Eq` is derived because every contained field type is `Eq`: floats are
-/// not part of the `ScVal` shape, all `String`/`Option<String>`/`Vec<T>` /
-/// integer payloads are `Eq`. This lets downstream consumers (Phase 4
-/// `DenyVector`, set / map collections of recordings) compare values
-/// without falling back to manual comparators.
+/// fully decoded `ScVal` mirror. big ints as json strings, bytes as hex,
+/// addresses as strkey.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
@@ -53,61 +18,53 @@ pub enum ArgValue {
     },
     U32(u32),
     I32(i32),
-    /// 64-bit unsigned. JSON-encoded as a string to avoid loss in
-    /// 53-bit-mantissa consumers.
+    /// json string to avoid 53-bit mantissa loss.
     U64(String),
-    /// 64-bit signed. JSON-encoded as a string for the same reason.
+    /// json string for same reason.
     I64(String),
-    /// Timepoint (seconds since epoch, u64). JSON string.
+    /// timepoint (seconds since epoch). json string.
     Timepoint(String),
-    /// Duration (seconds, u64). JSON string.
+    /// duration (seconds). json string.
     Duration(String),
-    /// 128-bit unsigned. JSON string.
+    /// json string.
     U128(String),
-    /// 128-bit signed. JSON string.
+    /// json string.
     I128(String),
-    /// 256-bit unsigned. JSON string.
+    /// json string.
     U256(String),
-    /// 256-bit signed. JSON string.
+    /// json string.
     I256(String),
-    /// Raw bytes, hex-encoded.
+    /// hex-encoded bytes.
     Bytes {
         hex: String,
     },
-    /// UTF-8 string (`ScString`). Note: Soroban allows non-UTF-8 byte payloads
-    /// in `ScString`; in that case we fall back to a hex representation here.
+    /// `ScString` — falls back to hex when non-utf8.
     String {
         utf8: Option<String>,
         hex: String,
     },
-    /// Symbol — restricted-alphabet UTF-8.
+    /// symbol (restricted alphabet).
     Symbol(String),
-    /// `ScVec` — `None` distinguishes the empty-marker from `Some(vec![])`
-    /// matches the on-chain encoding (`Vec(Option<ScVec>)`).
+    /// `ScVec` — `None` is the empty-marker, distinct from `Some(vec![])`.
     Vec(Option<Vec<ArgValue>>),
     Map(Option<Vec<MapEntry>>),
-    /// StrKey-encoded address (`C…` for contracts, `G…` for accounts,
-    /// `M…` muxed, `B…` claimable balance, `L…` liquidity pool).
+    /// strkey address (`C…`/`G…`/`M…`/`B…`/`L…`).
     Address(String),
-    /// `ScContractInstance` — emitted only when the host stores a contract
-    /// instance value (rare in user-facing args).
+    /// `ScContractInstance` — rare in user args.
     ContractInstance {
         executable_kind: String,
         executable_value: String,
         storage: Option<Vec<MapEntry>>,
     },
-    /// System-reserved sentinel used in contract-data keys for the instance
-    /// pseudo-entry. No payload.
+    /// system-reserved instance pseudo-entry.
     LedgerKeyContractInstance,
-    /// System-reserved nonce key (auth replay protection).
+    /// system-reserved nonce key (auth replay protection).
     LedgerKeyNonce {
         nonce: String,
     },
 }
 
-/// Map entry pair — explicit struct so JSON serialisation is unambiguous and
-/// `schemars` produces a clean schema (tuples land as 2-element arrays which
-/// hide field intent).
+/// explicit struct so json serialisation is unambiguous and schemars stays clean.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[serde(deny_unknown_fields)]
@@ -116,17 +73,11 @@ pub struct MapEntry {
     pub value: ArgValue,
 }
 
-// -------------------------------------------------------------------------
-// Tests
-// -------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Every `ArgValue` variant must round-trip via JSON. This guards the
-    /// `#[serde(tag, content)]` representation: if a variant ever picks up an
-    /// untagged-friendly shape, the round-trip will fail loudly here.
+    /// every variant must round-trip via json.
     #[test]
     fn arg_value_round_trips_via_json() {
         let samples = vec![
@@ -188,21 +139,17 @@ mod tests {
         }
     }
 
-    /// `i128` must serialise as a JSON string — not a number — so consumers
-    /// without arbitrary-precision integer support (browsers, jq before
-    /// 1.7, many JS clients) don't silently lose bits on values exceeding
-    /// 2^53.
+    /// 128-bit ints must serialise as json strings to avoid 2^53 loss.
     #[test]
     fn arg_value_decodes_i128_as_string() {
         let v = ArgValue::I128("170141183460469231731687303715884105727".to_string());
         let j = serde_json::to_value(&v).expect("serialize");
-        // `j` is { "type": "i128", "value": "170141..." } — the inner value
-        // must be a JSON string, never a JSON number.
+        // inner value must be json string, never number.
         assert!(
             j["value"].is_string(),
             "ArgValue::I128 must serialise its value as JSON string, got: {j}"
         );
-        // Symmetric guard for u128, the other 128-bit variant.
+        // symmetric guard for u128.
         let u = ArgValue::U128("340282366920938463463374607431768211455".to_string());
         let ju = serde_json::to_value(&u).expect("serialize u128");
         assert!(

@@ -1,90 +1,53 @@
-//! Canonical error enum for the OZ Accounts Policy Builder.
-//!
-//! Every variant corresponds 1:1 to one of the `E_*` codes listed under
-//! `plan.md` § "Naming Conventions" — this enum is the single source of truth
-//! that the MCP server (Phase 5), the CLI (Phase 1+), and the synthesizer
-//! (Phase 2) map their failures through. The string returned by
-//! [`Error::code`] is the wire-stable code surfaced to MCP clients and CI
-//! scripts; the `Display` impl is the human-readable detail.
-//!
-//! Phase 1 only constructs these variants in unit tests. Later phases attach
-//! real semantics:
-//!
-//! * `oz-policy-recorder`  → `E_RECORDER_*` (`E_RECORDER_HASH_NOT_FOUND`,
-//!   `E_RECORDER_SIM_FAILED`, `E_RECORDER_XDR_DECODE_FAILED`)
-//! * `oz-policy-core`      → `E_SYNTH_NOT_EXPRESSIBLE`
-//! * `oz-policy-codegen`   → `E_CODEGEN_COMPILE_FAILED`
-//! * `oz-policy-simhost`   → `E_SIM_*`, `E_VERIFY_DRIFT`
-//! * wallet-adapter        → `E_WALLET_REJECTED`
-//! * `oz-policy-installer` → `E_INSTALL_PREFLIGHT_FAILED`
+//! canonical error enum.
 
 use thiserror::Error;
 
-/// Canonical error enum. Carries a `String` payload per variant for human
-/// context; structured payloads will be introduced in later phases where the
-/// data is well-defined.
+/// canonical error enum, one variant per `E_*` wire code.
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum Error {
-    /// Recorder could not locate the transaction by hash on the configured
-    /// Soroban RPC endpoint (retention exceeded or wrong network).
+    /// tx hash not found on configured rpc.
     #[error("E_RECORDER_HASH_NOT_FOUND: {0}")]
     RecorderHashNotFound(String),
 
-    /// Recorder's `simulateTransaction` call returned an error or otherwise
-    /// failed to produce a decodable auth tree.
+    /// `simulateTransaction` failed or returned undecodable auth tree.
     #[error("E_RECORDER_SIM_FAILED: {0}")]
     RecorderSimFailed(String),
 
-    /// Recorder received well-formed RPC envelopes (or test fixtures) but the
-    /// embedded XDR (envelope, result-meta, auth, or `ScVal`) failed to
-    /// decode. Distinct from `E_RECORDER_SIM_FAILED` (= the RPC call itself
-    /// reported failure) and `E_RECORDER_HASH_NOT_FOUND` (= the tx is not on
-    /// chain). Added in P1-T3.
+    /// xdr decode failed on envelope/result-meta/auth/ScVal.
     #[error("E_RECORDER_XDR_DECODE_FAILED: {0}")]
     RecorderXdrDecodeFailed(String),
 
-    /// Synthesizer determined the requested constraints cannot be expressed
-    /// by any combination of OZ primitives or Track-B templates within the
-    /// hard limits (max 5 policies, 15 signers, etc.).
+    /// constraints cannot be expressed within OZ primitives + track-B limits.
     #[error("E_SYNTH_NOT_EXPRESSIBLE: {0}")]
     SynthNotExpressible(String),
 
-    /// Track-B codegen produced Rust source that failed the sandboxed
-    /// `cargo build --target wasm32-unknown-unknown`.
+    /// generated rust failed sandboxed wasm build.
     #[error("E_CODEGEN_COMPILE_FAILED: {0}")]
     CodegenCompileFailed(String),
 
-    /// Simulation harness reports that a permit vector the spec is expected
-    /// to allow was denied by the compiled policy.
+    /// permit vector got denied by compiled policy.
     #[error("E_SIM_PERMIT_DENIED: {0}")]
     SimPermitDenied(String),
 
-    /// Simulation harness reports that a deny vector the spec is expected
-    /// to reject was admitted by the compiled policy (false-positive admit).
+    /// deny vector got admitted by compiled policy.
     #[error("E_SIM_DENY_PASSED: {0}")]
     SimDenyPassed(String),
 
-    /// Verification gate detected a drift between the spec, the generated
-    /// source, the compiled WASM hash, or the on-chain installed policy.
+    /// drift between spec / source / wasm / on-chain.
     #[error("E_VERIFY_DRIFT: {0}")]
     VerifyDrift(String),
 
-    /// Wallet returned a user-rejection or signing failure when the
-    /// install envelope was presented for signature.
+    /// wallet rejected the signing prompt.
     #[error("E_WALLET_REJECTED: {0}")]
     WalletRejected(String),
 
-    /// Install-time preflight failed: e.g., target `SmartAccount` predates
-    /// OZ PR-#655 sponsor-substitution fix (see `docs/oz-internal-shapes.md`
-    /// §8) or another precondition was not met.
+    /// preflight failed (e.g., target predates PR-#655).
     #[error("E_INSTALL_PREFLIGHT_FAILED: {0}")]
     InstallPreflightFailed(String),
 }
 
 impl Error {
-    /// Returns the canonical `E_*` wire code for this variant. This string is
-    /// the stable identifier surfaced to MCP clients and is what CI and
-    /// orchestration scripts grep for.
+    /// canonical wire code for this variant.
     pub fn code(&self) -> &'static str {
         match self {
             Error::RecorderHashNotFound(_) => "E_RECORDER_HASH_NOT_FOUND",
@@ -105,10 +68,7 @@ impl Error {
 mod tests {
     use super::Error;
 
-    /// Construct one of every variant and assert `.code()` maps each to its
-    /// canonical `E_*` string. This single test is the binary completion
-    /// criterion for the Phase-1 Error scaffolding: every code listed in
-    /// `plan.md` § "Naming Conventions" must be present and round-trippable.
+    /// every variant maps to its canonical `E_*` string.
     #[test]
     fn every_variant_maps_to_canonical_code() {
         let cases: &[(Error, &str)] = &[
@@ -160,8 +120,7 @@ mod tests {
                 *expected_code,
                 "variant {err:?} returned wrong code"
             );
-            // Also confirm the Display impl carries the code as a prefix —
-            // this is the contract MCP error renderers depend on.
+            // display impl must carry the code as prefix.
             assert!(
                 err.to_string().starts_with(expected_code),
                 "Display for {err:?} did not start with {expected_code}"
@@ -169,21 +128,11 @@ mod tests {
         }
     }
 
-    /// Compiler-enforced exhaustive coverage guard.
-    ///
-    /// The slice-driven `every_variant_maps_to_canonical_code` test above is a
-    /// runtime check: if someone adds a 10th variant to `Error` and forgets to
-    /// extend that slice, the test still compiles and silently misses the new
-    /// variant. This second test uses an exhaustive `match` so the compiler
-    /// itself refuses to build the test until the new variant is mapped to its
-    /// canonical `E_*` code here — which in turn forces a corresponding update
-    /// to the production `Error::code()` impl (otherwise the sanity assertion
-    /// below would fail).
+    /// exhaustive match so a new variant breaks the build here.
     #[test]
     fn variant_coverage_is_exhaustive() {
         fn canonical_code_for(e: &Error) -> &'static str {
-            // NOTE: do NOT add a wildcard arm — the whole point of this test is
-            // that adding a new `Error` variant must break the build here.
+            // note: no wildcard arm — adding a variant must break the build.
             match e {
                 Error::RecorderHashNotFound(_) => "E_RECORDER_HASH_NOT_FOUND",
                 Error::RecorderSimFailed(_) => "E_RECORDER_SIM_FAILED",
@@ -198,10 +147,7 @@ mod tests {
             }
         }
 
-        // Sanity check: the locally-mirrored mapping must agree with the
-        // production `Error::code()` method for at least one probe variant.
-        // If `Error::code()` is updated without updating the match above (or
-        // vice versa), this assertion will fail.
+        // sanity: local mapping must agree with production `Error::code()`.
         let probe = Error::VerifyDrift("probe".into());
         assert_eq!(canonical_code_for(&probe), probe.code());
     }

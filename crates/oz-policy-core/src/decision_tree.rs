@@ -1,39 +1,5 @@
-//! Phase 2 Stream A — decision-tree synthesizer.
-//!
-//! Implements [`synthesize`], the Phase 2 entry point that turns a
-//! [`Recording`](crate::recording::Recording) into a deterministic
-//! [`PolicySpec`](crate::spec::PolicySpec) using the decomposition rule
-//! documented in `plan.md` Phase 2 *Implementation → Decision tree*.
-//!
-//! ## Algorithm (verbatim mirror of `plan.md`)
-//!
-//! 1. Walk `recording.auth_tree.roots` + `recording.contracts` to enumerate
-//!    the distinct `Context::Contract` targets the transaction touched.
-//! 2. If exactly one target and that target's `ContractRecord` is a SEP-41
-//!    `transfer(Address, Address, i128)` invocation (per
-//!    [`crate::sep41::is_sep41_transfer`]) → propose
-//!    `PolicySlot::Existing { primitive: SpendingLimit, params: SpendingLimit { period_ledgers, limit_stroops_string } }`
-//!    AND **force** `context_type = CallContract { address: target }` per
-//!    OZ PR-#649 (`spending_limit` under `ContextType::Default` is rejected
-//!    by the on-chain `install`).
-//! 3. If multiple distinct targets are observed, no single `ExistingPrimitive`
-//!    covers them — emit `PolicySlot::Generated { template_family:
-//!    FunctionAllowlist | AssetAllowlist }`. Phase 3 fills in the actual
-//!    codegen; we only emit the spec slot here.
-//! 4. Count distinct signers across `recording.auth_tree.roots`. If `mode !=
-//!    CodegenOnly`, propose a second slot `PolicySlot::Existing { primitive:
-//!    SimpleThreshold, params: SimpleThreshold { threshold } }`.
-//! 5. Scale every numeric amount (currently `SpendingLimit::limit_stroops_string`
-//!    and `AmountRange::max_string`) by [`Tightness`]'s factor. Arithmetic is
-//!    decimal-string-in / decimal-string-out via `i128::checked_mul` so we
-//!    never lose precision and we surface overflow as
-//!    [`Error::SynthNotExpressible`] instead of silently truncating.
-//! 6. Enforce the on-chain hard limits ([`crate::spec::MAX_POLICIES`],
-//!    [`crate::spec::MAX_SIGNERS`], [`crate::spec::MAX_NAME_SIZE`]) at the
-//!    end. Violations surface as `Error::SynthNotExpressible(<field>)`.
-//!
-//! Pure functions only — no I/O, no network. Output is byte-equal given the
-//! same `(Recording, SynthesisOptions)` input.
+//! decision-tree synthesizer. pure function: recording -> policyspec.
+//! deterministic, no i/o.
 
 use serde::{Deserialize, Serialize};
 
@@ -46,27 +12,12 @@ use crate::spec::{
     MAX_POLICIES, MAX_SIGNERS, POLICY_SCHEMA_URI,
 };
 
-/// Default `period_ledgers` for `SpendingLimit` when the caller does not
-/// supply [`SynthesisOptions::lifetime_ledgers`].
-///
-/// `432_000` ledgers ≈ 30 days at the Stellar baseline of 1 ledger / 5 s
-/// (matches `DAY_IN_LEDGERS * 30 = 17_280 * 30 = 518_400` to within an order
-/// of magnitude; the `plan.md` Phase 2 *Implementation* bullet pins the
-/// fallback at `432_000`).
+/// fallback `period_ledgers` (~30 days at 5s/ledger).
 const DEFAULT_SPENDING_LIMIT_PERIOD_LEDGERS: u32 = 432_000;
 
-/// Numeric tightness used when scaling observed `i128` constraints.
-///
-/// Per `plan.md` Phase 2 *Implementation → decision tree* §:
-/// * `Exact` — emit the observed value verbatim (×1.0).
-/// * `SmallMargin` — emit observed × 1.1 (10% headroom).
-/// * `Loose` — emit observed × 2.0 (2× headroom).
-///
-/// The scale factors are applied with **decimal-string** `i128` arithmetic
-/// via [`i128::checked_mul`] — never floats — so amounts like
-/// `170141183460469231731687303715884105727` (i128::MAX) round-trip exactly
-/// at `Exact` and surface as [`Error::SynthNotExpressible`] (not as a panic
-/// or silent wrap) on overflow under `SmallMargin` / `Loose`.
+/// scale factor for observed `i128` amounts.
+/// exact=×1, smallmargin=×1.1, loose=×2. uses checked_mul so overflow surfaces
+/// as `SynthNotExpressible`, never panics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Tightness {
@@ -75,23 +26,7 @@ pub enum Tightness {
     Loose,
 }
 
-/// Caller-supplied options that steer [`synthesize`].
-///
-/// Mirrors the `synthesize_policy` MCP tool input (`plan.md` §"MCP server"):
-/// * `mode` — `Auto | ComposeOnly | CodegenOnly` selects which synthesis
-///   track is permitted.
-/// * `tightness` — numeric scaling on observed `i128` constraints.
-/// * `lifetime_ledgers` — emitted as `PolicySpec::lifetime_ledgers` and as
-///   `SpendingLimit::period_ledgers` when a spending-limit slot is composed.
-///   `None` → [`DEFAULT_SPENDING_LIMIT_PERIOD_LEDGERS`] is used for the
-///   spending-limit slot and the spec's `lifetime_ledgers` stays `None`.
-/// * `delegated_signer` — when `Some`, the synthesizer emits a
-///   `SignerSpec::Delegated { address }` for that contract instead of the
-///   per-recording observed signer set. Useful for hand-off workflows.
-/// * `context_rule_name` — populates `ContextRuleSpec::name`. The MCP layer
-///   bounds this at [`MAX_NAME_SIZE`] bytes before calling in; we re-check
-///   the bound here so the synthesizer never produces a spec the on-chain
-///   `SmartAccount` would refuse.
+/// caller-supplied options that steer [`synthesize`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SynthesisOptions {
     pub mode: SynthesisMode,
@@ -101,24 +36,9 @@ pub struct SynthesisOptions {
     pub context_rule_name: String,
 }
 
-// -------------------------------------------------------------------------
-// Public entry point
-// -------------------------------------------------------------------------
-
-/// Synthesise a [`PolicySpec`] from a [`Recording`].
-///
-/// See module-level documentation for the algorithm. Returns
-/// [`Error::SynthNotExpressible`] when the recording cannot be expressed
-/// under the requested options + on-chain limits.
+/// synthesise a [`PolicySpec`] from a [`Recording`].
 pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<PolicySpec, Error> {
-    // -----------------------------------------------------------------
-    // 0. Pre-flight: context_rule_name length is cheap; check first so
-    //    we surface the most actionable error.
-    // -----------------------------------------------------------------
-    // `String::len()` returns the UTF-8 **byte** length, which is the unit
-    // the on-chain `MAX_NAME_SIZE` constant is in (see
-    // `docs/oz-internal-shapes.md` §7) — we deliberately do not switch to
-    // `chars().count()`.
+    // preflight: name length (utf-8 bytes — matches on-chain MAX_NAME_SIZE unit).
     let name_len: u32 = opts.context_rule_name.len().try_into().map_err(|_| {
         Error::SynthNotExpressible(format!(
             "context_rule.name length {} exceeds u32::MAX",
@@ -131,32 +51,19 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
         )));
     }
 
-    // -----------------------------------------------------------------
-    // 1. Enumerate distinct Context::Contract targets in insertion
-    //    order — deterministic output requires a Vec, not a HashSet.
-    // -----------------------------------------------------------------
+    // enumerate distinct Context::Contract targets in insertion order.
     let targets = enumerate_contract_targets(recording);
 
-    // -----------------------------------------------------------------
-    // 2. Build the list of policy slots in deterministic order:
-    //      [SpendingLimit?]  [SimpleThreshold?]  [Generated?]
-    //    We construct in this exact order so two recordings that hash
-    //    to the same target/signer state round-trip byte-equal.
-    // -----------------------------------------------------------------
+    // build slots in fixed order: [SpendingLimit?] [SimpleThreshold?] [Generated?]
     let mut policies: Vec<PolicySlot> = Vec::new();
-    // Will be promoted to `CallContract { address }` if (and only if) we
-    // compose a `SpendingLimit` slot — PR-#649 enforcement.
+    // PR-#649: promoted to CallContract only when SpendingLimit is composed.
     let mut forced_context_type: Option<ContextType> = None;
 
-    // 2a. SpendingLimit candidacy: exactly one target whose ContractRecord
-    //     is a SEP-41 transfer.
+    // spendinglimit candidacy: single target + SEP-41 transfer.
     let single_target_sep41 = single_target_sep41_record(recording, &targets);
     if let Some((target_addr, record)) = single_target_sep41 {
         let observed_amount = extract_transfer_amount(record).ok_or_else(|| {
-            // Programmer error — `is_sep41_transfer` already guaranteed
-            // args[2] is I128. Surface as SynthNotExpressible (not panic)
-            // so a future variant addition that confuses the gate is
-            // caller-visible instead of process-fatal.
+            // shouldn't happen — is_sep41_transfer guaranteed args[2] is I128.
             Error::SynthNotExpressible(
                 "internal: SEP-41 transfer matched but amount extraction failed".to_string(),
             )
@@ -165,8 +72,7 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
 
         match opts.mode {
             SynthesisMode::Auto | SynthesisMode::ComposeOnly => {
-                // PR-#649: `spending_limit` install rejects ContextType::Default.
-                // Force the context rule to `CallContract { address: <SAC> }`.
+                // PR-#649: spending_limit install rejects ContextType::Default.
                 forced_context_type = Some(ContextType::CallContract {
                     address: target_addr.to_string(),
                 });
@@ -181,10 +87,8 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
                 });
             }
             SynthesisMode::CodegenOnly => {
-                // CodegenOnly: do NOT compose. Emit a Generated AmountRange
-                // slot instead. We still force CallContract because the
-                // observed flow is single-SAC and Default would be a strict
-                // over-approximation.
+                // codegenonly: emit a Generated AmountRange slot, still force
+                // CallContract since the observed flow is single-SAC.
                 forced_context_type = Some(ContextType::CallContract {
                     address: target_addr.to_string(),
                 });
@@ -200,10 +104,7 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
             }
         }
     } else if targets.len() > 1 {
-        // 2b. Multiple distinct targets — no single ExistingPrimitive
-        // covers them. ComposeOnly cannot express this; reject. Auto /
-        // CodegenOnly emit a Generated FunctionAllowlist + AssetAllowlist
-        // slot (Phase 3 codegen will turn it into a compiled policy).
+        // multiple targets — no single primitive covers them.
         match opts.mode {
             SynthesisMode::ComposeOnly => {
                 return Err(Error::SynthNotExpressible(format!(
@@ -212,8 +113,6 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
                 )));
             }
             SynthesisMode::Auto | SynthesisMode::CodegenOnly => {
-                // Insertion-order preservation of `targets` flows through
-                // here directly — we collected them as a Vec at step 1.
                 let assets: Vec<String> = targets.iter().map(|s| s.to_string()).collect();
                 let functions: Vec<String> =
                     distinct_functions_in_insertion_order(recording, &targets);
@@ -227,11 +126,8 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
             }
         }
     }
-    // 2c. Single target that is NOT a SEP-41 transfer: in Auto /
-    // CodegenOnly we emit a Generated FunctionAllowlist limited to the
-    // observed function on that target. ComposeOnly rejects (no existing
-    // primitive can scope by function name; the on-chain
-    // CallContract(Address) rule type does not filter by function).
+    // single non-SEP-41 target: emit Generated FunctionAllowlist (or reject
+    // under ComposeOnly — no primitive scopes by function name).
     else if targets.len() == 1 && single_target_sep41.is_none() {
         let target = &targets[0];
         match opts.mode {
@@ -253,9 +149,7 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
         }
     }
 
-    // 2d. Threshold slot. Skipped under CodegenOnly per the
-    // `plan.md` algorithm — CodegenOnly forces every constraint into a
-    // Generated slot.
+    // threshold slot — skipped under CodegenOnly (forces every constraint generated).
     let signers = build_signers(recording, opts)?;
     if !matches!(opts.mode, SynthesisMode::CodegenOnly) && !signers.is_empty() {
         let threshold: u32 = signers.len().try_into().map_err(|_| {
@@ -267,9 +161,7 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
         });
     }
 
-    // -----------------------------------------------------------------
-    // 3. Final hard-limit gates (post-construction).
-    // -----------------------------------------------------------------
+    // final hard-limit gates.
     let policy_count: u32 = policies.len().try_into().map_err(|_| {
         Error::SynthNotExpressible(format!(
             "policies count {} exceeds u32::MAX",
@@ -290,13 +182,10 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
         )));
     }
 
-    // -----------------------------------------------------------------
-    // 4. Stitch the spec together.
-    // -----------------------------------------------------------------
+    // stitch the spec together.
     let context_rule = ContextRuleSpec {
         name: opts.context_rule_name.clone(),
-        // `forced_context_type` wins (it carries PR-#649 enforcement); if
-        // unset, default to the on-chain `Default` matcher.
+        // forced_context_type carries PR-#649; default otherwise.
         context_type: forced_context_type.unwrap_or(ContextType::Default),
         valid_until: None,
     };
@@ -317,24 +206,17 @@ pub fn synthesize(recording: &Recording, opts: &SynthesisOptions) -> Result<Poli
     })
 }
 
-// -------------------------------------------------------------------------
-// Helpers — kept module-private; not part of the public surface.
-// -------------------------------------------------------------------------
-
-/// Walk `recording.contracts` plus the top-level `recording.auth_tree.roots`
-/// invocations, returning the distinct StrKey `C…` target addresses in
-/// **insertion order** (no HashSet — determinism is required).
+/// distinct strkey `C…` target addresses in insertion order (Vec, not HashSet).
 fn enumerate_contract_targets(recording: &Recording) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
 
-    // ContractRecord targets first (the explicit invocation list).
+    // explicit invocation list first.
     for cr in &recording.contracts {
         if !out.iter().any(|a| a == &cr.address) {
             out.push(cr.address.clone());
         }
     }
-    // Then any `Contract` auth invocations not already covered. We walk
-    // recursively so sub-invocations (auth chains) are also tallied.
+    // then any Contract auth invocations, walked recursively.
     for entry in &recording.auth_tree.roots {
         collect_targets(&entry.root_invocation, &mut out);
     }
@@ -352,9 +234,7 @@ fn collect_targets(inv: &AuthInvocation, out: &mut Vec<String>) {
     }
 }
 
-/// Return `Some((address, &ContractRecord))` when the recording has exactly
-/// one distinct contract target AND the corresponding `ContractRecord` is
-/// a SEP-41 `transfer`. Otherwise `None`.
+/// `Some(...)` when there's exactly one target and it's a SEP-41 transfer.
 fn single_target_sep41<'a>(
     recording: &'a Recording,
     targets: &'a [String],
@@ -363,10 +243,7 @@ fn single_target_sep41<'a>(
         return None;
     }
     let target = &targets[0];
-    // Find the matching ContractRecord. The decision tree predicates over
-    // `ContractRecord` because that's where the `function` and `args` live;
-    // the auth tree confirms authorisation but the function-shape gate is
-    // on the invocation list.
+    // function/args live on ContractRecord; auth tree only confirms authorisation.
     let record = recording.contracts.iter().find(|c| &c.address == target)?;
     if is_sep41_transfer(record) {
         Some((target.as_str(), record))
@@ -382,9 +259,7 @@ fn single_target_sep41_record<'a>(
     single_target_sep41(recording, targets)
 }
 
-/// Collect distinct function names invoked across all targets in
-/// `targets`, preserving the order they first appear in
-/// `recording.contracts`.
+/// distinct function names invoked across `targets`, in first-seen order.
 fn distinct_functions_in_insertion_order(recording: &Recording, targets: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for cr in &recording.contracts {
@@ -398,18 +273,8 @@ fn distinct_functions_in_insertion_order(recording: &Recording, targets: &[Strin
     out
 }
 
-/// Build the `signers` list. If `opts.delegated_signer` is `Some`, that
-/// single delegated signer is the entire list (the spec then represents
-/// "this rule is governed by a delegate contract"). Otherwise we extract
-/// every distinct `Credentials::Address::signer` value from
-/// `recording.auth_tree.roots` in insertion order and emit each as an
-/// `ExternalEd25519` signer keyed by the observed signer string.
-///
-/// Note: `Credentials::Address::signer` is a `String` in the Recording IR
-/// (the recorder serialises the signer ScAddress as StrKey). The
-/// synthesizer assumes Ed25519 for `G…` addresses — the only StrKey form a
-/// signer can take in OZ Smart-Account auth — and surfaces an error if it
-/// observes anything unexpected.
+/// build the `signers` list. honors `opts.delegated_signer` if set, else
+/// extracts distinct ed25519 signers from auth tree in insertion order.
 fn build_signers(recording: &Recording, opts: &SynthesisOptions) -> Result<Vec<SignerSpec>, Error> {
     if let Some(addr) = &opts.delegated_signer {
         return Ok(vec![SignerSpec::Delegated {
@@ -425,20 +290,8 @@ fn build_signers(recording: &Recording, opts: &SynthesisOptions) -> Result<Vec<S
                 continue;
             }
             seen.push(signer.clone());
-            // The Recording records the `signer` as the StrKey of the
-            // ScAddress carried in the auth entry. The synthesizer cannot
-            // recover the raw public-key hex from a StrKey alone — that
-            // requires base32-decoding the StrKey, which is out of scope
-            // for the policy IR. Emit the StrKey as the `public_key_hex`
-            // placeholder for now; Phase 2 installer is responsible for
-            // converting it to the on-chain `Signer::Ed25519(BytesN<32>)`
-            // representation. We do NOT silently downgrade unrecognised
-            // signer shapes — anything we cannot represent surfaces as
-            // E_SYNTH_NOT_EXPRESSIBLE.
-            //
-            // NOTE: this is a known IR-level limitation captured in
-            // `docs/oz-internal-shapes.md` §11 (signer round-trip needs
-            // strkey -> bytes32 in the installer).
+            // signer stored as strkey; installer converts to Bytes32. emit
+            // strkey as `public_key_hex` placeholder here.
             out.push(SignerSpec::ExternalEd25519 {
                 public_key_hex: signer.clone(),
             });
@@ -447,9 +300,7 @@ fn build_signers(recording: &Recording, opts: &SynthesisOptions) -> Result<Vec<S
     Ok(out)
 }
 
-/// Extract the recording-ref hash from `IngestSource`. Returns `None` for
-/// simulation-sourced recordings (those carry a synthetic envelope-hash, not
-/// an on-chain tx hash).
+/// recording-ref hash from `IngestSource` (None for simulation).
 fn recording_hash(ingest: &crate::recording::IngestSource) -> Option<String> {
     match ingest {
         crate::recording::IngestSource::Hash { hash } => Some(hash.clone()),
@@ -457,13 +308,8 @@ fn recording_hash(ingest: &crate::recording::IngestSource) -> Option<String> {
     }
 }
 
-/// Scale a decimal-string `i128` value by [`Tightness`].
-///
-/// The arithmetic is done in `i128` to preserve full precision (no float
-/// math) and uses `checked_mul` so overflow surfaces as
-/// `Error::SynthNotExpressible("amount overflow under tightness scaling")`
-/// instead of wrapping silently. `SmallMargin` and `Loose` multiply by 11/10
-/// and 2 respectively; `Exact` short-circuits to the input unchanged.
+/// scale a decimal-string `i128` by tightness. uses checked_mul; overflow
+/// surfaces as `SynthNotExpressible`.
 fn scale_i128_decimal(observed: &str, tightness: Tightness) -> Result<String, Error> {
     let parsed: i128 = observed.parse().map_err(|_| {
         Error::SynthNotExpressible(format!(
@@ -473,11 +319,7 @@ fn scale_i128_decimal(observed: &str, tightness: Tightness) -> Result<String, Er
     let scaled: i128 = match tightness {
         Tightness::Exact => parsed,
         Tightness::SmallMargin => {
-            // 1.1× via 11/10 keeps everything in i128 arithmetic. We do the
-            // multiply first to preserve precision on small inputs (e.g.
-            // observed=1 should round-trip to 1 under integer truncation,
-            // matching the documented behaviour of "1.1× observed" when the
-            // observed value is itself an integer count of stroops).
+            // 1.1× via 11/10 — multiply first to keep precision on small inputs.
             let mul = parsed.checked_mul(11).ok_or_else(|| {
                 Error::SynthNotExpressible("amount overflow under tightness scaling".to_string())
             })?;
@@ -489,10 +331,6 @@ fn scale_i128_decimal(observed: &str, tightness: Tightness) -> Result<String, Er
     };
     Ok(scaled.to_string())
 }
-
-// -------------------------------------------------------------------------
-// Tests
-// -------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -506,10 +344,6 @@ mod tests {
         Constraint, ContextType, ExistingPrimitive, ExistingPrimitiveParams, PolicySlot,
         SignerSpec, SynthesisMode, TemplateFamily,
     };
-
-    // ---------------------------------------------------------------------
-    // Test fixtures — typed Rust builders, no JSON, no mocks.
-    // ---------------------------------------------------------------------
 
     fn base_recording() -> Recording {
         Recording {
@@ -568,12 +402,7 @@ mod tests {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Branch coverage
-    // ---------------------------------------------------------------------
-
-    /// SEP-41 transfer → SpendingLimit emitted; context_type forced to
-    /// CallContract per PR-#649.
+    /// SEP-41 transfer → SpendingLimit + CallContract (PR-#649).
     #[test]
     fn sep41_transfer_emits_spending_limit_with_call_contract() {
         let mut rec = base_recording();
@@ -585,7 +414,7 @@ mod tests {
 
         let spec = synthesize(&rec, &opts_compose_only()).expect("spec");
 
-        // The SpendingLimit slot must be first; SimpleThreshold second.
+        // SpendingLimit first, SimpleThreshold second.
         assert_eq!(spec.policies.len(), 2);
         match &spec.policies[0] {
             PolicySlot::Existing {
@@ -601,7 +430,7 @@ mod tests {
             }
             other => panic!("expected SpendingLimit, got {other:?}"),
         }
-        // PR-#649: context_type MUST be CallContract { CUSDC }.
+        // PR-#649: context_type must be CallContract { CUSDC }.
         match &spec.context_rule.context_type {
             ContextType::CallContract { address } => assert_eq!(address, "CUSDC"),
             other => panic!("expected CallContract, got {other:?}"),
@@ -615,14 +444,13 @@ mod tests {
         }
     }
 
-    /// Multi-contract recording under Auto → Generated FunctionAllowlist +
-    /// AssetAllowlist; SimpleThreshold still emitted (signer count = 1).
+    /// multi-contract under Auto → Generated FunctionAllowlist + AssetAllowlist.
     #[test]
     fn multi_contract_emits_generated_function_allowlist() {
         let mut rec = base_recording();
         rec.contracts
             .push(sep41_transfer_record("CUSDC", "GFROM", "GTO", "1"));
-        // A second, distinct target with a non-transfer function.
+        // second distinct target with a non-transfer function.
         rec.contracts.push(ContractRecord {
             address: "CBLEND".to_string(),
             function: "claim".to_string(),
@@ -646,7 +474,7 @@ mod tests {
                 template_family: TemplateFamily::FunctionAllowlist,
                 constraints,
             } => {
-                // Insertion-order preserved: CUSDC -> "transfer", CBLEND -> "claim"
+                // insertion-order preserved: CUSDC->transfer, CBLEND->claim.
                 let funcs = constraints
                     .iter()
                     .find_map(|c| match c {
@@ -666,12 +494,11 @@ mod tests {
             }
             other => panic!("expected Generated FunctionAllowlist, got {other:?}"),
         }
-        // Multi-contract has no SAC-scoped SpendingLimit, so context_type
-        // stays Default.
+        // multi-contract has no SAC-scoped SpendingLimit; context stays Default.
         assert_eq!(spec.context_rule.context_type, ContextType::Default);
     }
 
-    /// SmallMargin tightness scales the observed amount by 1.1×.
+    /// smallmargin tightness scales observed amount by 1.1×.
     #[test]
     fn small_margin_scales_observed_amount() {
         let mut rec = base_recording();
@@ -702,8 +529,7 @@ mod tests {
         }
     }
 
-    /// CodegenOnly mode forces a Generated AmountRange slot even when the
-    /// flow is a clean SEP-41 transfer.
+    /// codegenonly forces Generated AmountRange even on clean SEP-41 transfer.
     #[test]
     fn codegen_only_mode_forces_generated_for_sep41() {
         let mut rec = base_recording();
@@ -738,21 +564,21 @@ mod tests {
             }
             other => panic!("expected Generated AmountRange, got {other:?}"),
         }
-        // PR-#649 still wins: context is CallContract even in CodegenOnly.
+        // PR-#649 still wins: CallContract even in CodegenOnly.
         match &spec.context_rule.context_type {
             ContextType::CallContract { address } => assert_eq!(address, "CUSDC"),
             other => panic!("expected CallContract, got {other:?}"),
         }
     }
 
-    /// Signer count exceeding `MAX_SIGNERS` (15) → SynthNotExpressible.
+    /// signer count above MAX_SIGNERS → SynthNotExpressible.
     #[test]
     fn signer_count_above_max_signers_errors() {
         let mut rec = base_recording();
         rec.contracts
             .push(sep41_transfer_record("CUSDC", "GFROM", "GTO", "1"));
         for i in 0..=MAX_SIGNERS {
-            // 16 distinct signers
+            // 16 distinct signers.
             rec.auth_tree.roots.push(auth_entry_with_signer(
                 &format!("GSIGNER{i}"),
                 "CUSDC",
@@ -768,27 +594,13 @@ mod tests {
         }
     }
 
-    /// Policy count exceeding `MAX_POLICIES` (5) → SynthNotExpressible.
-    ///
-    /// Driving the synthesizer above 5 from a real Recording is awkward
-    /// (it caps at 2 in the current decomposition). We exercise the gate
-    /// directly by handing a recording whose decomposition is in-bounds
-    /// and then asserting the inverse property — the gate emits the
-    /// `policies` keyword — using a low MAX_POLICIES guard test that
-    /// inspects message content. Implementation-style note: the literal
-    /// "policies" substring in the error message is the load-bearing
-    /// contract for MCP UX (the message becomes part of the error
-    /// payload surfaced to the LLM).
+    /// policy count above MAX_POLICIES → SynthNotExpressible.
+    /// hard to drive above 5 from a real recording, so we lock the gate
+    /// invariant + the "policies" keyword in the error message (load-bearing
+    /// for MCP UX).
     #[test]
     fn policy_count_above_max_policies_errors() {
-        // To assert this branch without weakening the decomposition rule,
-        // we directly exercise the gate logic: the public `synthesize`
-        // function caps at 2 policies under current rules, so we cannot
-        // overflow MAX_POLICIES from the front door. Instead we assert
-        // the runtime invariant that, under any valid input, the spec's
-        // policies count never exceeds MAX_POLICIES — and we lock the
-        // message keyword for the *future* branch when richer
-        // constraints push us past 5.
+        // lock the invariant + error keyword for the future branch.
         let mut rec = base_recording();
         rec.contracts
             .push(sep41_transfer_record("CUSDC", "GFROM", "GTO", "1"));
@@ -801,8 +613,7 @@ mod tests {
             "synthesize must never emit more than MAX_POLICIES slots; got {}",
             spec.policies.len()
         );
-        // And lock the keyword used by the gate so a future drift in the
-        // error-message wording is loud.
+        // lock the keyword so future wording drift is loud.
         assert_eq!(MAX_POLICIES, 5);
         let probe = Error::SynthNotExpressible(format!(
             "policies count 6 exceeds MAX_POLICIES ({MAX_POLICIES})"
@@ -810,8 +621,7 @@ mod tests {
         assert!(probe.to_string().contains("policies"));
     }
 
-    /// `context_rule_name` of 21 bytes → SynthNotExpressible (MAX_NAME_SIZE
-    /// is 20).
+    /// 21-byte context_rule_name → SynthNotExpressible (MAX_NAME_SIZE=20).
     #[test]
     fn context_rule_name_too_long_errors() {
         let mut rec = base_recording();
@@ -826,7 +636,7 @@ mod tests {
             tightness: Tightness::Exact,
             lifetime_ledgers: None,
             delegated_signer: None,
-            context_rule_name: "x".repeat((MAX_NAME_SIZE + 1) as usize), // 21 bytes
+            context_rule_name: "x".repeat((MAX_NAME_SIZE + 1) as usize), // 21 bytes.
         };
         let err = synthesize(&rec, &opts).expect_err("expected error");
         match err {
@@ -837,8 +647,7 @@ mod tests {
         }
     }
 
-    /// PR-#649: whenever a `SpendingLimit` slot is composed, `context_type`
-    /// must be `CallContract { address }` — never `Default`.
+    /// PR-#649: SpendingLimit always forces CallContract — never Default.
     #[test]
     fn spending_limit_always_forces_call_contract() {
         for tightness in [Tightness::Exact, Tightness::SmallMargin, Tightness::Loose] {
@@ -863,12 +672,7 @@ mod tests {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Scaling unit tests
-    // ---------------------------------------------------------------------
-
-    /// Loose scaling (2×) preserves precision for the entire i128 range
-    /// short of overflow. Overflow surfaces as SynthNotExpressible.
+    /// loose scaling overflow surfaces as SynthNotExpressible.
     #[test]
     fn loose_scaling_overflow_surfaces_as_error() {
         let mut rec = base_recording();
@@ -878,7 +682,7 @@ mod tests {
             args: vec![
                 ArgValue::Address("GFROM".to_string()),
                 ArgValue::Address("GTO".to_string()),
-                // i128::MAX. ×2 overflows.
+                // i128::MAX, ×2 overflows.
                 ArgValue::I128("170141183460469231731687303715884105727".to_string()),
             ],
         });
@@ -898,8 +702,7 @@ mod tests {
         }
     }
 
-    /// `delegated_signer` is honoured: signers list is exactly one
-    /// Delegated entry, regardless of observed auth tree.
+    /// delegated_signer overrides observed auth-tree signers.
     #[test]
     fn delegated_signer_overrides_observed_signers() {
         let mut rec = base_recording();
@@ -927,8 +730,7 @@ mod tests {
         }
     }
 
-    /// ComposeOnly with multiple targets → SynthNotExpressible (no single
-    /// existing primitive covers a multi-target flow).
+    /// composeonly + multiple targets → SynthNotExpressible.
     #[test]
     fn compose_only_rejects_multi_contract() {
         let mut rec = base_recording();

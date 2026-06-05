@@ -11,23 +11,14 @@ authors.workspace = true
 description = "Core policy IR, decision tree, schema, and error types for the OZ Accounts Policy Builder."
 
 [dependencies]
-# Phase 2 (P2-T1 / P2-T2): the `Error` enum still requires `thiserror`; the
-# new `PolicySpec` IR + the relocated `ArgValue` enum (moved here from
-# `oz-policy-recorder` so the spec can reference it without a recorder
-# dependency cycle) require `serde`, `serde_json`, and `schemars`.
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
-# Optional `arbitrary` derive for fuzz harnesses (Phase 9 Stream A). When
-# the `arbitrary` feature is OFF (workspace default), this dep is not pulled
-# in and the spec/arg_value types have no `Arbitrary` impl. Fuzz subcrates
-# in `crates/<crate>/fuzz/` enable it explicitly.
+# optional Arbitrary derives for fuzz subcrates.
 arbitrary = { workspace = true, optional = true }
 
 [features]
 default = []
-# Derives `arbitrary::Arbitrary` on `PolicySpec`, `ArgValue`, and every
-# transitive type so cargo-fuzz harnesses can mint structured inputs. Opt-in
-# only — the workspace build never enables it.
+# enables Arbitrary on PolicySpec/ArgValue for fuzz harnesses.
 arbitrary = ["dep:arbitrary"]

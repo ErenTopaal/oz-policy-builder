@@ -1,20 +1,4 @@
-//! Integration tests for `oz_policy_core::spec::PolicySpec`.
-//!
-//! These tests live outside `src/` so they exercise the crate via its public
-//! surface only — exactly how downstream consumers (`oz-policy-installer`,
-//! `oz-policy-codegen`, `oz-policy-mcp`) will see the IR.
-//!
-//! Three properties are pinned here:
-//!
-//! 1. A minimal `PolicySpec` round-trips byte-equal through JSON for every
-//!    [`SynthesisMode`] variant (`Auto`, `ComposeOnly`, `CodegenOnly`).
-//! 2. `ExistingPrimitiveParams::SpendingLimit::limit_stroops_string`
-//!    serialises as a JSON **string**, not a JSON number — protecting
-//!    consumers without arbitrary-precision integer support from silent
-//!    precision loss on `i128` values above 2^53.
-//! 3. `schemars::schema_for!(PolicySpec)` produces a JSON Schema document
-//!    whose `$defs` / `definitions` map is non-empty (smoke test that every
-//!    derive in the IR is wired correctly).
+//! integration tests for `PolicySpec` via the public surface only.
 
 use oz_policy_core::spec::{
     ArgMatcher, Constraint, ContextRuleSpec, ContextType, ExistingPrimitive,
@@ -24,9 +8,7 @@ use oz_policy_core::spec::{
 };
 use oz_policy_core::ArgValue;
 
-/// Construct a minimal `PolicySpec` parameterised on the synthesis mode. The
-/// rest of the spec is intentionally inert (one Ed25519 signer, no policies)
-/// so the test isolates the round-trip property to the enum encoding.
+/// minimal `PolicySpec` with one signer, no policies.
 fn minimal_spec(mode: SynthesisMode) -> PolicySpec {
     PolicySpec {
         schema: POLICY_SCHEMA_URI.to_string(),
@@ -64,14 +46,10 @@ fn minimal_spec_round_trips_for_every_synthesis_mode() {
     }
 }
 
-/// `ExistingPrimitiveParams::SpendingLimit::limit_stroops_string` must
-/// serialise as a JSON string, never a JSON number — otherwise consumers
-/// without arbitrary-precision integer support (browsers, jq < 1.7) silently
-/// lose precision on `i128` values above 2^53.
+/// limit_stroops_string must serialise as json string, not number.
 #[test]
 fn spending_limit_serializes_limit_as_json_string() {
-    // Just inside the positive `i128` range — bigger than any IEEE 754 double
-    // can represent exactly, so a JSON-number encoding would lose bits.
+    // just inside i128 range, bigger than f64 can exactly represent.
     let limit = "170141183460469231731687303715884105727".to_string();
     let slot = PolicySlot::Existing {
         primitive: ExistingPrimitive::SpendingLimit,
@@ -82,9 +60,7 @@ fn spending_limit_serializes_limit_as_json_string() {
     };
 
     let mut spec = minimal_spec(SynthesisMode::ComposeOnly);
-    // The SpendingLimit primitive requires CallContract(_) per PR-#649 — even
-    // though this test only checks JSON encoding, set the context_type
-    // correctly so the fixture mirrors a real synthesised spec.
+    // PR-#649: SpendingLimit requires CallContract.
     spec.context_rule.context_type = ContextType::CallContract {
         address: "CA00000000000000000000000000000000000000000000000000000000".to_string(),
     };
@@ -104,16 +80,13 @@ fn spending_limit_serializes_limit_as_json_string() {
     );
     assert_eq!(stroops.as_str().unwrap(), limit);
 
-    // And round-trip is byte-equal.
+    // round-trip is byte-equal.
     let json = serde_json::to_string(&spec).expect("serialize");
     let parsed: PolicySpec = serde_json::from_str(&json).expect("parse");
     assert_eq!(parsed, spec);
 }
 
-/// Cross-IR smoke test: a spec exercising every top-level variant (Track A
-/// SpendingLimit, Track B Generated with three constraints, every signer
-/// kind, every ArgMatcher kind) must round-trip byte-equal. Catches any
-/// derive that silently drops fields or reorders enum content.
+/// cross-ir smoke: every top-level variant must round-trip byte-equal.
 #[test]
 fn comprehensive_spec_round_trips() {
     let ed25519 = SignerSpec::ExternalEd25519 {
@@ -191,8 +164,7 @@ fn comprehensive_spec_round_trips() {
     assert_eq!(parsed, spec, "comprehensive round-trip failed: {json}");
 }
 
-/// Smoke test for the JSON-schema export path — separate from the in-crate
-/// test in `spec.rs` so the public surface is exercised end-to-end.
+/// public-surface schema smoke test.
 #[test]
 fn schema_for_policy_spec_has_non_empty_definitions() {
     let schema = schemars::schema_for!(PolicySpec);
@@ -208,7 +180,7 @@ fn schema_for_policy_spec_has_non_empty_definitions() {
     );
 }
 
-/// Public constants must stay locked to the on-chain SmartAccount limits.
+/// public constants must stay locked to on-chain SmartAccount limits.
 #[test]
 fn hard_limit_constants_are_exported_unchanged() {
     assert_eq!(MAX_POLICIES, 5);

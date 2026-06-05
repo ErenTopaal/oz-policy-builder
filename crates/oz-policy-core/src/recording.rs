@@ -1,69 +1,37 @@
-//! Typed Recording IR.
-//!
-//! `Recording` is the deterministic document the recorder emits per P1-T3.
-//! Every `ScVal` from the source transaction is walked into the structured
-//! [`ArgValue`] enum so downstream consumers (the synthesizer in Phase 2, the
-//! MCP server in Phase 5) never need to re-parse XDR.
-//!
-//! ## Stability
-//! * The wire schema is identified by [`RECORDING_SCHEMA_URI`]. Any
-//!   incompatible change must bump the URI's version segment.
-//! * `i128` / `u128` / `i256` / `u256` are serialised as JSON **strings** to
-//!   preserve full precision when the document is round-tripped via tools
-//!   that lack arbitrary-precision integer support.
-//!
-//! ## History
-//!
-//! In Phase 1 these types lived in `oz-policy-recorder::recording`. They were
-//! moved into `oz-policy-core` in Phase 2 (P2 Stream A) so the policy IR
-//! ([`crate::spec`]) and the Phase 2 decision tree ([`crate::decision_tree`])
-//! can reference [`Recording`] / [`ContractRecord`] / [`AuthTree`] etc. without
-//! introducing a `core -> recorder` dependency cycle. The recorder re-exports
-//! these types from its public surface so the wire format and existing
-//! consumers (CLI, integration tests, walkthrough fixtures) are unchanged.
+//! typed recording IR — deterministic document the recorder emits.
+//! every `ScVal` decoded into `ArgValue`. wire schema = `RECORDING_SCHEMA_URI`;
+//! bump the version segment on any incompatible change.
 
 use crate::arg_value::ArgValue;
 use serde::{Deserialize, Serialize};
 
-/// Wire-stable schema identifier emitted in `Recording::schema`. Producers
-/// always set this constant; consumers should reject documents whose `schema`
-/// field does not match (forward compatibility lives in the version segment).
+/// wire-stable schema identifier.
 pub const RECORDING_SCHEMA_URI: &str = "oz-policy-builder/recording/v1";
 
-/// Root document: everything a Phase 2 synthesizer needs to reason about a
-/// single Stellar/Soroban transaction.
+/// root document — everything the synthesizer needs for one tx.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Recording {
-    /// Schema URI — always [`RECORDING_SCHEMA_URI`] when produced by this crate.
+    /// always [`RECORDING_SCHEMA_URI`] when produced by this crate.
     pub schema: String,
-    /// Network passphrase the transaction was scoped to (e.g.,
-    /// `"Test SDF Network ; September 2015"` for testnet).
+    /// network passphrase the tx was scoped to.
     pub network_passphrase: String,
-    /// How the transaction was sourced.
+    /// how the tx was sourced.
     pub ingest: IngestSource,
-    /// Ledger number the transaction was included in. `None` for
-    /// simulation-based recordings (the tx never landed on-chain).
+    /// ledger number; None for simulation-only recordings.
     pub ledger: Option<u32>,
-    /// Decoded `InvokeHostFunction → InvokeContract` invocations from the
-    /// transaction's operation list. One entry per `InvokeContract` op.
+    /// decoded `InvokeContract` invocations, one per op.
     pub contracts: Vec<ContractRecord>,
-    /// Walked `SorobanAuthorizationEntry[]` from the operation auth list.
+    /// walked auth entries.
     pub auth_tree: AuthTree,
-    /// Per-`LedgerEntryChange` deltas, keyed by the decoded `ContractData` key
-    /// (or other entry-type discriminator embedded in [`StateDelta::key`]).
+    /// per-entry deltas with before/after.
     pub state_changes: Vec<StateDelta>,
-    /// Soroban contract events emitted by the transaction (contract & system
-    /// events; diagnostic events are intentionally excluded — they are not
-    /// part of the policy-relevant signal).
+    /// contract & system events (diagnostic excluded — not policy-relevant).
     pub events: Vec<TypedEvent>,
 }
 
-/// Discriminates how a `Recording` was sourced. `Hash` = on-chain
-/// `getTransaction`; `Simulation` = local `simulateTransaction` over a
-/// caller-supplied envelope. The `envelope_xdr_sha256` lets later phases
-/// detect whether the envelope was modified between simulation and
-/// installation.
+/// hash = on-chain getTransaction; simulation = local simulateTransaction.
+/// envelope hash lets later phases detect tampering between sim and install.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IngestSource {
@@ -71,19 +39,19 @@ pub enum IngestSource {
     Simulation { envelope_xdr_sha256: String },
 }
 
-/// One `InvokeContract` invocation from the transaction's host-function op.
+/// one `InvokeContract` invocation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ContractRecord {
-    /// StrKey `C…` address of the called contract.
+    /// strkey `C…` of the called contract.
     pub address: String,
-    /// Function name (decoded as UTF-8 from `ScSymbol`).
+    /// function name (utf-8 from `ScSymbol`).
     pub function: String,
-    /// Fully decoded args. No opaque XDR.
+    /// fully decoded args, no opaque xdr.
     pub args: Vec<ArgValue>,
 }
 
-/// Decoded `SorobanAuthorizationEntry[]`.
+/// decoded auth tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuthTree {
@@ -95,15 +63,8 @@ pub struct AuthTree {
 pub struct AuthEntry {
     pub credentials: Credentials,
     pub root_invocation: AuthInvocation,
-    /// Zero-based index of the `InvokeHostFunction` operation in the source
-    /// envelope that owned this auth entry. Always `0` for the common
-    /// single-op envelope; multi-op envelopes (rare in practice but legal
-    /// per XDR) preserve their op→auth correspondence here.
-    ///
-    /// Marked `#[serde(default)]` for forward/backward compatibility: older
-    /// Recordings produced before this field existed deserialise with
-    /// `source_op_index == 0`, which is the correct value for the
-    /// overwhelmingly common single-op case.
+    /// op index of the InvokeHostFunction op that owned this entry.
+    /// `#[serde(default)]` so older recordings without it decode to 0.
     #[serde(default)]
     pub source_op_index: u32,
 }
@@ -111,11 +72,10 @@ pub struct AuthEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Credentials {
-    /// Invoker auth: the transaction's source account stands in for the
-    /// signature. No nonce / signature payload.
+    /// invoker auth — tx source acts as signature, no nonce/signature.
     SourceAccount,
-    /// Address (smart-account or end-user) auth. The signature is itself an
-    /// `ScVal` so callers can inspect multisig payloads, etc.
+    /// address auth (smart-account / end-user). signature kept as ScVal so
+    /// callers can inspect multisig payloads.
     Address {
         signer: String,
         nonce: String,
@@ -134,23 +94,21 @@ pub struct AuthInvocation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AuthFunction {
-    /// Standard cross-contract authorization: invoked function on a contract.
+    /// standard cross-contract authorization.
     Contract {
         address: String,
         function: String,
         args: Vec<ArgValue>,
     },
-    /// Host-fn that creates a new contract instance.
+    /// host-fn that creates a new contract instance.
     CreateContract {
-        /// Hex-encoded `ContractIdPreimage` XDR — opaque to policy logic but
-        /// preserved verbatim so downstream code can audit it if needed.
+        /// hex-encoded `ContractIdPreimage` xdr, kept verbatim for audit.
         contract_id_preimage_xdr_hex: String,
-        /// `Wasm(hex)` or `StellarAsset` discriminator from
-        /// `ContractExecutable`.
+        /// `Wasm(hex)` or `StellarAsset` discriminator.
         executable_kind: String,
         executable_value: String,
     },
-    /// `CreateContractV2` — same as above plus constructor args.
+    /// `CreateContractV2` — same plus constructor args.
     CreateContractV2 {
         contract_id_preimage_xdr_hex: String,
         executable_kind: String,
@@ -159,49 +117,38 @@ pub enum AuthFunction {
     },
 }
 
-/// One ledger-entry change extracted from `TransactionMetaV3.operations[].changes`
-/// or `TransactionMetaV4.operations[].changes`. We pair `State` + `Updated`
-/// entries by `LedgerKey` so the consumer sees a clean `before/after` view.
+/// one ledger-entry change with before/after view.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StateDelta {
-    /// The `ScVal` key (for `ContractData`) or a discriminator string for
-    /// other entry types (Account, Trustline, etc.). For non-`ContractData`
-    /// entries we emit `ArgValue::Symbol("<entry_type>")` so the caller can
-    /// filter them out cheaply.
+    /// `ScVal` key for ContractData, or `ArgValue::Symbol("<entry_type>")`
+    /// discriminator for non-contractdata entries.
     pub key: ArgValue,
-    /// Address scope for `ContractData` entries — the contract whose storage
-    /// is being mutated. `None` for non-contract entries.
+    /// address scope for ContractData; None otherwise.
     pub contract: Option<String>,
-    /// Pre-image value (`None` for `Created`).
+    /// pre-image, None for Created.
     pub before: Option<ArgValue>,
-    /// Post-image value (`None` for `Removed`).
+    /// post-image, None for Removed.
     pub after: Option<ArgValue>,
 }
 
-/// A decoded contract event.
+/// decoded contract event.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TypedEvent {
-    /// StrKey `C…` of the emitting contract, when present.
+    /// strkey `C…` of emitting contract, if present.
     pub contract: Option<String>,
-    /// `"system" | "contract" | "diagnostic"` mirroring `ContractEventType`.
+    /// `"system" | "contract" | "diagnostic"`.
     pub kind: String,
     pub topics: Vec<ArgValue>,
     pub data: ArgValue,
 }
 
-// -------------------------------------------------------------------------
-// Tests
-// -------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// A `Recording` constructed with the canonical schema URI must serialise
-    /// with `"schema": "oz-policy-builder/recording/v1"` so downstream
-    /// validators can route the document.
+    /// schema field must serialise to the canonical uri.
     #[test]
     fn recording_serializes_with_schema_uri() {
         let r = Recording {
