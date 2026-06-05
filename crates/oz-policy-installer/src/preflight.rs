@@ -1,92 +1,39 @@
-//! Pure-logic install-time preflight checks.
+//! pure-logic preflight checks — no i/o. enforces:
+//! - PR-#655 account-revision assertion (PrePr655 + Unknown both refused).
+//! - on-chain limit constants (`MAX_POLICIES`/`MAX_SIGNERS`/`MAX_NAME_SIZE`).
+//! - PR-#649 (`spending_limit` requires `CallContract`).
+//! - strkey shape (`C…`/`G…`) with checksum via `stellar-strkey`.
 //!
-//! Every check in this module operates on the typed `PolicySpec` IR and the
-//! caller-provided StrKey addresses — it performs **no** I/O. Network-level
-//! checks (passphrase mismatch, missing source account) live in
-//! [`crate::envelope`] where the RPC handle is already in scope. The
-//! division-of-labour invariant: anything the synthesizer can determine
-//! without a network round-trip belongs here.
-//!
-//! ## What is enforced
-//!
-//! 1. **OZ PR-#655 account revision** — per `docs/oz-internal-shapes.md` §8,
-//!    no on-chain marker distinguishes pre/post-#655 smart accounts. The
-//!    v1 strategy (option 3 in §8) is caller-asserted: the operator passes
-//!    `AccountRevision::PostPr655` to certify they have verified their
-//!    smart-account WASM came from `stellar-contracts >= v0.7.0-rc.2`.
-//!    `PrePr655` is a hard refusal; `Unknown` is also a refusal so a
-//!    silent install onto a vulnerable account is impossible.
-//! 2. **On-chain `SmartAccount` limit constants** — `MAX_POLICIES = 5`,
-//!    `MAX_SIGNERS = 15`, `MAX_NAME_SIZE = 20` (bytes). Mirrored from
-//!    `oz-policy-core::spec` (and from `docs/oz-internal-shapes.md` §7).
-//!    Catching these here gives the caller an `E_INSTALL_PREFLIGHT_FAILED`
-//!    *before* a wallet round-trip, which is strictly more useful than
-//!    discovering the contract `panic_with_error!`s mid-install.
-//! 3. **PR-#649 (`spending_limit` requires `CallContract`)** — the
-//!    on-chain spending-limit `install` rejects `Default`-typed context
-//!    rules with `OnlyCallContractAllowed (3227)`. Same reasoning as the
-//!    limits: surface it locally with a richer message than a numeric
-//!    error code 3227.
-//! 4. **StrKey shape** — `smart_account` must be a `C…` contract address
-//!    and `source_account` must be a `G…` ed25519 account address. We use
-//!    `stellar-strkey` (already a transitive dep via `stellar-rpc-client`)
-//!    so the checksum is validated, not just the prefix/length.
-//!
-//! ## What is **NOT** enforced here (intentionally)
-//!
-//! * Existence of the `smart_account` ledger entry. That requires an RPC
-//!   `getLedgerEntries` call; surfaced in [`crate::envelope`].
-//! * Existence of canonical primitive contract addresses. The registry
-//!   returns `None` in v1; [`crate::envelope`] surfaces the
-//!   `primitive_address_unknown` error.
+//! ledger-existence + registry-presence checks live in `crate::envelope`.
 
 use oz_policy_core::spec::{ContextType, ExistingPrimitive, PolicySlot, PolicySpec};
 use oz_policy_core::Error;
 
-/// Caller-asserted statement about the target smart-account contract's
+/// caller-asserted statement about the target smart-account contract's
 /// release vintage. See module doc-comment for why a user-asserted flag is
 /// the only feasible v1 strategy.
 ///
-/// `Serialize` + `Deserialize` + `JsonSchema` are derived (Phase 5 Stream A)
-/// so the MCP `export_policy` tool can accept this discriminator on its
-/// JSON input wire and publish a structured schema for it. The wire form
-/// is the snake_case variant name (`"post_pr_655"`, `"pre_pr_655"`,
-/// `"unknown"`), matching the rest of the policy IR convention.
+/// serialised as snake_case (`post_pr_655` / `pre_pr_655` / `unknown`).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum AccountRevision {
-    /// Operator asserts the deployed smart-account WASM came from
-    /// `stellar-contracts >= v0.7.0-rc.2` (the first tag containing the
-    /// PR-#655 merge commit, per `docs/oz-internal-shapes.md` §8).
+    /// asserted post-PR-#655 — install proceeds.
     PostPr655,
-    /// Operator asserts the deployed smart-account WASM predates PR-#655.
-    /// Always a hard refusal — installing onto a vulnerable account would
-    /// expose the user to the sponsor-substitution attack PR-#655 fixed.
+    /// asserted pre-#655 — hard refusal (sponsor-substitution attack).
     PrePr655,
-    /// Operator does not know. Also a hard refusal in v1, since the v1.1
-    /// WASM-hash whitelist (option 1 in `docs/oz-internal-shapes.md` §8) is
-    /// not yet wired up.
+    /// unknown — hard refusal in v1 (wasm-hash whitelist not wired yet).
     Unknown,
 }
 
-/// Hard cap on the number of policies a single context rule may carry —
-/// mirrored from `oz_policy_core::spec::MAX_POLICIES` and from
-/// `packages/accounts/src/smart_account/mod.rs:524` (`MAX_POLICIES`).
+/// mirror of on-chain MAX_POLICIES/MAX_SIGNERS/MAX_NAME_SIZE.
 const MAX_POLICIES_USIZE: usize = oz_policy_core::spec::MAX_POLICIES as usize;
 const MAX_SIGNERS_USIZE: usize = oz_policy_core::spec::MAX_SIGNERS as usize;
 const MAX_NAME_SIZE_USIZE: usize = oz_policy_core::spec::MAX_NAME_SIZE as usize;
 
-/// Run every pure-logic precondition. Returns `Err(Error::InstallPreflightFailed(_))`
-/// with a human-readable, machine-stable message on the first failure. The
-/// order of checks is fixed (revision → policy/signer/name limits →
-/// `spending_limit`/`Default` interaction → StrKey shapes) so deterministic
-/// error reporting is easy to test against.
-///
-/// `network_passphrase` and `rpc_url` are accepted (and currently unused
-/// internally) so the surface in `lib.rs` does not change when v1.1 adds
-/// the WASM-hash whitelist check (which will reach for the network).
+/// run preflight checks in fixed order. `network_passphrase`/`rpc_url` accepted
+/// for surface stability (v1.1 will use them for wasm-hash whitelist).
 pub fn check(
     spec: &PolicySpec,
     smart_account: &str,
@@ -95,10 +42,10 @@ pub fn check(
     rpc_url: &str,
     revision: AccountRevision,
 ) -> Result<(), Error> {
-    // Suppress unused-warning for forward-compat parameters; v1.1 will use them.
+    // suppress unused-warning for forward-compat parameters; v1.1 will use them.
     let _ = (network_passphrase, rpc_url);
 
-    // 1. Account revision gate (PR-#655).
+    // 1. account revision gate (PR-#655).
     match revision {
         AccountRevision::PostPr655 => {}
         AccountRevision::PrePr655 => {
@@ -117,7 +64,7 @@ pub fn check(
         }
     }
 
-    // 2. OZ SmartAccount hard limits (`packages/accounts/src/smart_account/mod.rs:524-530`).
+    // 2. on-chain SmartAccount hard limits.
     if spec.policies.len() > MAX_POLICIES_USIZE {
         return Err(Error::InstallPreflightFailed(format!(
             "MAX_POLICIES ({MAX_POLICIES_USIZE}) exceeded: spec has {} policies",
@@ -130,9 +77,7 @@ pub fn check(
             spec.signers.len()
         )));
     }
-    // Per `docs/oz-internal-shapes.md` §7, `MAX_NAME_SIZE` is a UTF-8 BYTE
-    // count, not a character count. `String::len()` already returns bytes
-    // in Rust, so this comparison is correct.
+    // MAX_NAME_SIZE is a utf-8 byte count; String::len() returns bytes.
     if spec.context_rule.name.len() > MAX_NAME_SIZE_USIZE {
         return Err(Error::InstallPreflightFailed(format!(
             "MAX_NAME_SIZE ({MAX_NAME_SIZE_USIZE}) exceeded for context rule name: \
@@ -175,16 +120,12 @@ pub fn check(
     Ok(())
 }
 
-/// Validate a contract (`C…`) StrKey. Length and prefix are necessary but
-/// not sufficient: the StrKey body is a `crc16-xmodem` checksum over the
-/// payload, so we delegate to `stellar-strkey` which enforces it.
+/// validate `C…` strkey — checksum delegated to stellar-strkey.
 fn validate_contract_strkey(s: &str) -> Result<(), String> {
     if s.len() != 56 {
         return Err(format!("expected 56 chars, got {}", s.len()));
     }
-    // Reject lowercase 'c' or any non-'C' prefix before the strkey decode
-    // gives a less-helpful error. StrKey base32 uses uppercase alphabet
-    // only — a lowercase prefix is always wrong.
+    // strkey uses uppercase base32; lowercase 'c' is always wrong.
     if !s.starts_with('C') {
         return Err(format!(
             "expected leading 'C' (uppercase) for contract address, got '{}'",
@@ -195,8 +136,7 @@ fn validate_contract_strkey(s: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate an ed25519 account (`G…`) StrKey, same approach as
-/// [`validate_contract_strkey`].
+/// validate `G…` ed25519 strkey.
 fn validate_account_strkey(s: &str) -> Result<(), String> {
     if s.len() != 56 {
         return Err(format!("expected 56 chars, got {}", s.len()));
@@ -220,17 +160,13 @@ mod tests {
         PolicySpec, RecordingRef, SignerSpec, SynthesisMode, POLICY_SCHEMA_URI,
     };
 
-    /// A real testnet contract address — `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`
-    /// (USDC SAC on testnet, published in the Stellar testnet asset list).
-    /// Used as a known-valid C-address StrKey so the preflight passes its
-    /// shape check in the positive test.
+    /// known-valid `C…` strkey (testnet USDC SAC).
     const VALID_C: &str = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 
-    /// A real G-address StrKey — the all-zero ed25519 public key with the
-    /// correct CRC16 checksum (well-known Stellar test value).
+    /// all-zero ed25519 public key with the correct crc16 checksum.
     const VALID_G: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
-    /// Construct a baseline-valid `PolicySpec` that the preflight should accept.
+    /// baseline-valid spec that preflight should accept.
     fn valid_spec() -> PolicySpec {
         PolicySpec {
             schema: POLICY_SCHEMA_URI.to_string(),
@@ -399,9 +335,7 @@ mod tests {
     #[test]
     fn lowercase_smart_account_is_rejected() {
         let spec = valid_spec();
-        // Lowercase 'c' prefix — the same body as VALID_C but the leading
-        // 'C' is replaced with 'c'. This must fail the explicit
-        // case-check before strkey decode even runs.
+        // lowercase 'c' must fail the case-check before strkey decode.
         let bogus_lowercase = format!("c{}", &VALID_C[1..]);
         assert_eq!(bogus_lowercase.len(), 56);
         let err = check(
@@ -420,8 +354,7 @@ mod tests {
         );
     }
 
-    /// Sanity: the spending_limit + CallContract combination IS allowed,
-    /// so the PR-#649 check is not over-restrictive.
+    /// sanity: spending_limit + CallContract is allowed (PR-#649 not over-restrictive).
     #[test]
     fn spending_limit_with_call_contract_passes() {
         let mut spec = valid_spec();

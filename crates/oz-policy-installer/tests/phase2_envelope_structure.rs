@@ -1,13 +1,13 @@
-//! Phase 2 envelope-structure gate — `#[ignore]`-gated (network-dependent).
+//! phase 2 envelope-structure gate — `#[ignore]`-gated (network-dependent).
 //!
-//! This test reads the frozen `expected-spec-track-a.json` from the
+//! this test reads the frozen `expected-spec-track-a.json` from the
 //! `02-sep41-subscription` walkthrough and calls
 //! [`oz_policy_installer::build_install_envelope`] against the public
-//! Stellar testnet RPC.
+//! stellar testnet RPC.
 //!
 //! ## v1 expectation (today): primitive-address blocker
 //!
-//! The v1 [`crate::registry`] returns `None` for every `(primitive,
+//! the v1 [`crate::registry`] returns `None` for every `(primitive,
 //! network)` pair (see `crates/oz-policy-installer/src/registry.rs` for the
 //! honest finding — `stellar-accounts = 0.7.1` ships primitives as library
 //! modules, not deployed contracts; no canonical addresses exist on chain).
@@ -20,7 +20,7 @@
 //!
 //! ## v1.1 upgrade path (when the registry gains real addresses)
 //!
-//! When either of the following lands, this test MUST be updated to assert
+//! when either of the following lands, this test MUST be updated to assert
 //! the success path — decode the returned
 //! `EnvelopeArtifact.envelope_xdr_base64` via
 //! `TransactionEnvelope::from_xdr_base64`, count exactly **one**
@@ -34,7 +34,7 @@
 //!    (canonical, traceable source linked in `src/registry.rs`), OR
 //! 2. The public API grows a user-supplied address map (post-v1.1).
 //!
-//! Until then, the failure path is the binary "what we CAN verify today"
+//! until then, the failure path is the binary "what we CAN verify today"
 //! gate.
 
 use oz_policy_core::spec::PolicySpec;
@@ -43,19 +43,19 @@ use oz_policy_installer::{build_install_envelope, AccountRevision};
 const TESTNET_PASSPHRASE: &str = "Test SDF Network ; September 2015";
 const TESTNET_RPC: &str = "https://soroban-testnet.stellar.org";
 
-/// Stand-in C-address used as the `smart_account`. Same well-known USDC SAC
+/// stand-in C-address used as the `smart_account`. Same well-known USDC SAC
 /// address used by the v1 `envelope_against_testnet` ignored test — the
 /// `build_install_envelope` call short-circuits on the registry's missing
 /// primitive-address path well before any RPC call to this account, so the
 /// test never requires it to be a real deployed `SmartAccount`.
 const TESTNET_USDC_SAC: &str = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 
-/// All-zero G-address with the correct CRC16 checksum. Same rationale as
+/// all-zero G-address with the correct CRC16 checksum. Same rationale as
 /// above — the failure path short-circuits before any source-account
 /// `getLedgerEntries` call.
 const TEST_G: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
-/// Path from `CARGO_MANIFEST_DIR` (= `crates/oz-policy-installer/`) up to
+/// path from `CARGO_MANIFEST_DIR` (= `crates/oz-policy-installer/`) up to
 /// the workspace root and into the SEP-41 walkthrough directory.
 const WALKTHROUGH_DIR: &str = "../../walkthroughs/02-sep41-subscription";
 

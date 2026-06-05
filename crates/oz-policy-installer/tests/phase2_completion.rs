@@ -1,9 +1,9 @@
-//! Phase 2 binary completion gate.
+//! phase 2 binary completion gate.
 //!
-//! This test is the **literal** completion criterion for Phase 2 of the OZ
-//! Accounts Policy Builder. It must run in the default `cargo nextest run
+//! this test is the **literal** completion criterion for Phase 2 of the OZ
+//! accounts Policy Builder. It must run in the default `cargo nextest run
 //! --workspace` invocation (no `#[ignore]` gate, no network calls): the
-//! Phase 2 deliverable is "decision tree turns a frozen Recording into a
+//! phase 2 deliverable is "decision tree turns a frozen Recording into a
 //! frozen PolicySpec, byte-equal forever".
 //!
 //! ## What it does (deterministically, offline)
@@ -19,14 +19,14 @@
 //! 4. Asserts `serde_json::to_string_pretty(&actual_spec) ==
 //!    expected_spec_string` — byte-equal, including key insertion order.
 //!
-//! Both files are produced by re-running the CLI; see the walkthrough
+//! both files are produced by re-running the CLI; see the walkthrough
 //! README for the recipe. If the decision tree ever produces a different
 //! shape for this exact input, this test breaks loudly — which is the
 //! point of the gate.
 //!
 //! ## Why this test lives in `oz-policy-installer/tests/`
 //!
-//! Phase 2's two streams converge in the installer (Stream B), and the
+//! phase 2's two streams converge in the installer (Stream B), and the
 //! completion gate naturally lives next to the envelope-shape gate
 //! (`phase2_envelope_structure.rs`). The installer already depends on
 //! `oz-policy-core`, so the decision-tree call is a direct path import,
@@ -37,7 +37,7 @@ use oz_policy_core::decision_tree::{synthesize, SynthesisOptions, Tightness};
 use oz_policy_core::recording::Recording;
 use oz_policy_core::spec::SynthesisMode;
 
-/// Path from the crate root (where `cargo` runs the test) up to the
+/// path from the crate root (where `cargo` runs the test) up to the
 /// workspace root, then into the walkthroughs directory. `CARGO_MANIFEST_DIR`
 /// is set by cargo to the absolute path of the crate's `Cargo.toml`
 /// directory — `crates/oz-policy-installer/` — so two `..` segments climb to
@@ -49,7 +49,7 @@ fn phase2_completion() {
     phase2_completion_gate_byte_equal_synth();
 }
 
-/// Internal helper. The outer wrapper is named so the verification gate's
+/// internal helper. The outer wrapper is named so the verification gate's
 /// positional filter `cargo nextest run --workspace phase2_completion`
 /// matches (nextest's positional substring match is over the test name).
 fn phase2_completion_gate_byte_equal_synth() {
@@ -89,8 +89,8 @@ fn phase2_completion_gate_byte_equal_synth() {
     let actual_trimmed = actual_json.strip_suffix('\n').unwrap_or(&actual_json);
 
     if expected_trimmed != actual_trimmed {
-        // Print a unified-ish diff to make CI failures self-diagnosing.
-        // We don't pull in a diff crate; a line-by-line side-by-side print
+        // print a unified-ish diff to make CI failures self-diagnosing.
+        // we don't pull in a diff crate; a line-by-line side-by-side print
         // is enough for the binary-completion gate.
         let exp_lines: Vec<&str> = expected_trimmed.lines().collect();
         let act_lines: Vec<&str> = actual_trimmed.lines().collect();
