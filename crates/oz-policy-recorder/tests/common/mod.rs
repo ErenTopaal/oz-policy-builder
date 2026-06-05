@@ -1,8 +1,4 @@
-//! Shared helper for integration tests: thin alias for the `pub`-but-hidden
-//! `decode_from_xdr_blobs` so tests can call it without re-declaring the
-//! signature. Kept in its own file (rather than `mod helpers` inside each
-//! test file) so the `cargo nextest` test runner doesn't double-count it as
-//! a test target.
+//! thin alias for the hidden `decode_from_xdr_blobs`.
 
 #![allow(dead_code)]
 

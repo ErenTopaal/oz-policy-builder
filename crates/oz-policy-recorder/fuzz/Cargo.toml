@@ -1,7 +1,5 @@
-# Phase 9 Stream A — cargo-fuzz harness for the recorder's XDR decode path.
-#
-# Excluded from the workspace via `/Cargo.toml` `[workspace] exclude = […]`.
-# See `crates/oz-policy-codegen/fuzz/Cargo.toml` for the rationale.
+# cargo-fuzz harness for the recorder xdr decode path.
+# excluded from workspace; pins versions to match `/Cargo.toml`.
 
 [package]
 name = "oz-policy-recorder-fuzz"
@@ -9,22 +7,15 @@ version = "0.0.0"
 edition = "2021"
 license = "Apache-2.0"
 publish = false
-description = "cargo-fuzz harness for oz-policy-recorder XDR decode (Phase 9)"
+description = "cargo-fuzz harness for oz-policy-recorder XDR decode"
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
-# Pinned to match the workspace declaration in `/Cargo.toml`.
 arbitrary = { version = "=1.4.2", features = ["derive"] }
 libfuzzer-sys = "=0.4.12"
-# base64: turn the fuzzer's raw bytes into the base64 envelope/meta strings
-# the recorder's public `decode_from_xdr_blobs` entrypoint expects. Pinned to
-# the workspace-declared `=0.22.1` so cargo's resolver unifies our copy with
-# the one already used by `oz-policy-mcp`.
 base64 = "=0.22.1"
-# Production crate under test. No `arbitrary` feature needed — this target
-# fuzzes the *bytes-in* path of the decoder, not a structured spec.
 oz-policy-recorder = { path = ".." }
 oz-policy-core = { path = "../../oz-policy-core" }
 

@@ -14,16 +14,11 @@ description = "Stellar transaction recorder: ingest a tx (hash or simulate) and 
 oz-policy-core = { path = "../oz-policy-core" }
 stellar-rpc-client = { workspace = true }
 stellar-xdr = { workspace = true, features = ["curr", "std", "base64", "serde"] }
-# tokio: required for the runtime + `tokio::time::timeout` wrapping each RPC
-# await. Keep here even though no `#[tokio::main]` lives in this crate —
-# `record_by_hash` / `record_by_simulation` use `tokio::time::timeout`.
+# needed for `tokio::time::timeout` wrapping rpc awaits.
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
-# tracing: used by `#[tracing::instrument]` on both public entrypoints plus
-# `tracing::{info,debug,warn}!` at decode boundaries and the no-op-leeway
-# warning. CLI initialises the subscriber in `main`.
 tracing = { workspace = true }
 hex = "=0.4.3"
 sha2 = "=0.10.9"

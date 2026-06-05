@@ -1,11 +1,4 @@
-//! Integration test: decode a committed real-testnet `fund_escrow` envelope
-//! whose `SorobanAuthorizationEntry.root_invocation` carries a nested
-//! `transfer` sub-invocation, exercising the recursive auth walker. No
-//! network access.
-//!
-//! Source of fixture: `tests/fixtures/nested_auth.*.xdr.base64`
-//! (testnet tx `8d64ac1168f2c35f39364e5539a2f2a30af2e11bdcb3a7e94741fd232d70f3bf`
-//! at ledger 2570501). See `tests/fixtures/README.md`.
+//! integration test: decode a fund_escrow envelope with nested transfer auth.
 
 use oz_policy_recorder::AuthFunction;
 
@@ -21,7 +14,7 @@ fn auth_tree_walker_recurses_into_sub_invocations() {
     let rec = helpers::decode(envelope.trim(), meta.trim(), NETWORK)
         .expect("decode nested-auth fixture should succeed");
 
-    // At least one auth root.
+    // at least one auth root.
     assert!(
         !rec.auth_tree.roots.is_empty(),
         "expected >= 1 auth root, got {}",
@@ -29,7 +22,7 @@ fn auth_tree_walker_recurses_into_sub_invocations() {
     );
 
     let root = &rec.auth_tree.roots[0];
-    // Root invocation is a contract fn call.
+    // root invocation is a contract fn call.
     let AuthFunction::Contract {
         function: root_fn, ..
     } = &root.root_invocation.function
@@ -39,10 +32,10 @@ fn auth_tree_walker_recurses_into_sub_invocations() {
             root.root_invocation.function
         );
     };
-    // Per the fixture, the root invocation is `fund_escrow`.
+    // fixture root = `fund_escrow`.
     assert_eq!(root_fn, "fund_escrow", "root fn must be fund_escrow");
 
-    // There must be at least one nested sub-invocation (the inner `transfer`).
+    // at least one nested sub-invocation (the inner `transfer`).
     assert!(
         !root.root_invocation.sub_invocations.is_empty(),
         "expected >= 1 sub_invocation under fund_escrow, got {}",

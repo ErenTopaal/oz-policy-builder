@@ -1,55 +1,29 @@
-//! Library half of the recorder fuzz harness.
-//!
-//! The body of the fuzz target lives in [`run_recording_decode_panic_free`]
-//! so a `#[cfg(test)]` smoke test can exercise it under stable `cargo test`
-//! without spinning up libFuzzer. See
-//! `crates/oz-policy-codegen/fuzz/src/lib.rs` for the same pattern.
-//!
-//! Invariant under test: `decode_from_xdr_blobs` either returns
-//! `Ok(Recording)` or `Err(Error::Recorder*)`. Any panic, and any error
-//! variant outside the recorder family, is a finding.
+//! library half of the recorder fuzz harness. body in
+//! `run_recording_decode_panic_free` so cargo test can exercise it too.
+//! invariant: only `Recorder*` errors or `Ok` — anything else is a finding.
 
 use arbitrary::Arbitrary;
 use base64::Engine;
 use oz_policy_core::Error;
 use oz_policy_recorder::recorder::decode_from_xdr_blobs;
 
-/// Structured input for the fuzz target. Each field is `Vec<u8>` so the
-/// fuzzer is free to vary envelope, meta, and passphrase independently;
-/// `Arbitrary`'s built-in `Vec<u8>` impl draws an arbitrary-length byte
-/// slice from the unstructured input.
+/// structured fuzz input.
 #[derive(Debug, Arbitrary)]
 pub struct DecoderInput {
-    /// Raw bytes that will be base64-encoded into the envelope_b64 argument.
-    /// Empty is allowed — the decoder must surface a typed error in that
-    /// case, not panic.
+    /// base64-encoded into envelope_b64. empty allowed.
     pub envelope: Vec<u8>,
-    /// Raw bytes that will be base64-encoded into the result_meta_b64 argument.
+    /// base64-encoded into result_meta_b64.
     pub meta: Vec<u8>,
-    /// Network passphrase. The decoder writes it into the Recording verbatim;
-    /// it should never affect the panic-freedom property.
+    /// passphrase, written into the Recording verbatim.
     pub passphrase: String,
 }
 
-/// Fuzz-target body. Returns `()` — we only care about panic-freedom.
-///
-/// Failure modes accepted:
-/// * `Ok(_)` — by sheer luck the random bytes happened to form a valid
-///   envelope + meta. Rare but possible (especially for the empty-meta
-///   skeleton path).
-/// * `Err(Error::RecorderXdrDecodeFailed(_))` — the overwhelmingly common
-///   outcome: random bytes don't decode as Stellar XDR.
-/// * `Err(Error::RecorderSimFailed(_))` — surfaced by the inner decode path
-///   in some shapes (envelope_decode_in_sim_path).
-///
-/// Any other `Err` variant, or any panic, is a finding.
+/// fuzz target body. accepted: Ok, Recorder* errors. anything else = finding.
 pub fn run_recording_decode_panic_free(input: &DecoderInput) {
     let engine = base64::engine::general_purpose::STANDARD;
     let envelope_b64 = engine.encode(&input.envelope);
     let meta_b64 = engine.encode(&input.meta);
-    // The recorder special-cases an empty meta string (skeleton mode), so
-    // also exercise that path explicitly when the fuzzer happens to draw an
-    // empty meta blob.
+    // empty meta = skeleton mode; exercise that branch explicitly.
     let meta_b64_to_use = if input.meta.is_empty() {
         String::new()
     } else {
@@ -77,9 +51,7 @@ mod smoke {
     use super::*;
     use arbitrary::{Arbitrary, Unstructured};
 
-    /// Drive the fuzz-target body on two synthetic byte streams. Confirms
-    /// the `Arbitrary` derive on `DecoderInput` compiles and the
-    /// run function does not panic on either input.
+    /// smoke: derive compiles, run doesn't panic on synthetic input.
     #[test]
     fn arbitrary_decoder_input_does_not_panic() {
         let inputs: [&[u8]; 2] = [
@@ -97,8 +69,7 @@ mod smoke {
         }
     }
 
-    /// Specifically exercise the empty-everything path. Both blobs empty,
-    /// passphrase empty — the decoder must return a typed error, not panic.
+    /// empty everything must return a typed error, not panic.
     #[test]
     fn empty_input_returns_typed_error() {
         let input = DecoderInput {
