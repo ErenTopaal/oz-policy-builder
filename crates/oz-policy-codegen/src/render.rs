@@ -1,18 +1,5 @@
-//! Pure-function `PolicySpec → RenderedCrate` Track-B codegen.
-//!
-//! This module owns:
-//!
-//! * The askama `Template`-deriving struct that consumes
-//!   `templates/base.rs.jinja`.
-//! * The `render_contract` entry point which projects a `PolicySpec`'s
-//!   `Generated` slot into the template context.
-//! * The `RenderedCrate` value object materialised onto disk by Stream B's
-//!   sandbox driver.
-//!
-//! The render is deterministic: identical specs (modulo unrelated ordering
-//! perturbations in unrelated `Vec`s) produce byte-equal `src_lib_rs` outputs.
-//! That property is enforced by the golden + determinism tests under
-//! `tests/golden/`.
+//! pure-function `PolicySpec → RenderedCrate` track-B codegen.
+//! deterministic: same input → byte-equal `src_lib_rs`. enforced by golden tests.
 
 use askama::Template;
 use oz_policy_core::{
@@ -28,20 +15,14 @@ use crate::context::{
 };
 use crate::sandbox::RenderedCrate;
 
-/// The render context. Every field referenced by `base.rs.jinja` (or any of
-/// its includes) must be a field here.
-///
-/// `escape = "none"` is **load-bearing**: askama defaults to HTML escaping on
-/// `.jinja` files, which would mangle Rust source (replacing `<`/`>`/`&`
-/// inside generic syntax). We render plain text.
+/// render context. every var referenced by `base.rs.jinja` must be a field here.
+/// `escape = "none"` is load-bearing — askama would otherwise html-escape `<>&`.
 #[derive(Template, Debug, Clone)]
 #[template(path = "base.rs.jinja", escape = "none")]
 pub struct BaseContext {
-    /// Hex digest of the canonicalised input spec slot. Used as a deterministic
-    /// audit trailer in the rendered source header.
+    /// hex digest of canonicalised slot input; written into the source header.
     pub spec_hash: String,
-    /// Lowercase snake-case template-family identifier (eg `"function_allowlist"`).
-    /// Cosmetic: written into the source banner only.
+    /// snake_case template family — cosmetic, source banner only.
     pub template_family: String,
 
     pub has_function_allowlist: bool,
@@ -61,14 +42,8 @@ pub struct BaseContext {
     pub sequence_ordering: SequenceOrderingCtx,
 }
 
-/// Render the `Generated` policy slot at `slot_index` of `spec` to a
-/// `RenderedCrate` (in-memory `src/lib.rs` + `Cargo.toml` plus their composite
-/// hash).
-///
-/// Errors:
-/// * `Error::CodegenCompileFailed` — slot index out of range, slot is not a
-///   `Generated` slot, the constraint vector is empty, or askama itself
-///   reports a render error.
+/// render the Generated slot at `slot_index` to a RenderedCrate.
+/// errors as `CodegenCompileFailed` on bad index / Existing slot / empty constraints / askama failure.
 pub fn render_contract(spec: &PolicySpec, slot_index: usize) -> Result<RenderedCrate, Error> {
     let slot = spec.policies.get(slot_index).ok_or_else(|| {
         Error::CodegenCompileFailed(format!(
@@ -129,9 +104,7 @@ pub fn render_contract(spec: &PolicySpec, slot_index: usize) -> Result<RenderedC
         .map_err(|e| Error::CodegenCompileFailed(format!("askama render failed: {e}")))?;
     let cargo_toml = generated_cargo_toml(slot_index);
 
-    // Hash convention `sha256(cargo_toml || "\0" || src_lib_rs)` matches
-    // Stream B's `sandbox::compile` cache-key contract verbatim — see the
-    // doc comment on `sandbox::RenderedCrate`.
+    // hash key matches `sandbox::compile`'s cache contract.
     let mut hasher = Sha256::new();
     hasher.update(cargo_toml.as_bytes());
     hasher.update(b"\0");
@@ -346,9 +319,7 @@ fn project_argument_pattern(
     Ok(entry)
 }
 
-/// Validate that a string can be a Soroban `Symbol`: ≤ 32 chars, ASCII alpha-
-/// numeric + underscore. (The 9-char rule for `symbol_short!` is enforced
-/// separately by `is_symbol_short_safe`.)
+/// validate a soroban `Symbol`: ≤ 32 chars, ascii alnum + underscore.
 fn validate_symbol(s: &str) -> Result<(), Error> {
     if s.is_empty() || s.len() > 32 {
         return Err(Error::CodegenCompileFailed(format!(
@@ -363,9 +334,7 @@ fn validate_symbol(s: &str) -> Result<(), Error> {
     Ok(())
 }
 
-/// Surface-level StrKey contract-address sanity. Full StrKey base32 decoding
-/// happens at install time on-chain; here we only assert the shape so the
-/// generated template doesn't embed an obviously-malformed literal.
+/// shape-only strkey sanity. full decoding happens on-chain.
 fn validate_strkey_contract(s: &str) -> Result<(), Error> {
     if s.len() != 56 || !s.starts_with('C') {
         return Err(Error::CodegenCompileFailed(format!(
@@ -433,25 +402,11 @@ fn hash_slot_inputs(spec: &PolicySpec, slot_index: usize) -> String {
 }
 
 fn generated_cargo_toml(slot_index: usize) -> String {
-    // Pinned versions mirror the workspace Cargo.toml. The generated crate is
-    // a standalone cdylib that is built outside the workspace by the sandbox
-    // driver (Stream B), so the two direct deps are inlined here.
-    // Transitive sub-crates (soroban-sdk-macros / soroban-spec / etc.) are
-    // resolved deterministically via `cargo build --locked` with a
-    // pre-prepared `Cargo.lock` that Stream B's sandbox driver writes
-    // alongside this Cargo.toml on materialisation.
-    //
-    // `rust-version = "1.89.0"` + `resolver = "3"` are LOAD-BEARING:
-    // soroban-sdk-macros / soroban-spec / soroban-spec-rust each cut a
-    // `25.3.1` patch that requires rustc 1.91.0. Without these two fields
-    // Cargo's MSRV-unaware resolver greedily picks the patch and the build
-    // fails with `rustc 1.89.0 is not supported`. With them, the resolver
-    // backs off to `25.3.0`, which is buildable on 1.89.0. The exact
-    // soroban-sdk pin (`=25.3.0`) further forbids the major bump.
+    // standalone cdylib built outside workspace by the sandbox driver.
+    // rust-version + resolver are load-bearing: soroban-sdk-macros 25.3.1
+    // requires rustc 1.91.0; with these the msrv-aware resolver backs off to 25.3.0.
     format!(
-        r#"# AUTO-GENERATED by oz-policy-codegen (Phase 3 Track-B). DO NOT EDIT.
-# See `docs/codegen-dependency-mode.md` for the rationale behind depending on
-# `stellar-accounts` as a library.
+        r#"# auto-generated by oz-policy-codegen — do not edit.
 [package]
 name = "oz-policy-generated-slot-{slot_index}"
 version = "0.0.0"
@@ -545,7 +500,7 @@ mod tests {
     #[test]
     fn long_function_name_uses_symbol_new() {
         let spec = minimal_spec(Constraint::FunctionAllowlist {
-            functions: vec!["transfer_from".into()], // 13 chars
+            functions: vec!["transfer_from".into()], // 13 chars.
         });
         let r = render_contract(&spec, 0).expect("render ok");
         assert!(r.src_lib_rs.contains("Symbol::new(e, \"transfer_from\")"));

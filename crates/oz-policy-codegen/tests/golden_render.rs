@@ -1,24 +1,4 @@
-//! Golden-render byte-equality tests for Track-B codegen.
-//!
-//! Each constraint primitive has a fixture spec containing only that
-//! primitive; the test renders it and asserts byte-equality with the
-//! committed `golden/<primitive>.rs` file. A composition test renders three
-//! primitives at once and a determinism test runs the same render 50× and
-//! asserts every output is identical.
-//!
-//! ## Updating goldens
-//!
-//! Goldens are generated, not hand-written. To refresh after an intentional
-//! template change:
-//!
-//! ```sh
-//! OZ_POLICY_CODEGEN_BLESS=1 cargo nextest run -p oz-policy-codegen \
-//!     golden_render
-//! ```
-//!
-//! With `OZ_POLICY_CODEGEN_BLESS=1` the test overwrites the golden file in
-//! place. Without it (the default) the test diffs the live render against
-//! the committed bytes and fails on mismatch.
+//! golden-render byte-equality tests. set `OZ_POLICY_CODEGEN_BLESS=1` to rewrite.
 
 use std::path::PathBuf;
 
@@ -31,8 +11,7 @@ use oz_policy_core::{
     },
 };
 
-/// Build a `PolicySpec` whose single `Generated` slot carries the given
-/// constraints + template-family classifier.
+/// minimal spec with one Generated slot.
 fn build_spec(family: TemplateFamily, constraints: Vec<Constraint>) -> PolicySpec {
     PolicySpec {
         schema: "oz-policy-builder/v1".into(),
@@ -63,8 +42,7 @@ fn golden_path(name: &str) -> PathBuf {
     p
 }
 
-/// Compare `actual` against the committed golden file (or, with
-/// `OZ_POLICY_CODEGEN_BLESS=1`, overwrite the golden in place).
+/// diff actual vs committed golden; bless mode overwrites.
 fn assert_golden(name: &str, actual: &str) {
     let path = golden_path(name);
     if std::env::var("OZ_POLICY_CODEGEN_BLESS").is_ok() {
@@ -85,9 +63,7 @@ fn assert_golden(name: &str, actual: &str) {
     );
 }
 
-// -------------------------------------------------------------------------
-// Per-primitive goldens. Each fixture exercises exactly one primitive.
-// -------------------------------------------------------------------------
+// per-primitive goldens: one constraint each.
 
 #[test]
 fn golden_function_allowlist() {
@@ -185,10 +161,7 @@ fn golden_sequence_ordering() {
     assert_golden("sequence_ordering.rs", &r.src_lib_rs);
 }
 
-// -------------------------------------------------------------------------
-// Composition golden: function_allowlist + amount_range + call_frequency
-// in a single contract.
-// -------------------------------------------------------------------------
+// composition golden: function_allowlist + amount_range + call_frequency.
 
 #[test]
 fn golden_composed_3_primitives() {
@@ -216,11 +189,7 @@ fn golden_composed_3_primitives() {
     assert_golden("composed_3_primitives.rs", &r.src_lib_rs);
 }
 
-// -------------------------------------------------------------------------
-// Determinism: the same spec rendered N times must produce byte-equal
-// output. We use 50× to comfortably catch order-of-iteration regressions
-// without slowing the test suite.
-// -------------------------------------------------------------------------
+// determinism: 50× renders must agree byte-for-byte.
 
 #[test]
 fn determinism_50x_same_spec_renders_byte_equal() {
@@ -256,9 +225,7 @@ fn determinism_50x_same_spec_renders_byte_equal() {
     }
 }
 
-/// Determinism stress test — render the same spec from N independent
-/// clones of the constraint vector to catch any global / static state that
-/// could leak between renders.
+/// determinism stress test — N independent renders must agree byte-for-byte.
 #[test]
 fn determinism_independent_clones_render_byte_equal() {
     let constraints = vec![Constraint::FunctionAllowlist {

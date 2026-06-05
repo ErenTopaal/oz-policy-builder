@@ -1,81 +1,31 @@
-//! Static audit lints over rendered Track-B Rust source.
+//! static audit lints over rendered track-B rust source.
+//! runs after `render_contract` and before `sandbox::compile`.
 //!
-//! Phase 9 Stream B. These lints run **after** `render::render_contract`
-//! produces a `RenderedCrate` and **before** `sandbox::compile` is invoked,
-//! gating compilation on five security invariants taken verbatim from
-//! research §12 (synthesizer-side threat model) and plan.md §"Phase 9 →
-//! Implementation → audit_lints".
+//! rules:
+//! 1. `require_auth_first` — first stmt in enforce/install/uninstall must be
+//!    `smart_account.require_auth()`.
+//! 2. `storage_keyed_by_pair` — every persistent storage op keyed by a
+//!    `StorageKey::*` variant; bare Symbol/String keys rejected.
+//! 3. `no_unsafe` — rejects `unsafe { }`, `unsafe fn`, transmute.
+//! 4. `panic_uses_policy_error` — `panic!`/`unreachable!`/bare `.unwrap()`
+//!    must use `panic_with_error!(env, PolicyError::*)`.
+//! 5. `no_floats_on_amounts` — no `f32`/`f64` anywhere.
 //!
-//! ## Rules (one function per rule)
-//!
-//! 1. [`require_auth_first`] — every `fn enforce(...)` must call
-//!    `smart_account.require_auth()` as the FIRST non-comment, non-attribute
-//!    statement. Mitigates the "unauthenticated enforce" footgun from
-//!    research §12. The same invariant is enforced for `fn install` /
-//!    `fn uninstall` for completeness (every mutating entry point).
-//!
-//! 2. [`storage_keyed_by_pair`] — every `env.storage().persistent().{set, get,
-//!    has, remove, update, extend_ttl}` call must take a `StorageKey::*`
-//!    variant as its first (key) argument. Either:
-//!    - the key argument is `&StorageKey::*(...)` directly, OR
-//!    - the key argument is a local variable bound earlier via `let X =
-//!      StorageKey::*(...)`.
-//!
-//!    Bare `&Symbol::new(...)`, `&String::from_str(...)`, or any other
-//!    construction is rejected. Mitigates the "cross-rule replay" finding in
-//!    research §12 (two policies sharing a WASM must not collide on key
-//!    namespace).
-//!
-//! 3. [`no_unsafe`] — reject `unsafe { … }`, `unsafe fn`,
-//!    `core::mem::transmute`, and `std::mem::transmute`. The template already
-//!    has `#![forbid(unsafe_code)]`, but defence-in-depth: this lint catches
-//!    a malicious / buggy template that emits unsafe before rustc gets a
-//!    chance to refuse.
-//!
-//! 4. [`panic_uses_policy_error`] — every `panic!(...)`, `unreachable!(...)`
-//!    and bare `.unwrap()` in non-test code must be replaced by
-//!    `panic_with_error!(env, PolicyError::*)`. `unwrap_or`, `unwrap_or_else`,
-//!    `unwrap_or_default` are permitted (they don't unconditionally panic).
-//!    Mitigates the "host panics with non-spec error" finding from research
-//!    §12: the on-chain host must surface our `PolicyError` enum, not Rust's
-//!    panic-string Trap.
-//!
-//! 5. [`no_floats_on_amounts`] — reject any `f32` or `f64` type anywhere in
-//!    the source. The Soroban host has no IEEE-754 support and i128 is the
-//!    canonical money type; a leaked float would either fail to compile or
-//!    silently truncate. This lint short-circuits the compile-failure case
-//!    with a clearer error.
-//!
-//! ## Error surface
-//!
-//! Each rule emits zero or more [`AuditLintError`] records. The aggregate
-//! [`lint_rendered_source`] returns `Ok(())` only when **all** rules pass;
-//! otherwise it returns the full list of violations so callers can surface
-//! every issue at once (rather than fix-and-rerun). This is consumed by
-//! `synthesize_track_b` which converts the list into a single
-//! [`oz_policy_core::Error::CodegenCompileFailed`] (wire code
-//! `E_CODEGEN_COMPILE_FAILED`).
+//! aggregate `lint_rendered_source` returns the full violation list; callers
+//! map to `CodegenCompileFailed` / `E_CODEGEN_COMPILE_FAILED`.
 
 use std::fmt;
 
 use syn::visit::Visit;
 
-/// One violation. `rule` is the stable lint identifier (matches the function
-/// name); `line` is the 1-based line number in the rendered source; `snippet`
-/// is a short excerpt showing the offending construct.
-///
-/// The struct is `Clone + PartialEq` for unit-test ergonomics.
+/// one lint violation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditLintError {
-    /// Stable rule identifier — one of `"require_auth_first"`,
-    /// `"storage_keyed_by_pair"`, `"no_unsafe"`, `"panic_uses_policy_error"`,
-    /// `"no_floats_on_amounts"`.
+    /// stable rule id (matches the function name).
     pub rule: &'static str,
-    /// 1-based line number in the rendered source where the violation was
-    /// detected. `0` is used when a violation cannot be pinned to a single
-    /// line (e.g. a missing-statement check at the function level).
+    /// 1-based line; 0 when not pinpointable.
     pub line: usize,
-    /// Short, human-readable snippet describing the offending construct.
+    /// short human-readable snippet.
     pub snippet: String,
 }
 
@@ -85,25 +35,15 @@ impl fmt::Display for AuditLintError {
     }
 }
 
-/// Run every lint rule and accumulate violations. Returns `Ok(())` iff the
-/// source passes all rules.
-///
-/// The source may or may not parse: if `syn::parse_file` fails, that is itself
-/// a violation (rendered source must always be a valid Rust file — otherwise
-/// the templates emitted garbage). We surface that as a synthetic
-/// `"syn_parse_failed"` rule so the caller still gets a `E_CODEGEN_COMPILE_FAILED`
-/// instead of a panic.
+/// run every lint, accumulate violations. parse failure = synthetic `syn_parse_failed`.
 pub fn lint_rendered_source(src: &str) -> Result<(), Vec<AuditLintError>> {
     let mut errors: Vec<AuditLintError> = Vec::new();
 
-    // Regex-free checks first — they operate on raw source and don't need
-    // a parsed AST. Cheaper to run; also surface useful diagnostics even
-    // if the source fails to parse.
+    // raw-source checks first — work even if AST parse fails.
     errors.extend(no_unsafe(src));
     errors.extend(no_floats_on_amounts(src));
 
-    // AST-level checks. If parsing fails, surface as a single synthetic
-    // violation and skip the AST rules.
+    // ast-level checks. parse failures surface as synthetic violation.
     match syn::parse_file(src) {
         Ok(file) => {
             errors.extend(require_auth_first(&file, src));
@@ -126,22 +66,9 @@ pub fn lint_rendered_source(src: &str) -> Result<(), Vec<AuditLintError>> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule 1: `require_auth_first`
-// ---------------------------------------------------------------------------
-
-/// Every `fn enforce`, `fn install`, `fn uninstall` body must start with
-/// `smart_account.require_auth();` as the first executable statement.
-///
-/// "First executable statement" is taken at the AST level: `syn` already
-/// strips comments and doc attributes from statement lists, so the
-/// "first non-comment, non-doc" semantics fall out for free — the first
-/// element of `Block::stmts` is the first statement after parsing.
+/// every `fn enforce/install/uninstall` body must start with `smart_account.require_auth()`.
 pub fn require_auth_first(file: &syn::File, src: &str) -> Vec<AuditLintError> {
     let mut errors = Vec::new();
-    // The rendered source is structured as `impl PolicyTrait for Policy { fn
-    // install … fn enforce … fn uninstall … }`. We walk every `ImplItemFn`
-    // anywhere in the file and check by name.
     struct V<'a> {
         errors: &'a mut Vec<AuditLintError>,
         src: &'a str,
@@ -177,10 +104,7 @@ pub fn require_auth_first(file: &syn::File, src: &str) -> Vec<AuditLintError> {
     errors
 }
 
-/// Match the exact pattern `smart_account.require_auth();` (with optional
-/// trailing semicolon — `syn` represents both `Expr` (no semi) and
-/// `Semi(Expr)` (with semi) as statements; we accept either, since the
-/// behaviour is identical when the call's return type is `()`).
+/// match `smart_account.require_auth();` (with or without semi).
 fn is_smart_account_require_auth_stmt(stmt: &syn::Stmt) -> bool {
     let expr = match stmt {
         syn::Stmt::Expr(e, _) => e,
@@ -196,7 +120,7 @@ fn is_smart_account_require_auth_stmt(stmt: &syn::Stmt) -> bool {
     if !call.args.is_empty() {
         return false;
     }
-    // The receiver must be exactly the identifier `smart_account`.
+    // receiver must be the identifier `smart_account`.
     matches!(
         &*call.receiver,
         syn::Expr::Path(p)
@@ -204,23 +128,12 @@ fn is_smart_account_require_auth_stmt(stmt: &syn::Stmt) -> bool {
     )
 }
 
-// ---------------------------------------------------------------------------
-// Rule 2: `storage_keyed_by_pair`
-// ---------------------------------------------------------------------------
-
-/// Every `*.storage().*.{set,get,has,remove,update,extend_ttl}` call must
-/// take a `StorageKey::*` variant as its first (key) argument — either a
-/// direct `&StorageKey::*(…)` borrow or a local variable bound via `let X =
-/// StorageKey::*(…)`.
-///
-/// Walks `let` bindings to build a map of `local_var_name -> bool` (true if
-/// RHS is a `StorageKey::*` constructor), then visits every method call and
-/// checks the first argument against either direct construction or that map.
+/// every persistent storage op (`set/get/has/remove/...`) must be keyed by
+/// a `StorageKey::*` variant (direct borrow or via a let-bound local).
 pub fn storage_keyed_by_pair(file: &syn::File, src: &str) -> Vec<AuditLintError> {
     let mut errors = Vec::new();
 
-    // Storage-method names that take a key as their first arg. Mirror the
-    // soroban_sdk::storage::Persistent / Temporary / Instance surface.
+    // storage-method names that take a key as first arg.
     const STORAGE_METHODS: &[&str] = &[
         "set",
         "get",
@@ -234,11 +147,8 @@ pub fn storage_keyed_by_pair(file: &syn::File, src: &str) -> Vec<AuditLintError>
     struct V<'a> {
         errors: &'a mut Vec<AuditLintError>,
         src: &'a str,
-        // local var name -> true iff bound to a StorageKey::* constructor.
-        // We do not track nested scopes precisely; the rendered policy source
-        // uses unique names per scope (key, freq_key, phase_key) and never
-        // shadows, so a flat map is sufficient and safe (false negatives in
-        // shadowing scenarios would be a bug, but the templates never shadow).
+        // local var name -> bound to StorageKey::* ctor. templates never shadow,
+        // so a flat map is safe (no scope tracking needed).
         storage_key_vars: std::collections::HashMap<String, bool>,
     }
 
@@ -263,7 +173,7 @@ pub fn storage_keyed_by_pair(file: &syn::File, src: &str) -> Vec<AuditLintError>
             if STORAGE_METHODS.contains(&method_name.as_str())
                 && receiver_is_storage_chain(&call.receiver)
             {
-                // First arg is the key.
+                // first arg is the key.
                 if let Some(first_arg) = call.args.first() {
                     let key_expr = strip_reference(first_arg);
                     let ok = is_storage_key_expr(key_expr)
@@ -294,8 +204,7 @@ pub fn storage_keyed_by_pair(file: &syn::File, src: &str) -> Vec<AuditLintError>
     errors
 }
 
-/// `expr` is `StorageKey::SomeVariant(...)` or `StorageKey::SomeVariant` —
-/// any path that begins with `StorageKey`.
+/// any path beginning with `StorageKey`.
 fn is_storage_key_expr(expr: &syn::Expr) -> bool {
     let path = match expr {
         syn::Expr::Path(p) => &p.path,
@@ -312,7 +221,7 @@ fn is_storage_key_expr(expr: &syn::Expr) -> bool {
         .unwrap_or(false)
 }
 
-/// `expr` is a path to a known-good local variable.
+/// path to a known-good local var.
 fn is_known_storage_key_var(
     expr: &syn::Expr,
     vars: &std::collections::HashMap<String, bool>,
@@ -325,7 +234,7 @@ fn is_known_storage_key_var(
     false
 }
 
-/// Strip a single layer of `&expr` / `&mut expr` to recover the inner expr.
+/// strip one layer of `&expr` / `&mut expr`.
 fn strip_reference(expr: &syn::Expr) -> &syn::Expr {
     match expr {
         syn::Expr::Reference(r) => &r.expr,
@@ -333,10 +242,7 @@ fn strip_reference(expr: &syn::Expr) -> &syn::Expr {
     }
 }
 
-/// Strip a trailing `.clone()` so `StorageKey::Installed(addr.clone(), id)`
-/// is still recognised by `is_storage_key_expr` — currently a no-op for
-/// today's templates but keeps the rule robust if a future template wraps the
-/// key expression in `.clone()` for ergonomic reasons.
+/// strip a trailing `.clone()` so wrapped key expressions still match.
 fn strip_clone(expr: &syn::Expr) -> &syn::Expr {
     if let syn::Expr::MethodCall(m) = expr {
         if m.method == "clone" && m.args.is_empty() {
@@ -346,12 +252,7 @@ fn strip_clone(expr: &syn::Expr) -> &syn::Expr {
     expr
 }
 
-/// The receiver chain `X.storage().persistent()` / `X.storage().temporary()`
-/// / `X.storage().instance()` — the three storage backends. Returns true if
-/// the receiver expression *includes* a `.storage()` call somewhere along
-/// the chain (a heuristic that's tight enough because the only way to land
-/// on `set/get/has/...` with a key arg in soroban-sdk is through one of the
-/// three storage backends).
+/// true if the receiver chain contains a `.storage()` call.
 fn receiver_is_storage_chain(expr: &syn::Expr) -> bool {
     let mut cursor = expr;
     loop {
@@ -367,21 +268,10 @@ fn receiver_is_storage_chain(expr: &syn::Expr) -> bool {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule 3: `no_unsafe`
-// ---------------------------------------------------------------------------
-
-/// Reject `unsafe { ... }`, `unsafe fn`, `core::mem::transmute`,
-/// `std::mem::transmute`.
-///
-/// We do this with line-level string scanning, *skipping comments*. Comment
-/// stripping is delicate (think `/*…*/` spanning multiple lines and `//`
-/// inside strings); we use a small state machine. This is the only lint
-/// where regex / scanning is precise enough — the `unsafe`-token model is a
-/// keyword search, not a structural one.
+/// reject `unsafe` / `transmute` via line-level string scan (comments stripped).
 pub fn no_unsafe(src: &str) -> Vec<AuditLintError> {
     let mut errors = Vec::new();
-    // Patterns to flag. Each pattern is paired with a descriptive snippet.
+    // patterns to flag.
     const PATTERNS: &[(&str, &str)] = &[
         ("unsafe {", "`unsafe { … }` block"),
         ("unsafe fn", "`unsafe fn` declaration"),
@@ -394,13 +284,7 @@ pub fn no_unsafe(src: &str) -> Vec<AuditLintError> {
     for (idx, line) in src.lines().enumerate() {
         let stripped = strip_line_comments(line);
         for (needle, label) in PATTERNS {
-            // Word boundary: ensure `unsafe ` isn't a prefix of an identifier.
-            // For `unsafe { … }` etc. the literal `unsafe` token is always
-            // followed by whitespace + a delimiter, so a substring match is
-            // safe; for `unsafe_code` (e.g. `#![forbid(unsafe_code)]`) the
-            // `unsafe` substring is followed by `_`, not `{ ` / `fn ` / etc.,
-            // so we never false-positive on the existing `forbid(unsafe_code)`
-            // attribute.
+            // substring match is safe — `unsafe_code` ends in `_`, not delimiter.
             if stripped.contains(needle) {
                 errors.push(AuditLintError {
                     rule: "no_unsafe",
@@ -414,12 +298,7 @@ pub fn no_unsafe(src: &str) -> Vec<AuditLintError> {
     errors
 }
 
-/// Drop everything after `//` on a single line. Does NOT handle `/* */`
-/// block comments; the templates never emit them in places that would
-/// produce a false-positive token like `unsafe {`. If a future template
-/// adds block comments containing `unsafe ` substrings, this stub will
-/// false-positive — at which point either strip them properly or guard
-/// the substring with a leading whitespace + word boundary.
+/// drop everything after `//` on a single line. doesn't handle `/* */`.
 fn strip_line_comments(line: &str) -> &str {
     if let Some(idx) = line.find("//") {
         &line[..idx]
@@ -428,26 +307,16 @@ fn strip_line_comments(line: &str) -> &str {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rule 4: `panic_uses_policy_error`
-// ---------------------------------------------------------------------------
-
-/// Every `panic!(…)`, `unreachable!(…)`, bare `.unwrap()` in non-test code
-/// must be replaced by `panic_with_error!(env, PolicyError::*)`.
-///
-/// We use the AST so we can distinguish `.unwrap()` (forbidden) from
-/// `.unwrap_or(…)` / `.unwrap_or_else(…)` / `.unwrap_or_default()`
-/// (permitted — they don't unconditionally panic). Macro calls are matched
-/// by name; `panic!` and `unreachable!` are the two forbidden ones.
+/// non-test code must use `panic_with_error!(env, PolicyError::*)` instead of
+/// `panic!`/`unreachable!`/bare `.unwrap()`. ast-driven so we can distinguish
+/// `.unwrap_or()` (allowed) from `.unwrap()` (forbidden).
 pub fn panic_uses_policy_error(file: &syn::File, src: &str) -> Vec<AuditLintError> {
     let mut errors = Vec::new();
 
     struct V<'a> {
         errors: &'a mut Vec<AuditLintError>,
         src: &'a str,
-        // Depth counter: > 0 inside a `#[cfg(test)]` or `#[test]` scope.
-        // The audit lints' job is to police the *runtime* generated WASM
-        // surface; test-only code does not ship on chain.
+        // > 0 inside #[cfg(test)] / #[test]; test-only code doesn't ship on chain.
         in_test_scope: u32,
     }
 
@@ -459,11 +328,7 @@ pub fn panic_uses_policy_error(file: &syn::File, src: &str) -> Vec<AuditLintErro
                     return true;
                 }
                 if p.is_ident("cfg") {
-                    // Crude but sufficient: render the `#[cfg(...)]` payload
-                    // tokens to a string and look for the bare word `test`.
-                    // This matches `#[cfg(test)]`, `#[cfg(all(test, ...))]`,
-                    // `#[cfg(any(test, ...))]` and anything else that
-                    // unconditionally implies test scope.
+                    // crude but sufficient: scan for the bare word `test`.
                     if let syn::Meta::List(list) = &a.meta {
                         let toks = list.tokens.to_string();
                         return contains_word(&toks, "test");
@@ -519,11 +384,8 @@ pub fn panic_uses_policy_error(file: &syn::File, src: &str) -> Vec<AuditLintErro
             syn::visit::visit_expr_macro(self, m);
         }
 
-        // `panic!("…");` and `unreachable!();` as bare statements parse as
-        // `Stmt::Macro(StmtMacro)`, NOT as a `Stmt::Expr(Expr::Macro(...))` —
-        // syn distinguishes between the two even though they're equivalent
-        // semantically. We must visit both forms or we silently miss every
-        // statement-form panic.
+        // syn parses bare-statement `panic!();` as `Stmt::Macro` (not Expr::Macro);
+        // we must visit both forms.
         fn visit_stmt_macro(&mut self, m: &'ast syn::StmtMacro) {
             if self.in_test_scope == 0 {
                 check_forbidden_macro(&m.mac, self.src, self.errors);
@@ -532,9 +394,7 @@ pub fn panic_uses_policy_error(file: &syn::File, src: &str) -> Vec<AuditLintErro
         }
     }
 
-    /// Shared `panic!` / `unreachable!` predicate, used by both
-    /// `visit_expr_macro` and `visit_stmt_macro`. Pushes a violation into
-    /// `errors` when the macro path matches one of the forbidden names.
+    /// shared check for both `Expr::Macro` and `Stmt::Macro` forms.
     fn check_forbidden_macro(mac: &syn::Macro, src: &str, errors: &mut Vec<AuditLintError>) {
         let is_panic = mac.path.is_ident("panic");
         let is_unreachable = mac.path.is_ident("unreachable");
@@ -567,17 +427,7 @@ pub fn panic_uses_policy_error(file: &syn::File, src: &str) -> Vec<AuditLintErro
     errors
 }
 
-// ---------------------------------------------------------------------------
-// Rule 5: `no_floats_on_amounts`
-// ---------------------------------------------------------------------------
-
-/// Reject `f32` / `f64` tokens anywhere in the source. The Soroban host has
-/// no IEEE-754 support; an amount typed as float either fails to compile or,
-/// worse, silently truncates through `as` casts. Lint pre-empts both.
-///
-/// Implemented as a word-boundary string scan; the templates never legitimately
-/// emit `f32` / `f64` (i128 is the canonical money type) so any match is a
-/// real violation.
+/// reject `f32`/`f64` tokens anywhere. word-boundary string scan.
 pub fn no_floats_on_amounts(src: &str) -> Vec<AuditLintError> {
     let mut errors = Vec::new();
     for (idx, line) in src.lines().enumerate() {
@@ -599,9 +449,7 @@ pub fn no_floats_on_amounts(src: &str) -> Vec<AuditLintError> {
     errors
 }
 
-/// Word-boundary `contains`: matches `needle` only when surrounded by
-/// non-identifier characters (so `f32` matches `as f32`, `2f32` is also
-/// matched — Rust suffix literals — but `if32` is NOT, nor is `xf64x`).
+/// word-boundary contains: `f32`/`f64` match suffix literals (e.g. `2f32`).
 fn contains_word(haystack: &str, needle: &str) -> bool {
     let bytes = haystack.as_bytes();
     let n = needle.as_bytes();
@@ -627,12 +475,7 @@ fn is_ident_continue(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Return the (trimmed) source line at 1-based `line`. Defensive: returns
-/// `<line out of range>` if `line` is `0` or beyond the source.
+/// trimmed source line at 1-based `line`; defensive on out-of-range.
 fn snippet_at_line(src: &str, line: usize) -> String {
     if line == 0 {
         return "<line out of range>".into();
@@ -643,21 +486,11 @@ fn snippet_at_line(src: &str, line: usize) -> String {
         .unwrap_or_else(|| "<line out of range>".into())
 }
 
-// ===========================================================================
-// Tests
-// ===========================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // Rule 1: require_auth_first
-    // -----------------------------------------------------------------------
-
-    /// A minimal valid `impl` block with `require_auth()` as the first
-    /// statement of `fn enforce` (and `fn install` / `fn uninstall`).
-    /// Standalone so each per-rule test stays self-contained.
+    /// minimal valid impl block with `require_auth()` first in every fn.
     fn good_impl() -> &'static str {
         r#"
         struct Policy;
@@ -720,9 +553,7 @@ mod tests {
         assert_eq!(v[0].rule, "require_auth_first");
     }
 
-    // -----------------------------------------------------------------------
-    // Rule 2: storage_keyed_by_pair
-    // -----------------------------------------------------------------------
+    // rule 2: storage_keyed_by_pair
 
     #[test]
     fn storage_keyed_by_pair_passes_with_storage_key_direct() {
@@ -777,9 +608,7 @@ mod tests {
         assert_eq!(v[0].rule, "storage_keyed_by_pair");
     }
 
-    // -----------------------------------------------------------------------
-    // Rule 3: no_unsafe
-    // -----------------------------------------------------------------------
+    // rule 3: no_unsafe
 
     #[test]
     fn no_unsafe_passes_on_safe_source() {
@@ -843,9 +672,7 @@ mod tests {
         assert!(v.is_empty(), "patterns inside comments must be skipped");
     }
 
-    // -----------------------------------------------------------------------
-    // Rule 4: panic_uses_policy_error
-    // -----------------------------------------------------------------------
+    // rule 4: panic_uses_policy_error
 
     #[test]
     fn panic_uses_policy_error_passes_with_panic_with_error() {
@@ -918,9 +745,7 @@ mod tests {
         assert!(v.is_empty(), "test-scope code must be exempt; got {v:?}");
     }
 
-    // -----------------------------------------------------------------------
-    // Rule 5: no_floats_on_amounts
-    // -----------------------------------------------------------------------
+    // rule 5: no_floats_on_amounts
 
     #[test]
     fn no_floats_on_amounts_passes_on_i128_source() {
@@ -977,9 +802,7 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Composition: real rendered output passes, hand-broken source fails.
-    // -----------------------------------------------------------------------
+    // composition: real rendered output passes, hand-broken source fails.
 
     #[test]
     fn composition_real_phase3_fixture_passes_all_lints() {

@@ -1,51 +1,11 @@
-//! Sandboxed cargo+wasm-opt driver for Track-B codegen.
+//! sandboxed cargo+wasm-opt driver for track-B codegen.
+//! pipeline: cache lookup → materialise crate → `cargo build` under
+//! `sandbox-exec` (macos) or `bwrap` (linux) → `stellar contract optimize` →
+//! return [`CompiledArtifact`].
 //!
-//! Pipeline (a single invocation of [`compile`]):
-//!
-//! 1. Compute a cache directory from `rendered.wasm_hash_of_src` under
-//!    `${OZ_POLICY_CODEGEN_CACHE_DIR}` (default
-//!    `${HOME}/.cache/oz-policy-codegen`), forming
-//!    `<root>/sandbox/<hex>/`. If `<cache>/policy.opt.wasm` plus its sidecar
-//!    `<cache>/policy.opt.wasm.sha256` already exist, return them with
-//!    `cache_hit = true` — `wasm_hash_of_src` is the hash of
-//!    `Cargo.toml || "\0" || src/lib.rs`, which means an unchanged render
-//!    deterministically resolves to the same artifact.
-//! 2. On cache miss, materialise the rendered crate (Cargo.toml, src/lib.rs,
-//!    plus `rust-toolchain.toml` pinned to `1.89.0`), set `CARGO_HOME` to
-//!    the host's `${HOME}/.cargo` (the pre-warmed offline registry), and
-//!    run `cargo update --offline` against it. The host registry is mounted
-//!    **read-only** by the sandbox profile — the only writable area is the
-//!    cache dir itself (the cwd of the build). On a fresh machine where
-//!    dependencies have not yet been fetched once non-sandboxed, `cargo
-//!    update --offline` fails with `SandboxError::SetupFailed("cargo
-//!    registry empty; run a non-sandboxed build first")`. This is
-//!    intentional: Phase 9 will require fully reproducible offline builds,
-//!    and silently fetching here would defeat the sandbox.
-//! 3. Run `cargo build --release --target wasm32-unknown-unknown --locked`
-//!    under the OS sandbox:
-//!    - macOS uses `sandbox-exec -f scripts/sandbox-profile-macos.sb -D
-//!      CACHE_DIR=<cache> -D HOME_DIR=<home>` (deny network, allow read of
-//!      `~/.cargo`, allow write only inside `<cache>`).
-//!    - Linux uses `bwrap --ro-bind / / --ro-bind ~/.cargo ~/.cargo --bind
-//!      <cache> /work --unshare-net --chdir /work …`.
-//!    - If the OS-sandbox binary is missing, we emit `tracing::warn!` and
-//!      run unsandboxed. **Sandbox is hardening, not a security barrier**:
-//!      correctness must not depend on it. Phase 9 will require it as a CI
-//!      gate.
-//! 4. Run the system `stellar contract optimize` binary (25.1.0, Binaryen
-//!    116) on the produced WASM. This step does not need sandboxing — the
-//!    optimizer is read-only on its input and writes only to the cache.
-//! 5. Read the optimized WASM into memory, compute its `sha256`, return
-//!    [`CompiledArtifact`].
-//!
-//! Any non-zero exit from the build / optimize steps is surfaced verbatim
-//! via [`SandboxError::BuildFailed`] / [`SandboxError::OptimizeFailed`]; we
-//! never swallow stderr. Network access is denied at the sandbox layer; if
-//! the env var `OZ_POLICY_CODEGEN_FORCE_NETWORK_TEST=1` is set, [`compile`]
-//! short-circuits with [`SandboxError::NetworkLeak`] (a wire-only sanity
-//! probe for the error-mapping, not a true exfil detector).
-//!
-//! See `plan.md` § "Phase 3 — Track B codegen" for the full spec.
+//! cache key = `sha256(cargo_toml || "\0" || src/lib.rs)`. sandbox is hardening,
+//! not a security barrier — correctness must not depend on it.
+//! `OZ_POLICY_CODEGEN_FORCE_NETWORK_TEST=1` short-circuits to `NetworkLeak`.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -54,39 +14,23 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::process::Command;
 
-/// The rendered Rust source plus its build manifest that Stream A's
-/// `render_contract` produces and this driver consumes.
-///
-/// `wasm_hash_of_src` is the SHA-256 of `cargo_toml || "\0" || src_lib_rs`
-/// and is the cache key for the sandbox driver: an unchanged render hits
-/// the cache, a one-byte change in either file misses.
-///
-/// This type lives in `sandbox.rs` because the sandbox driver is its only
-/// consumer at the API boundary; Stream A's `render::render_contract`
-/// builds it.
+/// rendered source + cargo manifest produced by `render_contract`.
+/// `wasm_hash_of_src = sha256(cargo_toml || "\0" || src_lib_rs)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedCrate {
-    /// Verbatim contents of `src/lib.rs` — the generated Soroban policy
-    /// contract source. Echoed back through `CompiledArtifact::source`.
     pub src_lib_rs: String,
-    /// Verbatim contents of `Cargo.toml` for the generated crate.
     pub cargo_toml: String,
-    /// Pre-computed `sha256(cargo_toml || "\0" || src_lib_rs)`. Used as
-    /// the sandbox cache key and the deterministic-render contract.
     pub wasm_hash_of_src: [u8; 32],
 }
 
-/// Output of a single sandbox compile.
+/// output of a single sandbox compile.
 #[derive(Debug, Clone)]
 pub struct CompiledArtifact {
-    /// The post-`stellar contract optimize` WASM bytes.
+    /// post-optimize wasm bytes.
     pub wasm: Vec<u8>,
-    /// SHA-256 of `wasm`. Cross-checked against pinned walkthrough hashes
-    /// in Phase 3's verification gate.
+    /// sha-256 of `wasm`; cross-checked against pinned walkthrough hashes.
     pub wasm_hash: [u8; 32],
-    /// Verbatim echo of `rendered.src_lib_rs`. Convenient for review tools
-    /// that want to display both source + bytes without re-reading the
-    /// cache directory.
+    /// verbatim echo of `rendered.src_lib_rs`.
     pub source: String,
     /// `true` iff this invocation served from the on-disk cache (no `cargo
     /// build` was run).
@@ -129,30 +73,25 @@ impl From<SandboxError> for oz_policy_core::Error {
 /// fall back to `${HOME}/.cache/oz-policy-codegen`).
 const ENV_CACHE_DIR: &str = "OZ_POLICY_CODEGEN_CACHE_DIR";
 
-/// Env var that short-circuits [`compile`] to the [`SandboxError::NetworkLeak`]
-/// branch so unit tests can verify the error-mapping wire without setting
-/// up a real network probe.
+/// short-circuits [`compile`] to `NetworkLeak` for tests.
 const ENV_FORCE_NETWORK_TEST: &str = "OZ_POLICY_CODEGEN_FORCE_NETWORK_TEST";
 
-/// Rust toolchain pin written into every generated crate. Matches the
-/// workspace `rust-toolchain.toml`.
+/// rust toolchain pin (matches workspace `rust-toolchain.toml`).
 const PINNED_RUST_TOOLCHAIN: &str = "1.89.0";
 
-/// Build the policy crate `rendered` under an OS sandbox and return the
-/// optimized WASM artifact. See module docs for the full pipeline.
+/// build the rendered crate under an os sandbox; return optimized wasm.
 #[tracing::instrument(level = "info", skip(rendered), fields(src_hash = %hex32(&rendered.wasm_hash_of_src)))]
 pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_policy_core::Error> {
-    // --- Network-leak sanity probe (test-only) ---------------------------
+    // test-only network-leak probe.
     if std::env::var(ENV_FORCE_NETWORK_TEST).ok().as_deref() == Some("1") {
         return Err(SandboxError::NetworkLeak.into());
     }
 
-    // --- Resolve cache directory ---------------------------------------
     let cache_dir = resolve_cache_dir(&rendered.wasm_hash_of_src)?;
     let opt_wasm_path = cache_dir.join("policy.opt.wasm");
     let opt_hash_path = cache_dir.join("policy.opt.wasm.sha256");
 
-    // --- Cache hit? ----------------------------------------------------
+    // cache hit?
     if opt_wasm_path.exists() && opt_hash_path.exists() {
         let wasm = tokio::fs::read(&opt_wasm_path)
             .await
@@ -171,8 +110,7 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
                 cache_hit: true,
             });
         }
-        // Hash mismatch — fall through and rebuild. (Almost never happens
-        // unless the cache directory was tampered with.)
+        // hash mismatch — rebuild. only happens if cache dir was tampered.
         tracing::warn!(
             "cache entry hash mismatch; rebuilding (expected {} got {})",
             recorded_hex,
@@ -180,7 +118,7 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
         );
     }
 
-    // --- Cache miss: materialise the rendered crate --------------------
+    // cache miss: materialise the rendered crate.
     tokio::fs::create_dir_all(&cache_dir)
         .await
         .map_err(|e| SandboxError::SetupFailed(format!("create cache dir: {e}")))?;
@@ -204,30 +142,12 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
     .await
     .map_err(|e| SandboxError::SetupFailed(format!("write rust-toolchain.toml: {e}")))?;
 
-    // CARGO_HOME for the build: we point it at the user's pre-warmed
-    // `~/.cargo` (which is read-only-mounted into the sandbox on Linux,
-    // and reachable directly on macOS — the Seatbelt profile grants
-    // `file-read*` globally, denies writes outside `CACHE_DIR`). This is
-    // exactly the spec's "offline registry mount comes from
-    // `${HOME}/.cargo`": cargo finds its registry there, and any cache
-    // writes that cargo wants to perform (target dir, lockfile) land in
-    // the cache dir which is the cwd and is writable.
-    //
-    // NOTE: we used to point `CARGO_HOME` at an empty `<cache>/cargo-home`
-    // directory; that fails immediately because `cargo update --offline`
-    // requires a populated registry. The empty-registry path is therefore
-    // unreachable in practice — but we keep the `SetupFailed("cargo
-    // registry empty; run a non-sandboxed build first")` mapping for the
-    // (rare) case where the user wipes `~/.cargo` between builds.
+    // CARGO_HOME points at the user's pre-warmed ~/.cargo. registry reads
+    // come from there; target dir + lockfile writes land in the cache_dir cwd.
     let host_cargo_home = host_cargo_home()?;
 
-    // --- Initialise Cargo.lock via offline `cargo update` --------------
-    //
-    // We allow this to fail loudly: if the host's `~/.cargo` does not yet
-    // contain the rendered crate's dependency closure, the offline update
-    // returns an error and we surface `SetupFailed`. The user must run a
-    // non-sandboxed build of any source crate first to pre-populate
-    // `~/.cargo/registry`. Documented in the module doc-comment above.
+    // init Cargo.lock via offline `cargo update`. fails loudly if the host's
+    // ~/.cargo doesn't contain the closure — user must warm registry first.
     let lock_path = cache_dir.join("Cargo.lock");
     if !lock_path.exists() {
         let mut cmd = Command::new("cargo");
@@ -243,9 +163,7 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
             .map_err(|e| SandboxError::SetupFailed(format!("spawn cargo update: {e}")))?;
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-            // Heuristic: the canonical "registry empty" failure surfaces as
-            // a no-matching-package error from cargo when --offline can't
-            // resolve. Surface a clearer message in that case.
+            // heuristic: "registry empty" surfaces as no-matching-package.
             if stderr.contains("no matching package")
                 || stderr.contains("not found in registry")
                 || stderr.contains("registry index was not found")
@@ -261,13 +179,9 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
         }
     }
 
-    // --- Run the sandboxed cargo build --------------------------------
     run_sandboxed_build(&cache_dir, &host_cargo_home).await?;
-
-    // --- Locate the built WASM ----------------------------------------
     let built_wasm = locate_built_wasm(&cache_dir, &rendered.cargo_toml)?;
-
-    // --- Run stellar contract optimize --------------------------------
+    // stellar contract optimize:
     let optimize_out = Command::new("stellar")
         .arg("contract")
         .arg("optimize")
@@ -301,9 +215,7 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
     })
 }
 
-/// Resolve the user's `CARGO_HOME` (defaulting to `${HOME}/.cargo`).
-/// This is where the sandbox-mounted cargo registry lives — the build
-/// reads it but does not write to it.
+/// resolve `CARGO_HOME` (default `${HOME}/.cargo`).
 fn host_cargo_home() -> Result<PathBuf, SandboxError> {
     if let Ok(v) = std::env::var("CARGO_HOME") {
         if !v.is_empty() {
@@ -315,9 +227,7 @@ fn host_cargo_home() -> Result<PathBuf, SandboxError> {
     Ok(PathBuf::from(home).join(".cargo"))
 }
 
-/// Resolve the per-render cache directory under
-/// `${OZ_POLICY_CODEGEN_CACHE_DIR}/sandbox/<hex>` (falling back to
-/// `${HOME}/.cache/oz-policy-codegen/sandbox/<hex>`).
+/// per-render cache dir; `OZ_POLICY_CODEGEN_CACHE_DIR` overrides default.
 fn resolve_cache_dir(src_hash: &[u8; 32]) -> Result<PathBuf, SandboxError> {
     let root = match std::env::var(ENV_CACHE_DIR) {
         Ok(v) if !v.is_empty() => PathBuf::from(v),
@@ -333,18 +243,13 @@ fn resolve_cache_dir(src_hash: &[u8; 32]) -> Result<PathBuf, SandboxError> {
     Ok(root.join("sandbox").join(hex32(src_hash)))
 }
 
-/// Run `cargo build --release --target wasm32-unknown-unknown --locked`
-/// under the OS sandbox if available, else fall back to an unsandboxed
-/// invocation with a prominent `tracing::warn!`. The sandbox is hardening,
-/// not a security barrier; correctness must not depend on it.
+/// run `cargo build --release --target wasm32-unknown-unknown --locked` under
+/// the os sandbox if available; fall back to unsandboxed with a warn.
 async fn run_sandboxed_build(cache_dir: &Path, cargo_home: &Path) -> Result<(), SandboxError> {
     let home =
         std::env::var("HOME").map_err(|e| SandboxError::SetupFailed(format!("HOME unset: {e}")))?;
 
-    // Build the base argv passed to `cargo`. `--locked` ensures we honour
-    // the Cargo.lock we just materialised; `--target wasm32` is mandatory
-    // for the policy contract; `--release` matches the workspace's
-    // overflow-checks=true release profile.
+    // `--locked` honours our Cargo.lock; release profile keeps overflow-checks.
     let cargo_args = [
         "build",
         "--release",
@@ -399,8 +304,7 @@ async fn run_sandboxed_build(cache_dir: &Path, cargo_home: &Path) -> Result<(), 
         )));
     }
 
-    // Fallback: unsandboxed build. The driver still works but the
-    // hardening guarantee is off — Phase 9 will require it as a CI gate.
+    // fallback: unsandboxed build. driver still works, hardening guarantee off.
     let mut cmd = Command::new("cargo");
     for a in &cargo_args {
         cmd.arg(a);
@@ -415,19 +319,11 @@ async fn run_build_command(
 ) -> Result<(), SandboxError> {
     cmd.current_dir(cache_dir)
         .env("CARGO_HOME", cargo_home)
-        // Refuse to fetch from the network under any path; the sandbox
-        // profile also enforces this, but belt-and-braces.
+        // belt-and-braces with the sandbox profile.
         .env("CARGO_NET_OFFLINE", "true")
-        // `stellar-accounts = 0.7.1` enables `experimental_spec_shaking_v2`
-        // on `soroban-sdk = 25.3.0`. That feature's build.rs panics unless
-        // the cargo invocation comes from `stellar contract build` ≥
-        // 25.2.0 or this env var is set explicitly. We invoke `cargo
-        // build` directly (not via `stellar contract build`) so we set
-        // the var here. The optimize pass downstream still calls
-        // `stellar contract optimize` against the resulting WASM, which
-        // works on the bundled stellar-cli 25.1.0+ regardless of this
-        // toggle. See `crates/oz-policy-codegen/docs/codegen-dependency-mode.md`
-        // (Round 2 amendment) for the rationale.
+        // stellar-accounts 0.7.1 enables experimental_spec_shaking_v2 on
+        // soroban-sdk 25.3.0 whose build.rs panics unless this is set or the
+        // invocation comes from `stellar contract build`.
         .env("SOROBAN_SDK_BUILD_SYSTEM_SUPPORTS_SPEC_SHAKING_V2", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -448,9 +344,7 @@ async fn run_build_command(
     Ok(())
 }
 
-/// Look up `scripts/sandbox-profile-macos.sb` relative to the workspace
-/// root. We resolve via `CARGO_MANIFEST_DIR` of this crate (set by cargo
-/// at compile time) so the test harness and CLI both find the same path.
+/// resolve `scripts/sandbox-profile-macos.sb` via `CARGO_MANIFEST_DIR`.
 fn locate_sandbox_profile() -> Result<PathBuf, SandboxError> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     // crates/oz-policy-codegen → workspace root is two `..` up.
@@ -464,10 +358,7 @@ fn locate_sandbox_profile() -> Result<PathBuf, SandboxError> {
     Ok(canonical)
 }
 
-/// Locate the built WASM produced by `cargo build`. We parse the crate
-/// name from the rendered Cargo.toml (the `name = "…"` line under
-/// `[package]`) rather than relying on `cargo metadata`, which would
-/// require an extra subprocess.
+/// locate the built wasm via the rendered Cargo.toml's `name = "…"` line.
 fn locate_built_wasm(cache_dir: &Path, cargo_toml: &str) -> Result<PathBuf, SandboxError> {
     let name = extract_package_name(cargo_toml).ok_or_else(|| {
         SandboxError::SetupFailed("could not parse `name = \"…\"` from rendered Cargo.toml".into())
@@ -514,8 +405,7 @@ fn extract_package_name(cargo_toml: &str) -> Option<String> {
     None
 }
 
-/// Lightweight `which`-style PATH lookup. Returning `None` lets the caller
-/// route to the unsandboxed fallback with a `tracing::warn!`.
+/// lightweight `which`-style PATH lookup.
 fn which(bin: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     for entry in std::env::split_paths(&path) {
@@ -549,10 +439,7 @@ fn hex32(bytes: &[u8; 32]) -> String {
 mod tests {
     use super::*;
 
-    /// Build a `RenderedCrate` whose `wasm_hash_of_src` is precomputed so
-    /// the test directly asserts the cache-dir hex naming. The contents
-    /// here are intentionally non-compilable — we never invoke `compile()`
-    /// in this test; we only exercise the cache-key path.
+    /// fixture with precomputed `wasm_hash_of_src` for cache-key tests.
     fn fixture(seed: u8) -> RenderedCrate {
         let mut hash = [0u8; 32];
         hash.fill(seed);
@@ -573,10 +460,10 @@ mod tests {
             .to_str()
             .expect("utf8")
             .to_string();
-        // Hash is 32 bytes of 0xab → 64 hex chars of `ab`.
+        // 32 bytes of 0xab → 64 hex chars.
         assert_eq!(leaf.len(), 64, "leaf must be 32-byte hex");
         assert_eq!(leaf, "ab".repeat(32));
-        // Parent must be `sandbox`.
+        // parent must be `sandbox`.
         assert_eq!(
             dir.parent()
                 .and_then(|p| p.file_name())
@@ -600,11 +487,7 @@ mod tests {
         std::env::remove_var(ENV_CACHE_DIR);
     }
 
-    /// `OZ_POLICY_CODEGEN_FORCE_NETWORK_TEST=1` must surface as the typed
-    /// `NetworkLeak` variant, mapped through `From<SandboxError>` to the
-    /// canonical `E_CODEGEN_COMPILE_FAILED`. This is a sanity test for the
-    /// error-mapping wire — not a real network probe, which is the OS
-    /// sandbox profile's job.
+    /// force-network-test surfaces as `E_CODEGEN_COMPILE_FAILED` (error mapping check).
     #[tokio::test]
     async fn network_leak_detection_returns_typed_error() {
         std::env::set_var(ENV_FORCE_NETWORK_TEST, "1");
@@ -657,27 +540,15 @@ name = "right"
         }
     }
 
-    /// Platform support: Windows is intentionally unsupported. We never
-    /// build the policy contracts on Windows (CI is macOS/Linux only),
-    /// but the driver still has to refuse cleanly if invoked there. This
-    /// test is gated to a `cfg!` arm that is true only on Windows; we run
-    /// it nowhere by default but the code path is still type-checked.
+    /// windows unsupported — driver refuses cleanly.
     #[test]
     #[cfg(target_os = "windows")]
     fn setup_failed_when_platform_unsupported() {
-        // The build branch in `run_sandboxed_build` returns
-        // `SetupFailed("unsupported platform: …")` on Windows. We can't
-        // easily invoke that without a real cache dir, so the assertion
-        // here is purely a compile-time guard that the cfg arm exists.
+        // compile-time guard that the cfg arm exists.
         let _: fn(&Path, &Path) -> _ = |_, _| async move { Ok::<(), SandboxError>(()) };
     }
 
-    /// Full cache-hit round-trip via the public `compile()` entrypoint.
-    ///
-    /// We exercise the cache-hit branch by pre-populating the cache
-    /// directory with a known `policy.opt.wasm` + its sidecar hash. The
-    /// driver must then short-circuit, never touching `cargo`, and return
-    /// `cache_hit = true` with the pinned hash.
+    /// cache-hit branch must short-circuit; never touches cargo.
     #[tokio::test]
     async fn cache_hit_short_circuits_compile() {
         let tmp = tempfile::tempdir().expect("tempdir");

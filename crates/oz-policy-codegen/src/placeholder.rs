@@ -1,7 +1,6 @@
-//! Phase 1 placeholder. Track-B codegen implementation lands in Phase 3.
+//! placeholder kept for callers referencing the symbol.
 
-/// Symbolic name of the Track-B output crate template family. Returned
-/// verbatim so we can wire the placeholder test to a real string.
+/// symbolic name of the track-B template family root.
 pub fn template_family_root() -> &'static str {
     "oz-policy-template"
 }
