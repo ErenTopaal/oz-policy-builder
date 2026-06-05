@@ -1,11 +1,11 @@
 //! `oz-policy-mcp` — binary entrypoint for the OZ Accounts Policy Builder
 //! MCP server (Phase 5 Stream C).
 //!
-//! Supports two transports per `plan.md` Phase 5 (Implementation → main.rs):
+//! supports two transports per `plan.md` Phase 5 (Implementation → main.rs):
 //!
 //! * **STDIO** (`--stdio`, default) — reads JSON-RPC frames from `stdin`,
 //!   writes to `stdout`. Used by IDE-style clients (Claude Desktop, Cursor,
-//!   Cline, Continue) that subprocess-spawn the server.
+//!   cline, Continue) that subprocess-spawn the server.
 //! * **Streamable HTTP** (`--http <port>`) — binds `0.0.0.0:<port>` and
 //!   exposes `POST /mcp` (the rmcp `StreamableHttpService` per MCP spec
 //!   2025-11-25) plus an unauthenticated `GET /healthz` probe for k8s /
@@ -41,7 +41,7 @@ use rmcp::{
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-/// Maximum time we'll wait for the HTTP server to shut down cleanly after
+/// maximum time we'll wait for the HTTP server to shut down cleanly after
 /// receiving SIGINT / SIGTERM. After this, the runtime drops in-flight
 /// connections. Matches the rmcp test-suite's typical bound — long enough
 /// for SSE streams to drain a final priming event, short enough that
@@ -58,18 +58,18 @@ const GRACEFUL_SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_s
     long_about = None,
 )]
 struct Args {
-    /// Run in STDIO mode (default if no other transport flag is set).
-    /// Mutually exclusive with `--http`.
+    /// run in STDIO mode (default if no other transport flag is set).
+    /// mutually exclusive with `--http`.
     #[arg(long, conflicts_with = "http")]
     stdio: bool,
 
-    /// Run as Streamable HTTP server on the given port (e.g. `8080`).
-    /// Pass `0` to let the OS assign a free port (used by the integration
+    /// run as Streamable HTTP server on the given port (e.g. `8080`).
+    /// pass `0` to let the OS assign a free port (used by the integration
     /// smoke test — the assigned port is logged to stderr at startup).
     #[arg(long, conflicts_with = "stdio", value_name = "PORT")]
     http: Option<u16>,
 
-    /// Bearer token required for HTTP requests. Falls back to the
+    /// bearer token required for HTTP requests. Falls back to the
     /// `OZ_POLICY_MCP_TOKEN` environment variable if unset. Required for
     /// HTTP mode; ignored for STDIO.
     #[arg(
@@ -80,7 +80,7 @@ struct Args {
     )]
     token: Option<String>,
 
-    /// Data dir for store persistence. If unset, `McpStore` falls back to
+    /// data dir for store persistence. If unset, `McpStore` falls back to
     /// `$XDG_DATA_HOME/oz-policy-mcp` (if that directory already exists)
     /// and otherwise to memory-only. The flag wires through by setting
     /// the `OZ_POLICY_MCP_DATA_DIR` env var that `McpStore` reads.
@@ -90,11 +90,11 @@ struct Args {
 
 fn init_tracing() {
     // RUST_LOG=info,oz_policy_mcp=debug ... is the recommended dev flow.
-    // We default to `info` when RUST_LOG is unset so STDIO logs don't drown
+    // we default to `info` when RUST_LOG is unset so STDIO logs don't drown
     // a debugger in trace-level rmcp internals.
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
-    // Writer pinned to stderr per the module-level logging contract — any
+    // writer pinned to stderr per the module-level logging contract — any
     // stray stdout write corrupts the STDIO JSON-RPC framing.
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -108,11 +108,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = Args::parse();
 
-    // Forward `--data-dir` to the store via env var. This is the single
+    // forward `--data-dir` to the store via env var. This is the single
     // wiring point: `McpStore::resolve_data_dir()` reads
     // `OZ_POLICY_MCP_DATA_DIR` first.
     //
-    // Safety: `std::env::set_var` is marked unsafe in Rust 2024 because
+    // safety: `std::env::set_var` is marked unsafe in Rust 2024 because
     // concurrent access to the process env is undefined behaviour. We set
     // this exactly once, before any tokio task spawns that might read env
     // vars in parallel, so the call is sound. Documented hazard.
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-/// Drive the STDIO transport. Blocks until the client disconnects (stdin
+/// drive the STDIO transport. Blocks until the client disconnects (stdin
 /// EOF) or an unrecoverable transport error occurs.
 async fn run_stdio_server(store: Arc<McpStore>) -> Result<(), Box<dyn std::error::Error>> {
     info!(
@@ -156,7 +156,7 @@ async fn run_stdio_server(store: Arc<McpStore>) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-/// Drive the Streamable HTTP transport. Binds `0.0.0.0:<port>`, mounts
+/// drive the Streamable HTTP transport. Binds `0.0.0.0:<port>`, mounts
 /// `POST /mcp` behind the bearer-auth middleware, and exposes a sibling
 /// `GET /healthz` outside the auth layer.
 async fn run_http_server(
@@ -182,7 +182,7 @@ async fn run_http_server(
     let cancel_for_service = cancel.child_token();
     let factory_store = Arc::clone(&store);
     let service = StreamableHttpService::new(
-        // Per-connection service factory. Each new MCP session gets a fresh
+        // per-connection service factory. Each new MCP session gets a fresh
         // `PolicyServer` wrapper, but they all share the same `Arc<McpStore>`
         // so artefacts produced by one session's `record_transaction` call
         // are visible to a later session's `resources/read`.
@@ -238,7 +238,7 @@ async fn run_http_server(
         addr = %actual_addr,
         "oz-policy-mcp listening (POST /mcp with bearer auth; GET /healthz unauth)"
     );
-    // The integration smoke test (`tests/http_smoke.rs`) greps stderr for
+    // the integration smoke test (`tests/http_smoke.rs`) greps stderr for
     // this exact prefix to discover the OS-assigned port when started with
     // `--http 0`. Keep the format stable. We always emit the loopback-form
     // address (`127.0.0.1:<port>` instead of `0.0.0.0:<port>`) so the
@@ -252,7 +252,7 @@ async fn run_http_server(
     };
     eprintln!("oz-policy-mcp http listening on {display_addr}");
 
-    // Wire SIGINT / SIGTERM → CancellationToken so axum's graceful
+    // wire SIGINT / SIGTERM → CancellationToken so axum's graceful
     // shutdown drains in-flight connections before exit.
     let cancel_for_signal = cancel.clone();
     tokio::spawn(async move {
@@ -278,7 +278,7 @@ async fn run_http_server(
     Ok(())
 }
 
-/// Liveness/readiness probe handler. Returns 200 with a tiny JSON body
+/// liveness/readiness probe handler. Returns 200 with a tiny JSON body
 /// (`{"status":"ok","version":"<pkg-version>"}`). Intentionally outside
 /// the bearer-auth layer so load balancers don't need the secret.
 async fn healthz_handler() -> axum::Json<HealthzBody> {
@@ -288,7 +288,7 @@ async fn healthz_handler() -> axum::Json<HealthzBody> {
     })
 }
 
-/// Axum-compatible bearer-token middleware applied as a `route_layer` over
+/// axum-compatible bearer-token middleware applied as a `route_layer` over
 /// the `/mcp` subroute. Delegates to the same constant-time comparison the
 /// standalone `BearerAuth` tower middleware uses (see
 /// [`oz_policy_mcp::auth`]), but re-implemented here as a
@@ -296,7 +296,7 @@ async fn healthz_handler() -> axum::Json<HealthzBody> {
 /// `StreamableHttpService` body type (`BoxBody<Bytes, Infallible>`) doesn't
 /// have to be threaded through a tower `Service` body-type translation.
 ///
-/// State: `Arc<String>` (the token), cloned cheaply per request.
+/// state: `Arc<String>` (the token), cloned cheaply per request.
 async fn bearer_auth_middleware(
     State(token): State<Arc<String>>,
     request: Request<axum::body::Body>,
@@ -310,7 +310,7 @@ async fn bearer_auth_middleware(
     }
 }
 
-/// Build a plain-text 401 response. The `WWW-Authenticate: Bearer` header
+/// build a plain-text 401 response. The `WWW-Authenticate: Bearer` header
 /// is set per RFC 6750 §3 so spec-compliant clients can prompt for
 /// credentials.
 fn unauthorized_response(body: &'static str) -> Response {
@@ -332,7 +332,7 @@ struct HealthzBody {
     version: &'static str,
 }
 
-/// Awaits SIGINT (Ctrl-C) on all platforms plus SIGTERM on Unix. Either
+/// awaits SIGINT (Ctrl-C) on all platforms plus SIGTERM on Unix. Either
 /// resolves to `Ok(())` on first arrival. On Windows the SIGTERM branch
 /// is omitted (the OS doesn't deliver POSIX SIGTERM; container runtimes
 /// use Job Object stop signals).
@@ -358,7 +358,7 @@ mod tests {
     use super::*;
     use clap::Parser;
 
-    /// Default invocation (no flags) parses to STDIO mode.
+    /// default invocation (no flags) parses to STDIO mode.
     #[test]
     fn args_default_is_stdio() {
         let args = Args::parse_from(["oz-policy-mcp"]);

@@ -1,7 +1,7 @@
 //! MCP `prompts/list` + `prompts/get` surface.
 //!
-//! Phase 5 Stream B owns the three wizard prompt templates that the
-//! Anthropic agent skill (Phase 6) and other MCP clients pull from the
+//! phase 5 Stream B owns the three wizard prompt templates that the
+//! anthropic agent skill (Phase 6) and other MCP clients pull from the
 //! server. Each template hand-walks a user through one of the canonical
 //! flows in `plan.md` § Phase 5 Implementation → Prompts:
 //!
@@ -10,7 +10,7 @@
 //! * `synthesize_delegated_trading` — Soroswap delegated trading wizard
 //!   (walkthrough 3).
 //!
-//! All three return a multi-message conversation as a
+//! all three return a multi-message conversation as a
 //! [`rmcp::model::GetPromptResult`] when rendered. The messages embed the
 //! user-supplied argument values via simple `{placeholder}` substitution
 //! (no Handlebars / Tera dependency — the templates are short, fixed, and
@@ -23,41 +23,39 @@ use rmcp::{
     ErrorData,
 };
 
-// ----------------------------------------------------------------------
-// Prompt name constants — single source of truth so the registry and
+// prompt name constants — single source of truth so the registry and
 // individual renderers can't drift.
-// ----------------------------------------------------------------------
 
-/// Walks the user from "I have a transaction hash / envelope" to a
+/// walks the user from "I have a transaction hash / envelope" to a
 /// reviewed `Recording` JSON.
 pub const PROMPT_RECORD_AND_EXPLAIN: &str = "record_and_explain";
 
-/// Walks the user through synthesising a policy for a recurring SEP-41
+/// walks the user through synthesising a policy for a recurring SEP-41
 /// transfer (subscription / streaming pay flow). Bound to
 /// `walkthroughs/02-sep41-subscription/`.
 pub const PROMPT_SYNTHESIZE_SUBSCRIPTION: &str = "synthesize_subscription";
 
-/// Walks the user through synthesising a policy for delegated trading on
-/// Soroswap with a fenced daily budget. Bound to
+/// walks the user through synthesising a policy for delegated trading on
+/// soroswap with a fenced daily budget. Bound to
 /// `walkthroughs/03-soroswap-bounded/`.
 pub const PROMPT_SYNTHESIZE_DELEGATED_TRADING: &str = "synthesize_delegated_trading";
 
-/// Prompt registry — exposes `list` and `get` over the three templates
+/// prompt registry — exposes `list` and `get` over the three templates
 /// above. Constructed with `Prompts::new()`; cheap to clone and `Send +
-/// Sync` so Stream C can stash a copy in the server state.
+/// sync` so Stream C can stash a copy in the server state.
 #[derive(Debug, Clone, Default)]
 pub struct Prompts {
     _private: (),
 }
 
 impl Prompts {
-    /// Returns an empty registry — the three templates are baked into the
+    /// returns an empty registry — the three templates are baked into the
     /// implementation so no further configuration is needed.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Implements `prompts/list`. Returns the static set of three
+    /// implements `prompts/list`. Returns the static set of three
     /// templates (the MCP spec doesn't paginate prompts).
     pub fn list_prompts(&self) -> Vec<Prompt> {
         vec![
@@ -67,10 +65,10 @@ impl Prompts {
         ]
     }
 
-    /// Implements `prompts/get`. Dispatches by name and renders the
+    /// implements `prompts/get`. Dispatches by name and renders the
     /// requested template with the supplied arguments.
     ///
-    /// Returns
+    /// returns
     /// * `Err(invalid_params)` if the prompt name is unknown.
     /// * `Err(invalid_params)` if a required argument is missing.
     /// * `Ok(GetPromptResult)` otherwise — the multi-message conversation
@@ -93,9 +91,7 @@ impl Prompts {
     }
 }
 
-// ----------------------------------------------------------------------
-// Prompt descriptors (Prompt = name + description + argument schema)
-// ----------------------------------------------------------------------
+// prompt descriptors (Prompt = name + description + argument schema)
 
 fn record_and_explain_descriptor() -> Prompt {
     Prompt::new(
@@ -193,12 +189,10 @@ fn synthesize_delegated_trading_descriptor() -> Prompt {
     )
 }
 
-// ----------------------------------------------------------------------
-// Prompt renderers — turn (descriptor, args) into the 4-message
+// prompt renderers — turn (descriptor, args) into the 4-message
 // conversation the agent ultimately sends to the model.
-// ----------------------------------------------------------------------
 
-/// Renders `record_and_explain` into the canonical 4-message conversation:
+/// renders `record_and_explain` into the canonical 4-message conversation:
 ///
 /// 1. **assistant** — frames the task for the model (sets the role).
 /// 2. **user**      — the user's stated intent + the literal hash/envelope.
@@ -262,7 +256,7 @@ fn render_record_and_explain(
     ))
 }
 
-/// Renders `synthesize_subscription` into a 4-message conversation that
+/// renders `synthesize_subscription` into a 4-message conversation that
 /// gathers the subscription parameters and proposes a Track-A
 /// `spending_limit` composition under a `CallContract(<token>)` context
 /// rule (per `docs/oz-internal-shapes.md` §4 — `spending_limit` is only
@@ -334,7 +328,7 @@ fn render_synthesize_subscription(
         .with_description("Four-message wizard for synthesising a SEP-41 subscription policy."))
 }
 
-/// Renders `synthesize_delegated_trading` into a 4-message conversation
+/// renders `synthesize_delegated_trading` into a 4-message conversation
 /// gathering the trading-bot bounds and proposing a Track-B
 /// `function_allowlist` + `amount_range` slot under a
 /// `CallContract(<router>)` rule.
@@ -407,11 +401,9 @@ fn render_synthesize_delegated_trading(
     ))
 }
 
-// ----------------------------------------------------------------------
-// Argument helpers
-// ----------------------------------------------------------------------
+// argument helpers
 
-/// Looks up a required argument or returns an `invalid_params` error
+/// looks up a required argument or returns an `invalid_params` error
 /// carrying both the argument name and the parent prompt. This is the
 /// pattern Stream A's error_mapping module standardises later — we mirror
 /// it inline so the prompts module compiles and tests run without that
@@ -434,9 +426,7 @@ fn require_arg(
     }
 }
 
-// ----------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------
+// tests
 
 #[cfg(test)]
 mod tests {
@@ -462,7 +452,7 @@ mod tests {
         assert!(names.contains(&PROMPT_SYNTHESIZE_DELEGATED_TRADING));
     }
 
-    /// Every listed prompt declares the same arguments its renderer
+    /// every listed prompt declares the same arguments its renderer
     /// requires. Regression guard: a renderer added without updating the
     /// descriptor (or vice versa) would fail this round-trip.
     #[test]
@@ -470,17 +460,17 @@ mod tests {
         let p = Prompts::new();
         for prompt in p.list_prompts() {
             let argspec = prompt.arguments.clone().unwrap_or_default();
-            // Construct a fully-populated argument map from the schema, then
+            // construct a fully-populated argument map from the schema, then
             // assert the renderer accepts it.
             let map: BTreeMap<String, String> = argspec
                 .iter()
                 .map(|a| {
-                    // Plausible values per argument name.
+                    // plausible values per argument name.
                     let v = match a.name.as_str() {
                         "mode" => "hash",
                         "value" => "abc123",
                         "network" => "testnet",
-                        // Stellar StrKey samples are all 56 chars C…/G…; we
+                        // stellar StrKey samples are all 56 chars C…/G…; we
                         // don't validate strkey shape here so any non-empty
                         // string works.
                         _ => "placeholder",
@@ -525,7 +515,7 @@ mod tests {
                 PromptMessageRole::Assistant,
             ]
         );
-        // The user-message body must literally contain the supplied hash.
+        // the user-message body must literally contain the supplied hash.
         match &result.messages[1].content {
             PromptMessageContent::Text { text } => {
                 assert!(text.contains("deadbeefcafe"), "got: {text}");
@@ -535,7 +525,7 @@ mod tests {
         }
     }
 
-    /// Missing required argument → `invalid_params` (-32602), not panic.
+    /// missing required argument → `invalid_params` (-32602), not panic.
     #[test]
     fn record_and_explain_missing_arg_is_invalid_params() {
         let p = Prompts::new();
@@ -550,7 +540,7 @@ mod tests {
         assert!(err.message.contains("value"), "msg: {}", err.message);
     }
 
-    /// Bad enum value for `mode` is also invalid_params (not silently
+    /// bad enum value for `mode` is also invalid_params (not silently
     /// treated as one of the valid modes).
     #[test]
     fn record_and_explain_rejects_bad_mode() {
@@ -591,7 +581,7 @@ mod tests {
             )
             .expect("render must succeed");
         assert_eq!(result.messages.len(), 4);
-        // Token address surfaces in the user-message body.
+        // token address surfaces in the user-message body.
         match &result.messages[1].content {
             PromptMessageContent::Text { text } => {
                 assert!(text.contains("CCTOKENADDRESS"));
@@ -629,7 +619,7 @@ mod tests {
         assert!(joined.contains("default: observed + 200 bps"));
     }
 
-    /// Unknown prompt name → invalid_params (not method_not_found —
+    /// unknown prompt name → invalid_params (not method_not_found —
     /// `prompts/get` is itself a valid method, only the *prompt* is unknown).
     #[test]
     fn get_unknown_prompt_returns_invalid_params() {

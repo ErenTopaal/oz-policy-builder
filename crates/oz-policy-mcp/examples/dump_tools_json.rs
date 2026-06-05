@@ -1,17 +1,17 @@
-//! Phase 6 helper: emit the five MCP tools' JSON Schemas in
-//! OpenAI-compatible function-calling shape so the Anthropic Agent Skills
+//! phase 6 helper: emit the five MCP tools' JSON Schemas in
+//! openAI-compatible function-calling shape so the Anthropic Agent Skills
 //! flat-file twin (`skills/oz-policy-builder/flat/tools.json`) is generated
 //! from the real `schemars::schema_for!` output instead of hand-written
 //! JSON Schema.
 //!
-//! Run from the workspace root:
+//! run from the workspace root:
 //!
 //! ```text
 //! cargo run -p oz-policy-mcp --example dump_tools_json \
 //!   > skills/oz-policy-builder/flat/tools.json
 //! ```
 //!
-//! Output is a pretty-printed JSON array of `{name, description, parameters}`
+//! output is a pretty-printed JSON array of `{name, description, parameters}`
 //! objects, one per tool, in the same order `tools/list` returns.
 
 use oz_policy_mcp::{

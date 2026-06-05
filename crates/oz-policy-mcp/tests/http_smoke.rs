@@ -1,6 +1,6 @@
-//! Streamable HTTP transport conformance smoke test for Phase 5 Stream C.
+//! streamable HTTP transport conformance smoke test for Phase 5 Stream C.
 //!
-//! Spawns the actual `oz-policy-mcp --http 0 --token testtoken` binary
+//! spawns the actual `oz-policy-mcp --http 0 --token testtoken` binary
 //! (port 0 = OS-assigned, discovered by grepping stderr for the
 //! `oz-policy-mcp http listening on <addr>` line), then drives the same
 //! scripted JSON-RPC session as `stdio_smoke.rs` against `POST /mcp` via
@@ -26,7 +26,7 @@
 //!
 //! ## Why `#[ignore]`?
 //!
-//! Steps 5–6 hit Stellar testnet RPC. CI default does NOT run this test
+//! steps 5–6 hit Stellar testnet RPC. CI default does NOT run this test
 //! — invoke explicitly with `cargo nextest run --workspace --run-ignored
 //! all http_smoke` when validating Phase 5 completion.
 
@@ -130,7 +130,7 @@ async fn http_smoke_full_session() {
         .await
         .expect("first HTTP session must succeed");
 
-    // For the determinism check we need a *fresh store*, otherwise the
+    // for the determinism check we need a *fresh store*, otherwise the
     // second `resources/list` would observe the prior session's
     // recording + spec — that's the documented sticky-store semantics
     // (see `McpStore` docs), and exactly the contract that lets multiple
@@ -148,9 +148,7 @@ async fn http_smoke_full_session() {
     assert_byte_equal_modulo_uuids(&transcript_a, &transcript_b);
 }
 
-// =====================================================================
-// Server spawn / discovery
-// =====================================================================
+// server spawn / discovery
 
 struct ServerHandle {
     addr: String,
@@ -170,7 +168,7 @@ async fn spawn_http_server() -> Result<ServerHandle, String> {
         .map_err(|e| format!("spawn oz-policy-mcp --http 0: {e}"))?;
 
     let stderr = child.stderr.take().ok_or("no stderr")?;
-    // Read the startup line, then keep draining stderr in a background
+    // read the startup line, then keep draining stderr in a background
     // task. **Critical**: if we leave the pipe buffer full, the server's
     // `tracing` writer eventually blocks on stderr write, which appears
     // as "connection error" / "error sending request" on the client side
@@ -182,7 +180,7 @@ async fn spawn_http_server() -> Result<ServerHandle, String> {
     })
 }
 
-/// Reads stderr until a line matching
+/// reads stderr until a line matching
 /// `oz-policy-mcp http listening on <SocketAddr>` is found, then returns
 /// the parsed address AND spawns a background task that drains the rest
 /// of stderr to `/dev/null`. The binary writes the listening line
@@ -191,7 +189,7 @@ async fn read_listening_addr(stderr: ChildStderr) -> Result<String, String> {
     let mut reader = BufReader::new(stderr).lines();
     let fut = async {
         while let Ok(Some(line)) = reader.next_line().await {
-            // Expected format: "oz-policy-mcp http listening on 127.0.0.1:NNNNN"
+            // expected format: "oz-policy-mcp http listening on 127.0.0.1:NNNNN"
             if let Some(addr) = line.strip_prefix("oz-policy-mcp http listening on ") {
                 return Ok::<_, String>(addr.trim().to_string());
             }
@@ -201,18 +199,16 @@ async fn read_listening_addr(stderr: ChildStderr) -> Result<String, String> {
     let addr = timeout(STARTUP_TIMEOUT, fut)
         .await
         .map_err(|_| "timeout waiting for listening-line".to_string())??;
-    // Spawn the stderr drain after the startup line is consumed.
+    // spawn the stderr drain after the startup line is consumed.
     tokio::spawn(async move {
         while let Ok(Some(_line)) = reader.next_line().await {
-            // Discard; the smoke test doesn't assert on log content.
+            // discard; the smoke test doesn't assert on log content.
         }
     });
     Ok(addr)
 }
 
-// =====================================================================
-// Session driver
-// =====================================================================
+// session driver
 
 fn initialize_body() -> String {
     json!({
@@ -252,7 +248,7 @@ async fn run_full_http_session(client: &reqwest::Client, addr: &str) -> Result<V
             resp.status()
         ));
     }
-    // Drain body so the SSE channel is freed for subsequent requests.
+    // drain body so the SSE channel is freed for subsequent requests.
     let _ = resp.bytes().await;
 
     // ---- 2. tools/list ----
@@ -349,7 +345,7 @@ async fn run_full_http_session(client: &reqwest::Client, addr: &str) -> Result<V
         Some(json!({
             "name": "synthesize_policy",
             "arguments": {
-                // See the matching comment in stdio_smoke.rs: the Blend
+                // see the matching comment in stdio_smoke.rs: the Blend
                 // fixture is not SEP-41-expressible, so we drive Track-B
                 // synthesis via `auto` instead of plan-literal
                 // `compose_only`. The compose-only error path is covered
@@ -382,7 +378,7 @@ async fn run_full_http_session(client: &reqwest::Client, addr: &str) -> Result<V
     ])
 }
 
-/// Posts the `initialize` request and returns the parsed JSON-RPC
+/// posts the `initialize` request and returns the parsed JSON-RPC
 /// response + the `Mcp-Session-Id` the server allocated. The response
 /// body for rmcp's stateful HTTP mode is SSE-framed
 /// (`text/event-stream`); we extract the single JSON-RPC payload from
@@ -494,7 +490,7 @@ async fn post_request(
 /// response that carries a non-null `id` (skipping priming events whose
 /// `data` is the empty SSE payload).
 fn parse_sse_response(body: &str) -> Result<Value, String> {
-    // Iterate event blocks split by blank-line boundaries.
+    // iterate event blocks split by blank-line boundaries.
     for block in body.split("\n\n") {
         for line in block.lines() {
             if let Some(payload) = line.strip_prefix("data:") {
@@ -522,11 +518,9 @@ fn extract_structured_field<'a>(resp: &'a Value, field: &str) -> Result<&'a Valu
         .ok_or_else(|| format!("result.structuredContent.{field} missing: {resp}"))
 }
 
-// =====================================================================
-// Determinism comparator (shares the UUID-redaction approach with
+// determinism comparator (shares the UUID-redaction approach with
 // stdio_smoke.rs; duplicated rather than shared because integration
 // tests in separate files don't get a common module)
-// =====================================================================
 
 fn assert_byte_equal_modulo_uuids(a: &[Value], b: &[Value]) {
     assert_eq!(a.len(), b.len(), "transcript length mismatch");
@@ -552,7 +546,7 @@ fn redact_uuids(value: Value) -> Value {
 }
 
 fn redact_uuid_string(s: &str) -> String {
-    // Mirrors the redactor in `stdio_smoke.rs` — see that file's
+    // mirrors the redactor in `stdio_smoke.rs` — see that file's
     // module-level docs for the full redaction set + rationale. Both
     // smoke tests use the same scheme so their transcripts can be diffed
     // against each other in a future cross-transport conformance check.

@@ -1,6 +1,6 @@
 //! `oz_policy_core::Error` → `rmcp::ErrorData` mapping table.
 //!
-//! Every variant of [`oz_policy_core::Error`] maps to a deterministic
+//! every variant of [`oz_policy_core::Error`] maps to a deterministic
 //! integer JSON-RPC `code` plus a structured `data` payload carrying the
 //! wire-stable `E_*` identifier and a `details` field (currently the
 //! error's `to_string()` body — Phase 5 keeps this opaque; later phases
@@ -21,14 +21,14 @@
 //! | `InstallPreflightFailed`              | -32108          | `E_INSTALL_PREFLIGHT_FAILED`   |
 //! | `RecorderXdrDecodeFailed`             | -32109          | `E_RECORDER_XDR_DECODE_FAILED` |
 //!
-//! These codes occupy the JSON-RPC "server-defined" range
+//! these codes occupy the JSON-RPC "server-defined" range
 //! (-32000 to -32099 is reserved for transport-level errors per the
 //! JSON-RPC 2.0 spec; we deliberately allocate -32100 onward so the policy
 //! builder's codes never collide with rmcp's own `INVALID_PARAMS` /
 //! `METHOD_NOT_FOUND` / `INTERNAL_ERROR` constants which sit in the
 //! reserved range).
 //!
-//! The mapping is `pub` and exhaustive (the `match` in
+//! the mapping is `pub` and exhaustive (the `match` in
 //! [`code_to_int`] has no wildcard arm) so adding a new `Error` variant is
 //! a compile-time failure here, forcing the developer to assign a code.
 
@@ -36,9 +36,9 @@ use oz_policy_core::Error;
 use rmcp::model::{ErrorCode, ErrorData};
 use serde_json::json;
 
-/// Deterministic JSON-RPC `code` for each `oz_policy_core::Error` variant.
+/// deterministic JSON-RPC `code` for each `oz_policy_core::Error` variant.
 ///
-/// Returns an `i32` (matching `rmcp::model::ErrorCode`'s underlying type)
+/// returns an `i32` (matching `rmcp::model::ErrorCode`'s underlying type)
 /// so callers can construct an `ErrorCode(code_to_int(&e))` directly. The
 /// codes are stable and documented in the module-level table.
 pub fn code_to_int(e: &Error) -> i32 {
@@ -56,7 +56,7 @@ pub fn code_to_int(e: &Error) -> i32 {
     }
 }
 
-/// Convert an `oz_policy_core::Error` into a fully-populated
+/// convert an `oz_policy_core::Error` into a fully-populated
 /// `rmcp::model::ErrorData` ready to return from a tool handler.
 ///
 /// * `code` — from [`code_to_int`].
@@ -77,15 +77,13 @@ pub fn error_to_jsonrpc(e: &Error) -> ErrorData {
     ErrorData::new(ErrorCode(code_int), details, Some(data))
 }
 
-// -------------------------------------------------------------------------
-// Tests
-// -------------------------------------------------------------------------
+// tests
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Every `Error` variant produces a distinct integer code, the codes
+    /// every `Error` variant produces a distinct integer code, the codes
     /// are inside the documented `-32100 .. -32109` band, and the `data`
     /// payload carries the canonical `E_*` identifier as a JSON string.
     #[test]
@@ -141,19 +139,19 @@ mod tests {
 
         let mut seen_codes = std::collections::HashSet::new();
         for (err, expected_code, expected_str) in cases {
-            // Code matches table.
+            // code matches table.
             assert_eq!(code_to_int(err), *expected_code, "wrong code for {err:?}");
-            // Codes are unique across the table.
+            // codes are unique across the table.
             assert!(
                 seen_codes.insert(*expected_code),
                 "duplicate code {expected_code} for {err:?}"
             );
-            // Codes sit in the documented band.
+            // codes sit in the documented band.
             assert!(
                 (-32109..=-32100).contains(expected_code),
                 "code {expected_code} outside -32100..-32109"
             );
-            // ErrorData carries the canonical E_* in `data.error_code`.
+            // errorData carries the canonical E_* in `data.error_code`.
             let ed = error_to_jsonrpc(err);
             assert_eq!(ed.code.0, *expected_code);
             let data = ed.data.expect("data must be set");
@@ -168,7 +166,7 @@ mod tests {
                     .unwrap_or(false),
                 "details must start with {expected_str}; got data={data}"
             );
-            // The Display body (= the message) also starts with the code,
+            // the Display body (= the message) also starts with the code,
             // matching the contract `Error::to_string` declares.
             assert!(
                 ed.message.starts_with(expected_str),
@@ -182,7 +180,7 @@ mod tests {
     /// `code_to_int` must be a pure function: two calls with the same
     /// variant produce the same integer. (Trivial by `match`, but locking
     /// the property keeps it visible in tests so a future move to a
-    /// HashMap-backed lookup can't introduce hash-randomisation drift.)
+    /// hashMap-backed lookup can't introduce hash-randomisation drift.)
     #[test]
     fn code_to_int_is_deterministic() {
         let e = Error::VerifyDrift("probe".into());

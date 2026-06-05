@@ -1,36 +1,16 @@
-//! Library surface for the OZ Accounts Policy Builder MCP server.
-//!
-//! Phase 5 module ownership:
-//! * Stream A — `tools.rs`, `error_mapping.rs` (tool handlers + the
-//!   `oz_policy_core::Error → MCP error` mapping table).
-//! * Stream B — [`store`], [`resources`], [`prompts`] (in-memory cache,
-//!   `resources/list` + `resources/read`, `prompts/list` + `prompts/get`).
-//! * Stream C (this stream) — [`auth`] (HTTP bearer-token middleware),
-//!   [`server`] (the `ServerHandler` implementation wiring tools / resources
-//!   / prompts together), and the binary transport in `main.rs`.
-//!
-//! The three streams share state exclusively through [`McpStore`].
+//! mcp server library surface. modules share state via [`McpStore`].
 
-// `deny` rather than `forbid` so individual modules can `#[allow(unsafe_code)]`
-// for narrowly-scoped, audited blocks. Rust 2024 reclassified `std::env::set_var`
-// / `std::env::remove_var` as `unsafe` (mutating the process-wide env is racy
-// across threads), so the disk-persistence + test scaffolding in `store.rs`
-// (Stream B) needs a localised exemption rather than a crate-wide forbid.
-// All other modules MUST keep the deny in effect.
+// `deny` (not `forbid`) so store.rs can scope a narrow `set_var` exemption.
 #![deny(unsafe_code)]
 
-// --- Stream B (owned) ------------------------------------------------------
 pub mod prompts;
 pub mod resources;
 pub mod store;
 
-// --- Stream A (owned) ------------------------------------------------------
 pub mod error_mapping;
 pub mod tools;
-// --- RFP deliverable #5 (2026-05-18) — on-chain readback for verify_install
 pub mod verify_chain;
 
-// --- Stream C (this stream) ------------------------------------------------
 pub mod auth;
 pub mod server;
 

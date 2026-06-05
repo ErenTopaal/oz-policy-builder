@@ -1,53 +1,7 @@
-//! On-chain `ContextRule` readback + typed drift comparison for the
-//! `verify_install` MCP tool. Closes the Phase 5 placeholder (and the
-//! Phase 7 BLOCKER) by hitting Soroban RPC for the live rule and decoding
-//! the returned `ScVal::Map` into a typed view that can be diffed against
-//! a caller-supplied `PolicySpec`.
-//!
-//! ## Three layers, three test surfaces
-//!
-//! 1. [`read_context_rule_via_simulate`] — wraps a `simulateTransaction`
-//!    of `SA.get_context_rule(rule_id)` against a real RPC endpoint.
-//!    Integration-tested by the wallet-adapter's `phase7_integration.test.ts`
-//!    (which now expects SUCCESS, not the documented BLOCKER).
-//! 2. [`decode_context_rule_scval`] — pure, in-memory decoder from `ScVal`
-//!    to [`OnChainContextRule`]. Unit-tested with hand-built ScVal
-//!    fixtures so the decode path is exercised without any network.
-//! 3. [`compute_drift`] — pure, in-memory comparator producing
-//!    [`crate::tools::DriftItem`] entries when expected (spec) and actual
-//!    (on-chain) disagree. Unit-tested with paired fixtures.
-//!
-//! Why simulate (not a raw `getLedgerEntries`)? The OZ SmartAccount stores
-//! its `ContextRule` table under a private storage key shape that has
-//! changed between OZ releases (`stellar-accounts` 0.5 → 0.7). Going
-//! through the published `get_context_rule(u32) -> ContextRule` view
-//! function means our decode is keyed off the **ABI** — a contract
-//! commitment — not an internal storage layout that could shift under us.
-//! The cost is one simulate call; the benefit is forward-compat.
-//!
-//! ## ScVal shape we decode
-//!
-//! `#[contracttype]` structs are encoded as `ScVal::Map` with entries
-//! sorted ASCENDING by field-name symbol. For `ContextRule` (interface
-//! captured by `stellar contract info interface` against the live SA on
-//! 2026-05-18 — see commit message of the closure attempt):
-//!
-//! ```text
-//! pub struct ContextRule {
-//!     pub context_type: ContextRuleType,
-//!     pub id: u32,
-//!     pub name: soroban_sdk::String,
-//!     pub policies: soroban_sdk::Vec<soroban_sdk::Address>,
-//!     pub policy_ids: soroban_sdk::Vec<u32>,
-//!     pub signer_ids: soroban_sdk::Vec<u32>,
-//!     pub signers: soroban_sdk::Vec<Signer>,
-//!     pub valid_until: Option<u32>,
-//! }
-//! ```
-//!
-//! Encoded order: `context_type, id, name, policies, policy_ids,
-//! signer_ids, signers, valid_until`. The decoder is field-name-keyed
-//! (not positional) so reordering is tolerated.
+//! on-chain `ContextRule` readback + drift diff for `verify_install`.
+//! goes via `simulateTransaction(SA.get_context_rule)` so we decode off the abi,
+//! not the changing internal storage layout. decoder is field-name-keyed
+//! (`#[contracttype]` map ordering tolerated).
 
 use std::str::FromStr;
 use std::time::Duration;
@@ -67,28 +21,23 @@ use tokio::time::timeout;
 
 use crate::tools::DriftItem;
 
-/// Mirrors the recorder + installer 30 s RPC ceiling.
+/// mirrors the recorder + installer 30 s RPC ceiling.
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Public `Signer` enum projection — matches the OZ source
-/// `packages/accounts/src/smart_account/storage.rs` `Signer` variants.
-/// We carry just enough to compute drift against `SignerSpec`.
+/// projection of OZ `Signer` enum — just enough for drift comparison.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnChainSigner {
-    /// `Signer::Delegated(Address)`. `address` is a StrKey `G…` or `C…`.
+    /// `Signer::Delegated(Address)`.
     Delegated { address: String },
-    /// `Signer::External(verifier_address, public_key_bytes)`. We do not
-    /// attempt to classify Ed25519 vs WebAuthn here — the verifier address
-    /// is what the OZ contract dispatches on; the spec-side classification
-    /// (Ed25519 vs WebAuthn) carries a separate `SignerSpec` variant which
-    /// we treat structurally during drift comparison.
+    /// `Signer::External(verifier, public_key)`. Ed25519/WebAuthn split is
+    /// done on the spec side, not here.
     External {
         verifier: String,
         public_key_hex: String,
     },
 }
 
-/// On-chain `ContextRule` projection.
+/// on-chain `ContextRule` projection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OnChainContextRule {
     pub id: u32,
@@ -96,27 +45,27 @@ pub struct OnChainContextRule {
     pub context_type: OnChainContextType,
     pub valid_until: Option<u32>,
     pub signers: Vec<OnChainSigner>,
-    /// Contract addresses (StrKey `C…`) of the policies attached to this
+    /// contract addresses (StrKey `C…`) of the policies attached to this
     /// rule. The on-chain ScVal carries `Vec<Address>` directly; the
     /// `policy_ids` parallel array is ignored for drift comparison.
     pub policies: Vec<String>,
 }
 
-/// On-chain `ContextRuleType` projection.
+/// on-chain `ContextRuleType` projection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnChainContextType {
     Default,
     CallContract {
         address: String,
     },
-    /// The OZ ABI also has `CreateContract(BytesN<32>)` — we surface it for
+    /// the OZ ABI also has `CreateContract(BytesN<32>)` — we surface it for
     /// forward compat (`drift` flags it as "unsupported by spec model").
     CreateContract {
         wasm_hash_hex: String,
     },
 }
 
-/// Errors emitted by the on-chain readback path. Mapped onto MCP
+/// errors emitted by the on-chain readback path. Mapped onto MCP
 /// `ErrorData` (or [`crate::error_mapping::error_to_jsonrpc`]) at the
 /// `verify_install` handler boundary.
 #[derive(Debug, thiserror::Error)]
@@ -127,23 +76,23 @@ pub enum ReadError {
     /// prefix at the handler boundary.
     #[error("rpc error: {0}")]
     Rpc(String),
-    /// Simulator succeeded but returned a host-error variant for the
+    /// simulator succeeded but returned a host-error variant for the
     /// invocation — most commonly the `ContextRuleNotFound (3000)` host
     /// error when `context_rule_id` does not exist on the SA. Surfaced
     /// as `E_VERIFY_DRIFT` with detail `rule-not-found`.
     #[error("rule not found: {0}")]
     RuleNotFound(String),
-    /// Simulator returned a `returnValue` we could not decode into a
+    /// simulator returned a `returnValue` we could not decode into a
     /// `ContextRule` (wrong ScVal shape — should be unreachable against
     /// a valid SA but we surface it instead of panicking).
     #[error("xdr decode failed: {0}")]
     Decode(String),
-    /// Caller passed a malformed StrKey C-address or G-address.
+    /// caller passed a malformed StrKey C-address or G-address.
     #[error("invalid strkey: {0}")]
     InvalidStrKey(String),
 }
 
-/// Build a single-op `TransactionEnvelope` that invokes
+/// build a single-op `TransactionEnvelope` that invokes
 /// `SA.get_context_rule(rule_id)` and simulate it against the supplied
 /// RPC. Returns the decoded [`OnChainContextRule`] on success.
 ///
@@ -232,7 +181,7 @@ pub async fn read_context_rule_via_simulate(
     .map_err(|e| ReadError::Rpc(format!("simulate failed: {e}")))?;
 
     if let Some(err) = &sim.error {
-        // The contract's `get_context_rule` panics with a typed host
+        // the contract's `get_context_rule` panics with a typed host
         // error when the id is unknown. The simulator surfaces that as
         // the `error` field on the response. Detect the canonical
         // "rule not found" / `ContextRuleNotFound (3000)` substring so
@@ -256,7 +205,7 @@ pub async fn read_context_rule_via_simulate(
         .ok_or_else(|| ReadError::Decode("simulate returned no results[]".to_string()))?;
     let mut rule = decode_context_rule_scval(&first.xdr)
         .map_err(|e| ReadError::Decode(format!("returnValue decode: {e}")))?;
-    // The contract ABI states `id: u32` is part of the struct. We pin
+    // the contract ABI states `id: u32` is part of the struct. We pin
     // here that the value matches the requested id — a mismatch would
     // be a contract bug, so surface it loudly.
     if rule.id != context_rule_id {
@@ -265,18 +214,16 @@ pub async fn read_context_rule_via_simulate(
             actual = rule.id
         )));
     }
-    // Canonicalise downstream comparisons by sorting the policies (the
+    // canonicalise downstream comparisons by sorting the policies (the
     // ABI does not promise ordering across upgrades; spec-side ordering
     // is also semantic-free).
     rule.policies.sort();
     Ok(rule)
 }
 
-// ===================================================================
-// Pure decoder — no network, fully unit-testable.
-// ===================================================================
+// pure decoder — no network, fully unit-testable.
 
-/// Decode a `ContextRule` `ScVal::Map` into the typed projection. The
+/// decode a `ContextRule` `ScVal::Map` into the typed projection. The
 /// input must be an `ScVal::Map(Some(map))` whose entries are keyed by
 /// `ScVal::Symbol(field_name)`; missing fields error.
 pub fn decode_context_rule_scval(v: &ScVal) -> Result<OnChainContextRule, String> {
@@ -338,7 +285,7 @@ pub fn decode_context_rule_scval(v: &ScVal) -> Result<OnChainContextRule, String
             // tolerate them silently rather than rejecting unknowns.
             "signer_ids" | "policy_ids" => {}
             other => {
-                // Unknown field — log via tracing for visibility but do
+                // unknown field — log via tracing for visibility but do
                 // not error: forward compat with future ContextRule
                 // additions.
                 tracing::debug!(field = other, "ignoring unknown ContextRule field");
@@ -356,7 +303,7 @@ pub fn decode_context_rule_scval(v: &ScVal) -> Result<OnChainContextRule, String
     })
 }
 
-/// Decode `soroban_sdk::String` — emitted by the host as
+/// decode `soroban_sdk::String` — emitted by the host as
 /// `ScVal::String(ScString(vec_of_bytes))`.
 fn decode_string(v: &ScVal) -> Result<String, String> {
     match v {
@@ -370,8 +317,8 @@ fn decode_string(v: &ScVal) -> Result<String, String> {
     }
 }
 
-/// Decode `Option<u32>` — `Some(n) → ScVal::U32(n)`, `None → ScVal::Void`.
-/// This matches the soroban-sdk encoding for `Option<T>` fields on
+/// decode `Option<u32>` — `Some(n) → ScVal::U32(n)`, `None → ScVal::Void`.
+/// this matches the soroban-sdk encoding for `Option<T>` fields on
 /// `#[contracttype]` structs (a missing value emits `Void`, not absence).
 fn decode_option_u32(v: &ScVal) -> Result<Option<u32>, String> {
     match v {
@@ -384,7 +331,7 @@ fn decode_option_u32(v: &ScVal) -> Result<Option<u32>, String> {
     }
 }
 
-/// Decode `ContextRuleType` from its `#[contracttype]` enum encoding —
+/// decode `ContextRuleType` from its `#[contracttype]` enum encoding —
 /// `ScVal::Vec(Some([Symbol(variant), <args>...]))`.
 fn decode_context_type(v: &ScVal) -> Result<OnChainContextType, String> {
     let vec_ref = match v {
@@ -439,7 +386,7 @@ fn decode_context_type(v: &ScVal) -> Result<OnChainContextType, String> {
     }
 }
 
-/// Decode a `Vec<Signer>` ScVal. The inner `Signer` enum follows the
+/// decode a `Vec<Signer>` ScVal. The inner `Signer` enum follows the
 /// `#[contracttype]` enum layout described at the top of this module.
 fn decode_signers(v: &ScVal) -> Result<Vec<OnChainSigner>, String> {
     let vec_ref = match v {
@@ -531,7 +478,7 @@ fn decode_policies(v: &ScVal) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Decode `ScVal::Address` to a StrKey string (`G…` or `C…`).
+/// decode `ScVal::Address` to a StrKey string (`G…` or `C…`).
 fn decode_address(v: &ScVal) -> Result<String, String> {
     let addr = match v {
         ScVal::Address(a) => a,
@@ -553,7 +500,7 @@ fn decode_address(v: &ScVal) -> Result<String, String> {
     }
 }
 
-/// Stable tag string for diagnostics — avoids dumping the entire ScVal in
+/// stable tag string for diagnostics — avoids dumping the entire ScVal in
 /// error messages.
 fn other_tag(v: &ScVal) -> &'static str {
     match v {
@@ -582,11 +529,9 @@ fn other_tag(v: &ScVal) -> &'static str {
     }
 }
 
-// ===================================================================
-// Drift comparator — pure.
-// ===================================================================
+// drift comparator — pure.
 
-/// Compare a [`PolicySpec`] against the on-chain rule and emit per-field
+/// compare a [`PolicySpec`] against the on-chain rule and emit per-field
 /// [`DriftItem`]s. Empty result ⇒ everything matches.
 ///
 /// `network_passphrase` is needed to resolve `PolicySlot::Generated`
@@ -683,7 +628,7 @@ pub fn compute_drift(
     actual_policies.sort();
 
     if !unresolved.is_empty() {
-        // The spec referenced a slot we cannot map to a deployed address
+        // the spec referenced a slot we cannot map to a deployed address
         // for this network. We surface this as drift (rather than silent
         // success) so callers know their expected_spec is under-specified
         // for the comparison.
@@ -704,7 +649,7 @@ pub fn compute_drift(
     drift
 }
 
-/// Canonicalise a [`SignerSpec`] to a string that round-trips through
+/// canonicalise a [`SignerSpec`] to a string that round-trips through
 /// equality comparison against the on-chain projection. We use
 /// `"Delegated:<addr>"` and `"External:<verifier>:<pk_hex>"` so the
 /// orderings of `expected` and `actual` collapse to the same key.
@@ -712,7 +657,7 @@ fn signer_spec_to_canonical_string(s: &SignerSpec) -> String {
     match s {
         SignerSpec::Delegated { address } => format!("Delegated:{address}"),
         SignerSpec::ExternalEd25519 { public_key_hex } => {
-            // External-Ed25519's *verifier* address is whichever ed25519
+            // external-Ed25519's *verifier* address is whichever ed25519
             // verifier contract the OZ project deploys. The PolicySpec
             // does not carry that address (it's project-level) so we
             // compare *only the public_key_hex* — the on-chain side
@@ -726,7 +671,7 @@ fn signer_spec_to_canonical_string(s: &SignerSpec) -> String {
     }
 }
 
-/// Canonicalise an [`OnChainSigner`] to a string matching the
+/// canonicalise an [`OnChainSigner`] to a string matching the
 /// `SignerSpec` canonicalisation. Project-level verifier addresses are
 /// dropped from the comparison key (see commentary in
 /// [`signer_spec_to_canonical_string`]).
@@ -734,7 +679,7 @@ fn on_chain_signer_to_canonical_string(s: &OnChainSigner) -> String {
     match s {
         OnChainSigner::Delegated { address } => format!("Delegated:{address}"),
         OnChainSigner::External { public_key_hex, .. } => {
-            // Without a way to tell Ed25519 vs WebAuthn from the on-chain
+            // without a way to tell Ed25519 vs WebAuthn from the on-chain
             // signer alone (the verifier address is project-specific),
             // surface as "External:<pk_hex>". Comparison strings on the
             // spec side use the typed variant so a mismatch in
@@ -744,7 +689,7 @@ fn on_chain_signer_to_canonical_string(s: &OnChainSigner) -> String {
     }
 }
 
-/// Resolve a [`PolicySlot`] to the on-chain policy contract address it
+/// resolve a [`PolicySlot`] to the on-chain policy contract address it
 /// should appear as. Returns `None` when we cannot determine an address
 /// (caller surfaces an `unresolved_slots` drift item).
 fn resolve_policy_address(slot: &PolicySlot, network_passphrase: &str) -> Option<String> {
@@ -752,7 +697,7 @@ fn resolve_policy_address(slot: &PolicySlot, network_passphrase: &str) -> Option
         PolicySlot::Existing { primitive, .. } => {
             // `primitive_address` is `None` for every primitive in v1 —
             // no audited mainnet/testnet deployments are registered yet.
-            // We surface this gap rather than silently failing the
+            // we surface this gap rather than silently failing the
             // comparison.
             primitive_address(primitive.clone(), network_passphrase).map(|s| s.to_string())
         }
@@ -784,11 +729,9 @@ fn template_family_label(t: &TemplateFamily) -> &'static str {
     }
 }
 
-// ===================================================================
-// Tests — exercise the decoder + comparator with hand-built ScVal
+// tests — exercise the decoder + comparator with hand-built ScVal
 // fixtures. The simulate path itself is integration-tested through
 // `wallet-adapter/src/phase7_integration.test.ts`.
-// ===================================================================
 
 #[cfg(test)]
 mod tests {
@@ -846,11 +789,11 @@ mod tests {
         ScVal::Bytes(ScBytes(b.to_vec().try_into().unwrap()))
     }
 
-    /// Build the exact on-chain ScVal the Phase 7 SA returns for bootstrap
+    /// build the exact on-chain ScVal the Phase 7 SA returns for bootstrap
     /// rule 0 (captured 2026-05-18 from `stellar contract invoke
     /// --send=no get_context_rule 0`):
     ///
-    ///   ContextRule {
+    ///   contextRule {
     ///     id: 0, name: "rule",
     ///     context_type: Default,
     ///     valid_until: None,
@@ -966,7 +909,7 @@ mod tests {
 
     #[test]
     fn decode_rejects_missing_required_field() {
-        // Omit `name` — decoder must surface a "missing field" diagnostic.
+        // omit `name` — decoder must surface a "missing field" diagnostic.
         let v = s_map(vec![
             ("id", ScVal::U32(0)),
             ("context_type", s_default_context()),
@@ -1032,7 +975,7 @@ mod tests {
     #[test]
     fn compute_drift_signer_set_mismatch() {
         let mut actual = decode_context_rule_scval(&p7_rule_with_policy_scval()).unwrap();
-        // Replace the on-chain signer set with a different G-key.
+        // replace the on-chain signer set with a different G-key.
         actual.signers = vec![OnChainSigner::Delegated {
             address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string(),
         }];
@@ -1044,7 +987,7 @@ mod tests {
     #[test]
     fn compute_drift_policies_address_set_mismatch() {
         let mut actual = decode_context_rule_scval(&p7_rule_with_policy_scval()).unwrap();
-        // Remove the on-chain policy; spec still references one.
+        // remove the on-chain policy; spec still references one.
         actual.policies.clear();
         let drift = compute_drift(&spec_p7(), "p7-rule", &actual, TESTNET_PASSPHRASE);
         assert_eq!(drift.len(), 1);
@@ -1053,7 +996,7 @@ mod tests {
 
     #[test]
     fn compute_drift_unresolved_existing_slot() {
-        // ExistingPrimitive::SimpleThreshold has no registry entry on
+        // existingPrimitive::SimpleThreshold has no registry entry on
         // testnet — surfacing it must produce an `unresolved_slots`
         // drift item plus a `policies` mismatch.
         let mut spec = spec_p7();

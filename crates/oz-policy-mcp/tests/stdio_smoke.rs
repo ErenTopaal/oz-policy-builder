@@ -1,6 +1,6 @@
 //! STDIO transport conformance smoke test for Phase 5 Stream C.
 //!
-//! Spawns the actual `oz-policy-mcp --stdio` binary as a subprocess via
+//! spawns the actual `oz-policy-mcp --stdio` binary as a subprocess via
 //! `tokio::process::Command::new(env!("CARGO_BIN_EXE_oz-policy-mcp"))`,
 //! drives a scripted JSON-RPC session through its stdin, and asserts the
 //! responses on stdout match the documented contract. The session covers:
@@ -26,7 +26,7 @@
 //!
 //! ## UUID redaction set
 //!
-//! The following non-deterministic strings are redacted before byte
+//! the following non-deterministic strings are redacted before byte
 //! comparison:
 //!
 //! * `RecordTransactionOutput.recording_id` (`rec_<uuid v4>` → `rec_<uuid>`)
@@ -39,7 +39,7 @@
 //!   an explicit `rule_name`, and are derived from the UUID — so they
 //!   diverge across runs even though every other byte stays equal.
 //!
-//! The redactor walks every JSON value (including JSON strings that
+//! the redactor walks every JSON value (including JSON strings that
 //! embed escaped JSON — `content[0].text` carries the typed payload
 //! verbatim, so embedded UUIDs need the same treatment).
 
@@ -51,11 +51,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::time::timeout;
 
-// =====================================================================
-// Constants — the Phase 1 frozen Blend testnet hash, kept in lockstep
+// constants — the Phase 1 frozen Blend testnet hash, kept in lockstep
 // with `walkthroughs/01-blend-yield/source.json`. Updating one without
 // the other is a fixture-drift bug that this constant catches.
-// =====================================================================
 
 const BLEND_TESTNET_HASH: &str = "5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e";
 const BLEND_NETWORK: &str = "testnet";
@@ -74,19 +72,19 @@ async fn stdio_smoke_full_session() {
     assert_byte_equal_modulo_uuids(&transcript_a, &transcript_b);
 }
 
-/// Drives a full scripted session against a freshly-spawned subprocess.
-/// Returns the ordered list of JSON-RPC responses (excluding
+/// drives a full scripted session against a freshly-spawned subprocess.
+/// returns the ordered list of JSON-RPC responses (excluding
 /// notifications, which the server may send between request responses).
 async fn run_full_session() -> Result<Vec<Value>, String> {
     let bin = env!("CARGO_BIN_EXE_oz-policy-mcp");
     let mut child = tokio::process::Command::new(bin)
         .arg("--stdio")
-        // Pipe everything so we can drive stdin / read stdout / drain
+        // pipe everything so we can drive stdin / read stdout / drain
         // stderr without it interleaving with the protocol stream.
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        // Belt-and-braces: an unrelated `OZ_POLICY_MCP_TOKEN` in the host
+        // belt-and-braces: an unrelated `OZ_POLICY_MCP_TOKEN` in the host
         // shell must not affect STDIO mode. The binary ignores --token in
         // STDIO anyway, but unsetting the env var keeps the test
         // hermetic.
@@ -115,7 +113,7 @@ async fn run_full_session() -> Result<Vec<Value>, String> {
     .await?;
     assert_response_id(&init_resp, 1)?;
 
-    // The MCP handshake requires `notifications/initialized` after the
+    // the MCP handshake requires `notifications/initialized` after the
     // server's `initialize` response. Skipping this leaves the server in
     // the not-yet-initialised state and subsequent `tools/list` etc.
     // would be rejected.
@@ -201,7 +199,7 @@ async fn run_full_session() -> Result<Vec<Value>, String> {
     if !recording_id.starts_with("rec_") {
         return Err(format!("recording_id missing rec_ prefix: {recording_id}"));
     }
-    // The Blend `claim` fixture: contracts[0].function must equal "claim".
+    // the Blend `claim` fixture: contracts[0].function must equal "claim".
     let claim_fn = extract_structured_field(&record_resp, "recording")?
         .get("contracts")
         .and_then(Value::as_array)
@@ -218,7 +216,7 @@ async fn run_full_session() -> Result<Vec<Value>, String> {
 
     // ---- 6. tools/call synthesize_policy ----
     //
-    // Plan asks for `mode: "compose_only"`, but the Blend `claim` fixture
+    // plan asks for `mode: "compose_only"`, but the Blend `claim` fixture
     // is not a SEP-41 transfer (it's a `pool.claim(from, reserve_ids, to)`
     // call), so the Track-A "compose existing primitives" path
     // legitimately errors with `E_SYNTH_NOT_EXPRESSIBLE`. We use `auto`
@@ -260,7 +258,7 @@ async fn run_full_session() -> Result<Vec<Value>, String> {
         ));
     }
 
-    // Close the server (drop stdin → EOF on stdin) and let it shut down.
+    // close the server (drop stdin → EOF on stdin) and let it shut down.
     drop(stdin);
     let _ = child.wait().await;
 
@@ -274,11 +272,9 @@ async fn run_full_session() -> Result<Vec<Value>, String> {
     ])
 }
 
-// ---------------------------------------------------------------------
-// Determinism comparator
-// ---------------------------------------------------------------------
+// determinism comparator
 
-/// Asserts that two scripted-session transcripts are byte-equal modulo
+/// asserts that two scripted-session transcripts are byte-equal modulo
 /// the freshly-generated UUID strings embedded in `*_id` fields. Any
 /// difference outside that redaction set is a determinism violation.
 fn assert_byte_equal_modulo_uuids(a: &[Value], b: &[Value]) {
@@ -299,7 +295,7 @@ fn assert_byte_equal_modulo_uuids(a: &[Value], b: &[Value]) {
     }
 }
 
-/// Recursively walks a JSON value and replaces any string of shape
+/// recursively walks a JSON value and replaces any string of shape
 /// `<prefix>_<uuid v4>` with `<prefix>_<uuid>`. The prefix set is
 /// `rec_` / `spec_` / `art_` (the three ID kinds the store hands out).
 fn redact_uuids(value: Value) -> Value {
@@ -314,7 +310,7 @@ fn redact_uuids(value: Value) -> Value {
 }
 
 fn redact_uuid_string(s: &str) -> String {
-    // Fast-path: the whole string is a single `<prefix>_<uuid>` token.
+    // fast-path: the whole string is a single `<prefix>_<uuid>` token.
     for prefix in ["rec_", "spec_", "art_"] {
         if let Some(rest) = s.strip_prefix(prefix) {
             if looks_like_uuid_v4(rest) {
@@ -322,14 +318,14 @@ fn redact_uuid_string(s: &str) -> String {
             }
         }
     }
-    // Fast-path: the whole string is an auto-generated `rule-<8 hex>` name.
+    // fast-path: the whole string is an auto-generated `rule-<8 hex>` name.
     if let Some(rest) = s.strip_prefix("rule-") {
         if rest.len() == 8 && rest.bytes().all(|b| b.is_ascii_hexdigit()) {
             return "rule-<id8>".to_string();
         }
     }
-    // Slow-path: the string embeds one or more redaction-eligible tokens.
-    // This is what `tools/call` payloads look like — the typed JSON is
+    // slow-path: the string embeds one or more redaction-eligible tokens.
+    // this is what `tools/call` payloads look like — the typed JSON is
     // serialised into the `content[0].text` fallback verbatim, so every
     // UUID + auto rule-name embedded in the payload appears inside the
     // string verbatim. We do a manual scan rather than a regex dep —
@@ -368,7 +364,7 @@ fn redact_uuid_string(s: &str) -> String {
                 if id_end <= bytes.len() {
                     let candidate = &s[rest_start..id_end];
                     if candidate.bytes().all(|b| b.is_ascii_hexdigit()) {
-                        // Be conservative: only consume if the next byte is
+                        // be conservative: only consume if the next byte is
                         // NOT a hex digit (so we don't accidentally truncate
                         // a longer hex token).
                         let next_is_hex = bytes.get(id_end).is_some_and(|b| b.is_ascii_hexdigit());
@@ -382,7 +378,7 @@ fn redact_uuid_string(s: &str) -> String {
             }
         }
         if !replaced {
-            // Push one char (UTF-8 safe — find the char boundary).
+            // push one char (UTF-8 safe — find the char boundary).
             let ch_start = i;
             i += 1;
             while i < bytes.len() && !s.is_char_boundary(i) {
@@ -394,7 +390,7 @@ fn redact_uuid_string(s: &str) -> String {
     out
 }
 
-/// Cheap UUID v4 recogniser: 36 chars in `8-4-4-4-12` hex layout.
+/// cheap UUID v4 recogniser: 36 chars in `8-4-4-4-12` hex layout.
 fn looks_like_uuid_v4(s: &str) -> bool {
     let bytes = s.as_bytes();
     if bytes.len() != 36 {
@@ -406,10 +402,8 @@ fn looks_like_uuid_v4(s: &str) -> bool {
     })
 }
 
-// ---------------------------------------------------------------------
-// Helpers — JSON-RPC framing over stdio (line-delimited, NOT
-// Content-Length framed; rmcp's STDIO transport uses newline framing).
-// ---------------------------------------------------------------------
+// helpers — JSON-RPC framing over stdio (line-delimited, NOT
+// content-Length framed; rmcp's STDIO transport uses newline framing).
 
 async fn jsonrpc_request(
     stdin: &mut ChildStdin,
@@ -437,7 +431,7 @@ async fn jsonrpc_request(
         .await
         .map_err(|e| format!("flush {method}: {e}"))?;
 
-    // Loop because the server may inject notifications (e.g. logging) in
+    // loop because the server may inject notifications (e.g. logging) in
     // between the request and its matching response. We skip any
     // non-response frame.
     loop {
@@ -455,7 +449,7 @@ async fn jsonrpc_request(
         }
         let parsed: Value = serde_json::from_str(trimmed)
             .map_err(|e| format!("invalid JSON line in {method}: {e} :: {trimmed:?}"))?;
-        // Notifications carry no "id"; skip them.
+        // notifications carry no "id"; skip them.
         if parsed.get("id").is_none() {
             continue;
         }
@@ -504,7 +498,7 @@ fn assert_response_id(resp: &Value, expected: u64) -> Result<(), String> {
     Ok(())
 }
 
-/// Extract `result.structuredContent.<field>` from a `tools/call`
+/// extract `result.structuredContent.<field>` from a `tools/call`
 /// response. The MCP `tools/call` result wraps the typed payload under
 /// `structuredContent` so that newer clients can parse the typed JSON
 /// directly without re-parsing the `content[0].text` fallback.

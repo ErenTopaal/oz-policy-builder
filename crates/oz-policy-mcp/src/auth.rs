@@ -1,12 +1,12 @@
-//! Bearer-token authentication middleware for the Streamable HTTP transport.
+//! bearer-token authentication middleware for the Streamable HTTP transport.
 //!
-//! Per plan.md Phase 5 (Implementation → main.rs): every request to the
+//! per plan.md Phase 5 (Implementation → main.rs): every request to the
 //! `POST /mcp` JSON-RPC endpoint must carry an `Authorization: Bearer <token>`
 //! header whose value matches the operator-configured token. The token is
 //! supplied via the `--token <value>` CLI flag or, failing that, the
 //! `OZ_POLICY_MCP_TOKEN` environment variable.
 //!
-//! Reject semantics (hard, per plan.md "Bearer-token reject is hard. No
+//! reject semantics (hard, per plan.md "Bearer-token reject is hard. No
 //! partial-credit 'warn but proceed.'"):
 //!
 //! | Condition                                | HTTP status | Body                  |
@@ -15,14 +15,14 @@
 //! | Non-`Bearer <…>` format                  | 401         | `"invalid bearer"`    |
 //! | `Bearer <wrong>` (constant-time compare) | 401         | `"invalid bearer"`    |
 //!
-//! The middleware does NOT enforce auth on `GET /healthz`; that path is
+//! the middleware does NOT enforce auth on `GET /healthz`; that path is
 //! intentionally excluded so load balancers / k8s liveness probes don't need
 //! the secret. This is handled at the axum router level (`/healthz` is a
 //! sibling route, not nested under the auth layer).
 //!
 //! ## Constant-time comparison
 //!
-//! The token comparison uses [`constant_time_eq`] to avoid leaking the
+//! the token comparison uses [`constant_time_eq`] to avoid leaking the
 //! token's length / prefix via timing side channels. The comparison itself
 //! runs in O(max(a, b)) regardless of how many bytes match — see the unit
 //! tests below for a regression guard.
@@ -38,7 +38,7 @@ use tower::{Layer, Service};
 /// <token>` header with HTTP 401. See [`BearerAuthLayer`] for the
 /// underlying type.
 ///
-/// The `token` argument is taken by `Into<String>` so callers can pass
+/// the `token` argument is taken by `Into<String>` so callers can pass
 /// either an owned `String` (the typical path — the token is read from a
 /// CLI flag or env var into a `String`) or a string literal in tests.
 ///
@@ -54,7 +54,7 @@ pub fn bearer_layer(token: impl Into<String>) -> BearerAuthLayer {
     }
 }
 
-/// Tower [`Layer`] that wraps a downstream service in a [`BearerAuth`]
+/// tower [`Layer`] that wraps a downstream service in a [`BearerAuth`]
 /// middleware. Cheap to clone — clones share the same token via
 /// `String::clone` (heap-bumped refcount when applied repeatedly).
 #[derive(Clone, Debug)]
@@ -72,9 +72,9 @@ impl<S> Layer<S> for BearerAuthLayer {
     }
 }
 
-/// Tower [`Service`] middleware enforcing `Authorization: Bearer <token>`.
+/// tower [`Service`] middleware enforcing `Authorization: Bearer <token>`.
 ///
-/// Reject paths are documented in the module-level docs. The token is owned
+/// reject paths are documented in the module-level docs. The token is owned
 /// by the middleware (one allocation per service clone, no per-request
 /// alloc).
 #[derive(Clone, Debug)]
@@ -84,7 +84,7 @@ pub struct BearerAuth<S> {
 }
 
 impl<S> BearerAuth<S> {
-    /// Returns the wrapped inner service. Public so callers that built the
+    /// returns the wrapped inner service. Public so callers that built the
     /// layer manually (rather than via `bearer_layer`) can recover the
     /// underlying service if needed.
     pub fn into_inner(self) -> S {
@@ -124,7 +124,7 @@ where
     }
 }
 
-/// Builds a 401 response with a plain-text body. Returns `Result` only
+/// builds a 401 response with a plain-text body. Returns `Result` only
 /// because `Response::builder()` can in principle fail — the static bytes
 /// we pass never trip the failure paths, so the call site `.expect()`s.
 fn unauthorized(body: &'static [u8]) -> Result<Response<Body>, http::Error> {
@@ -140,7 +140,7 @@ fn unauthorized(body: &'static [u8]) -> Result<Response<Body>, http::Error> {
     Ok(resp)
 }
 
-/// Outcome of `Authorization` header validation. Public so the binary's
+/// outcome of `Authorization` header validation. Public so the binary's
 /// axum-level middleware (`main::bearer_auth_middleware`) can share the
 /// exact same scheme parsing + constant-time comparison logic that the
 /// `BearerAuth<S>` tower layer uses, without re-implementing it.
@@ -148,17 +148,17 @@ fn unauthorized(body: &'static [u8]) -> Result<Response<Body>, http::Error> {
 pub enum BearerOutcome {
     /// `Authorization: Bearer <expected>` — request passes through.
     Ok,
-    /// No `Authorization` header at all.
+    /// no `Authorization` header at all.
     Missing,
-    /// Header present but malformed, wrong scheme, or wrong token.
+    /// header present but malformed, wrong scheme, or wrong token.
     Invalid,
 }
 
-/// Validates an `Authorization` header against the expected token. Public
+/// validates an `Authorization` header against the expected token. Public
 /// so the binary's axum middleware can reuse the same constant-time
 /// comparison logic as the standalone `BearerAuth<S>` tower service.
 ///
-/// Returns:
+/// returns:
 /// * [`BearerOutcome::Ok`] for `Authorization: Bearer <expected>` (the
 ///   token comparison is constant-time).
 /// * [`BearerOutcome::Missing`] when the header is entirely absent.
@@ -185,11 +185,11 @@ pub fn check_bearer(header: Option<&HeaderValue>, expected: &str) -> BearerOutco
     }
 }
 
-/// Strips the case-insensitive `Bearer ` prefix and returns the remainder.
-/// Returns `None` if the input is not a well-formed Bearer header (missing
+/// strips the case-insensitive `Bearer ` prefix and returns the remainder.
+/// returns `None` if the input is not a well-formed Bearer header (missing
 /// the scheme, missing the space after it, or empty token).
 fn strip_bearer_prefix(s: &str) -> Option<&str> {
-    // Length check first — "Bearer ".len() == 7.
+    // length check first — "Bearer ".len() == 7.
     if s.len() <= 7 {
         return None;
     }
@@ -208,13 +208,13 @@ fn strip_bearer_prefix(s: &str) -> Option<&str> {
     Some(token)
 }
 
-/// Constant-time byte slice equality. Returns `false` immediately on
+/// constant-time byte slice equality. Returns `false` immediately on
 /// length mismatch (the lengths themselves are not secret — they leak
 /// regardless via the response body / TCP framing) but iterates the full
 /// length on equal-length inputs so the byte-by-byte comparison time is
 /// independent of where the first mismatch occurs.
 ///
-/// This is intentionally a tiny hand-rolled implementation rather than a
+/// this is intentionally a tiny hand-rolled implementation rather than a
 /// dep on `constant_time_eq` / `subtle` — the dep graph is already large
 /// and the function is 8 lines.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -244,7 +244,7 @@ mod tests {
     fn constant_time_eq_rejects_unequal_inputs() {
         assert!(!constant_time_eq(b"hello", b"world"));
         assert!(!constant_time_eq(b"hello", b"hellp"));
-        // Length mismatch
+        // length mismatch
         assert!(!constant_time_eq(b"hello", b"hello!"));
         assert!(!constant_time_eq(b"", b"x"));
     }
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn strip_bearer_accepts_canonical_form() {
         assert_eq!(strip_bearer_prefix("Bearer abc"), Some("abc"));
-        // Case-insensitive scheme per RFC 6750.
+        // case-insensitive scheme per RFC 6750.
         assert_eq!(strip_bearer_prefix("bearer abc"), Some("abc"));
         assert_eq!(strip_bearer_prefix("BEARER abc"), Some("abc"));
         assert_eq!(strip_bearer_prefix("BeArEr xyz123"), Some("xyz123"));
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn bearer_auth_into_inner_round_trip() {
-        // Stub a unit type as the inner service — we only need into_inner()
+        // stub a unit type as the inner service — we only need into_inner()
         // round-trip, not the Service impl, so this stays free of tower deps.
         let auth = BearerAuth {
             inner: 42_i32,

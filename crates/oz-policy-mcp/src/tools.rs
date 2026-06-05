@@ -1,36 +1,6 @@
-//! Five MCP tool handler bodies, Phase 5 Stream A.
-//!
-//! Each `pub async fn` here is the "business logic" half of an MCP tool;
-//! Stream C wraps each in the rmcp `#[tool]` / `#[tool_router]` macro
-//! pattern at binary-assembly time (see
-//! `rmcp::handler::server::router::tool::ToolRouter`). The handlers
-//! intentionally do NOT depend on rmcp's `ToolCallContext` or
-//! `Parameters<_>` wrapper — they take typed inputs + `&McpStore` and
-//! return typed outputs or `rmcp::ErrorData`, leaving transport wiring to
-//! Stream C. This makes the handlers directly unit-testable in a Tokio
-//! runtime without spinning up a fake `ServerHandler`.
-//!
-//! ## Determinism contract
-//!
-//! Given identical inputs and store state, every handler emits a
-//! byte-equal output **modulo the freshly generated `*_id` UUID strings**
-//! (`recording_id`, `spec_id`, `artifact_id`). The deterministic payloads
-//! — `spec` from `synthesize_policy`, `recording` from
-//! `record_transaction`, `rust_source` / `wasm_hash_hex` from
-//! `export_policy` — round-trip byte-equal across two invocations. The
-//! `*_id` strings are intentionally non-deterministic (v4 UUIDs) so two
-//! parallel sessions never collide on the same key.
-//!
-//! Tests below pin both sides of the contract: the IDs round-trip
-//! byte-DIFFERENT and the inner payloads round-trip byte-EQUAL.
-//!
-//! ## Error mapping
-//!
-//! Every `oz_policy_core::Error` returned by an underlying crate is
-//! routed through [`crate::error_mapping::error_to_jsonrpc`], which
-//! attaches the deterministic JSON-RPC integer code + the
-//! `{ "error_code": "E_…", "details": "<msg>" }` structured payload
-//! documented in that module's table.
+//! mcp tool handler bodies. typed in/out, return `rmcp::ErrorData`.
+//! determinism contract: payloads round-trip byte-equal, ids are fresh uuids.
+//! errors route through `error_mapping::error_to_jsonrpc`.
 
 use std::sync::Arc;
 
@@ -49,33 +19,19 @@ use sha2::{Digest, Sha256};
 use crate::error_mapping::error_to_jsonrpc;
 use crate::store::{ArtifactBundle, McpStore};
 
-// =========================================================================
-// Network-passphrase + RPC defaults — kept at the top so the constants are
-// easy to audit. The strings are the canonical Stellar passphrases (see
-// `docs/oz-internal-shapes.md` §1) and the public RPC endpoints SDF runs.
-// =========================================================================
-
-/// Canonical testnet network passphrase. Verbatim from
-/// `https://github.com/stellar/stellar-protocol` / Stellar core defaults.
+/// testnet network passphrase.
 pub const TESTNET_PASSPHRASE: &str = "Test SDF Network ; September 2015";
 
-/// Canonical mainnet network passphrase.
+/// mainnet network passphrase.
 pub const MAINNET_PASSPHRASE: &str = "Public Global Stellar Network ; September 2015";
 
-/// Default RPC endpoint when [`RecordTransactionInput::rpc_url`] is `None`
-/// and `network = Testnet`.
+/// default testnet rpc when caller doesn't override.
 pub const DEFAULT_TESTNET_RPC: &str = "https://soroban-testnet.stellar.org";
 
-/// Default RPC endpoint when `network = Mainnet`. SDF does not run a
-/// canonical mainnet Soroban RPC, so we point at the soroban.stellar.org
-/// shim (returning `Mainnet` from the network gate). Callers SHOULD
-/// override via `rpc_url` for production traffic — see plan.md §
-/// Cross-Phase Invariants for the RPC-failure posture.
+/// default mainnet rpc; production callers should override.
 pub const DEFAULT_MAINNET_RPC: &str = "https://soroban.stellar.org";
 
-// =========================================================================
 // record_transaction
-// =========================================================================
 
 /// `record_transaction` input. Exactly one of `hash` / `envelope_xdr_base64`
 /// must be present; the handler validates this at runtime (the JSON Schema
@@ -84,19 +40,19 @@ pub const DEFAULT_MAINNET_RPC: &str = "https://soroban.stellar.org";
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RecordTransactionInput {
-    /// Stellar network the transaction belongs to. Selects the default
+    /// stellar network the transaction belongs to. Selects the default
     /// network passphrase + RPC endpoint when `rpc_url` is omitted.
     pub network: NetworkKind,
-    /// Optional RPC URL override. Defaults to [`DEFAULT_TESTNET_RPC`] /
+    /// optional RPC URL override. Defaults to [`DEFAULT_TESTNET_RPC`] /
     /// [`DEFAULT_MAINNET_RPC`] per `network`.
     pub rpc_url: Option<String>,
     /// 64-char hex transaction hash. Mutually exclusive with
     /// [`Self::envelope_xdr_base64`].
     pub hash: Option<String>,
-    /// Base64-encoded `TransactionEnvelope` XDR to simulate. Mutually
+    /// base64-encoded `TransactionEnvelope` XDR to simulate. Mutually
     /// exclusive with [`Self::hash`].
     pub envelope_xdr_base64: Option<String>,
-    /// Optional `simulateTransaction.resourceConfig.instructionLeeway`
+    /// optional `simulateTransaction.resourceConfig.instructionLeeway`
     /// override (in instructions). Honoured only by the simulation path;
     /// stable `stellar-rpc-client 25.1.0` does not expose this on the
     /// stable API surface, so the recorder logs a `tracing::warn!` and
@@ -105,7 +61,7 @@ pub struct RecordTransactionInput {
     pub instruction_leeway: Option<u64>,
 }
 
-/// Stellar network discriminant. Selects passphrase + default RPC URL.
+/// stellar network discriminant. Selects passphrase + default RPC URL.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkKind {
@@ -114,7 +70,7 @@ pub enum NetworkKind {
 }
 
 impl NetworkKind {
-    /// Canonical network passphrase string.
+    /// canonical network passphrase string.
     pub fn passphrase(self) -> &'static str {
         match self {
             NetworkKind::Testnet => TESTNET_PASSPHRASE,
@@ -122,7 +78,7 @@ impl NetworkKind {
         }
     }
 
-    /// Default Soroban RPC endpoint.
+    /// default Soroban RPC endpoint.
     pub fn default_rpc(self) -> &'static str {
         match self {
             NetworkKind::Testnet => DEFAULT_TESTNET_RPC,
@@ -134,14 +90,14 @@ impl NetworkKind {
 /// `record_transaction` output.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RecordTransactionOutput {
-    /// Freshly-allocated `rec_<uuid>` store ID for the produced Recording.
-    /// Stream B's `recording://<id>` resource URI uses this same string.
+    /// freshly-allocated `rec_<uuid>` store ID for the produced Recording.
+    /// stream B's `recording://<id>` resource URI uses this same string.
     pub recording_id: String,
-    /// Decoded recording. Byte-equal across two calls with the same source
+    /// decoded recording. Byte-equal across two calls with the same source
     /// transaction (modulo the RPC's own ledger advancement for the
     /// `record_by_simulation` path).
     pub recording: Recording,
-    /// Soft warning when the source transaction is approaching Soroban's
+    /// soft warning when the source transaction is approaching Soroban's
     /// retention horizon (currently a placeholder — Phase 5 surfaces the
     /// string verbatim, Phase 7 wires the actual ledger-window check via
     /// `getLatestLedger`). `None` means "no warning" — never an empty
@@ -155,7 +111,7 @@ pub struct RecordTransactionOutput {
 /// returns the ID + the typed Recording so callers can branch on its
 /// contents without an extra `resources/read` round-trip.
 ///
-/// Errors:
+/// errors:
 /// * `E_RECORDER_HASH_NOT_FOUND` — hash not on chain / wrong network /
 ///   retention exceeded.
 /// * `E_RECORDER_SIM_FAILED` — `simulateTransaction` errored.
@@ -167,7 +123,7 @@ pub async fn record_transaction(
     store: &McpStore,
     input: RecordTransactionInput,
 ) -> Result<RecordTransactionOutput, ErrorData> {
-    // Mutual-exclusion gate. We surface this as -32602 INVALID_PARAMS
+    // mutual-exclusion gate. We surface this as -32602 INVALID_PARAMS
     // (rmcp's standard "your JSON didn't satisfy the schema" code), NOT
     // an `E_RECORDER_*` code — there's no recorder error condition yet.
     match (&input.hash, &input.envelope_xdr_base64) {
@@ -220,9 +176,7 @@ pub async fn record_transaction(
     })
 }
 
-// =========================================================================
 // synthesize_policy
-// =========================================================================
 
 /// `synthesize_policy` input. Looks up `recording_id` in the store and
 /// drives `oz_policy_core::decision_tree::synthesize` with the typed
@@ -230,20 +184,20 @@ pub async fn record_transaction(
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SynthesizePolicyInput {
-    /// Recording ID returned by an earlier [`record_transaction`] call.
+    /// recording ID returned by an earlier [`record_transaction`] call.
     pub recording_id: String,
-    /// Numeric scaling factor for observed `i128` constraints.
+    /// numeric scaling factor for observed `i128` constraints.
     pub tightness: Tightness,
-    /// Optional `PolicySpec::lifetime_ledgers` + `SpendingLimit.period_ledgers`.
+    /// optional `PolicySpec::lifetime_ledgers` + `SpendingLimit.period_ledgers`.
     pub lifetime_ledgers: Option<u32>,
-    /// Optional delegated-signer contract address. When set, the
+    /// optional delegated-signer contract address. When set, the
     /// synthesizer emits a single `SignerSpec::Delegated` regardless of
     /// observed signers (see `decision_tree::SynthesisOptions::delegated_signer`).
     pub delegated_signer: Option<String>,
-    /// Which synthesis path is permitted: compose existing primitives,
+    /// which synthesis path is permitted: compose existing primitives,
     /// emit a generated slot, or let the synthesizer choose.
     pub mode: SynthesisMode,
-    /// Optional context rule name. Defaults to `"rule-<first-8-chars-of-id>"`
+    /// optional context rule name. Defaults to `"rule-<first-8-chars-of-id>"`
     /// when omitted; the handler clamps the result to `MAX_NAME_SIZE`
     /// (20 bytes) per `docs/oz-internal-shapes.md` §7.
     pub rule_name: Option<String>,
@@ -252,19 +206,19 @@ pub struct SynthesizePolicyInput {
 /// `synthesize_policy` output.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct SynthesizePolicyOutput {
-    /// Freshly-allocated `spec_<uuid>` store ID.
+    /// freshly-allocated `spec_<uuid>` store ID.
     pub spec_id: String,
-    /// Deterministic, byte-equal-across-runs `PolicySpec` payload.
+    /// deterministic, byte-equal-across-runs `PolicySpec` payload.
     pub spec: PolicySpec,
-    /// Number of `PolicySlot::Generated` slots in the spec (Track-B emit).
+    /// number of `PolicySlot::Generated` slots in the spec (Track-B emit).
     pub generated_count: u32,
-    /// Number of `PolicySlot::Existing` slots in the spec (Track-A compose).
+    /// number of `PolicySlot::Existing` slots in the spec (Track-A compose).
     pub composed_count: u32,
 }
 
 /// `synthesize_policy` handler.
 ///
-/// Errors:
+/// errors:
 /// * `E_SYNTH_NOT_EXPRESSIBLE` — the recording cannot be expressed under
 ///   the requested mode + on-chain hard limits.
 /// * `ErrorData::invalid_params` (-32602) — `recording_id` not found in
@@ -324,7 +278,7 @@ fn count_slots(spec: &PolicySpec) -> (u32, u32) {
     (generated, composed)
 }
 
-/// Truncate `name` to `MAX_NAME_SIZE` UTF-8 **bytes** (not chars) without
+/// truncate `name` to `MAX_NAME_SIZE` UTF-8 **bytes** (not chars) without
 /// splitting a UTF-8 boundary mid-codepoint. We refuse to silently lossy
 /// truncate; the on-chain `MAX_NAME_SIZE` is a byte count, so this is the
 /// canonical reduction.
@@ -333,7 +287,7 @@ fn clamp_rule_name(name: &str) -> String {
     if name.len() <= cap {
         return name.to_string();
     }
-    // Walk back to the nearest UTF-8 boundary so we don't construct a
+    // walk back to the nearest UTF-8 boundary so we don't construct a
     // panic-producing slice. `String::is_char_boundary` is the canonical
     // probe (avoids reaching into private std internals).
     let mut end = cap;
@@ -343,7 +297,7 @@ fn clamp_rule_name(name: &str) -> String {
     name[..end].to_string()
 }
 
-/// Default rule name: `"rule-<first-8-chars-of-recording-id>"` truncated
+/// default rule name: `"rule-<first-8-chars-of-recording-id>"` truncated
 /// at the canonical byte cap. The `rec_` prefix drops off the front so
 /// the visible suffix is the UUID's first 8 hex chars, mirroring the
 /// human-readable convention the CLI uses for the same defaults.
@@ -357,20 +311,18 @@ fn default_rule_name(recording_id: &str) -> String {
     clamp_rule_name(&candidate)
 }
 
-// =========================================================================
 // simulate_policy
-// =========================================================================
 
 /// `simulate_policy` input.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SimulatePolicyInput {
-    /// Spec ID returned by an earlier [`synthesize_policy`] call.
+    /// spec ID returned by an earlier [`synthesize_policy`] call.
     pub spec_id: String,
-    /// Recording ID — the simhost replays this against the compiled
+    /// recording ID — the simhost replays this against the compiled
     /// policy WASMs as the permit branch.
     pub recording_id: String,
-    /// Optional caller-supplied deny vectors appended to the generated
+    /// optional caller-supplied deny vectors appended to the generated
     /// boundary-mutation set. Default empty.
     pub extra_deny_vectors: Option<Vec<DenyVector>>,
 }
@@ -379,7 +331,7 @@ pub struct SimulatePolicyInput {
 /// derives `JsonSchema` + `Serialize` + `Deserialize` (see
 /// `oz_policy_simhost::run::SimReport`).
 ///
-/// Errors:
+/// errors:
 /// * `E_CODEGEN_COMPILE_FAILED` — bubbled up from
 ///   `oz_policy_codegen::synthesize_track_b` (the Track-B build pipeline
 ///   ran on-the-fly and one of the rendered crates failed `cargo build`).
@@ -414,7 +366,7 @@ pub async fn simulate_policy(
         )
     })?;
 
-    // Track-B: rebuild every `Generated` slot on the fly so the simhost
+    // track-B: rebuild every `Generated` slot on the fly so the simhost
     // has compiled WASMs to install. `synthesize_track_b` skips Existing
     // slots and returns one artifact per Generated slot in slot order
     // — exactly what `run_full_suite` expects.
@@ -428,32 +380,30 @@ pub async fn simulate_policy(
         .map_err(|e| error_to_jsonrpc(&e))
 }
 
-// =========================================================================
 // export_policy
-// =========================================================================
 
 /// `export_policy` input.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExportPolicyInput {
-    /// Spec ID returned by an earlier [`synthesize_policy`] call.
+    /// spec ID returned by an earlier [`synthesize_policy`] call.
     pub spec_id: String,
-    /// Target smart-account StrKey `C…` address (where the policy will
+    /// target smart-account StrKey `C…` address (where the policy will
     /// install).
     pub smart_account: String,
-    /// Source account StrKey `G…` paying fees + signing the envelope.
+    /// source account StrKey `G…` paying fees + signing the envelope.
     pub source_account: String,
-    /// Soroban RPC URL — the installer uses it for the
+    /// soroban RPC URL — the installer uses it for the
     /// `simulateTransaction` round-trip that fills in
     /// `transactionData` + auth.
     pub rpc_url: String,
-    /// Network passphrase the RPC endpoint is asserted to serve.
+    /// network passphrase the RPC endpoint is asserted to serve.
     pub network_passphrase: String,
-    /// Caller-asserted smart-account release vintage. The installer
+    /// caller-asserted smart-account release vintage. The installer
     /// refuses anything other than [`AccountRevision::PostPr655`] in v1
     /// (see `docs/oz-internal-shapes.md` §8).
     pub account_revision: AccountRevision,
-    /// Which artifacts to materialise.
+    /// which artifacts to materialise.
     pub format: ExportFormat,
 }
 
@@ -461,42 +411,42 @@ pub struct ExportPolicyInput {
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportFormat {
-    /// Render Track-B Rust source for every `Generated` slot. No
+    /// render Track-B Rust source for every `Generated` slot. No
     /// sandboxed build, no install envelope.
     RustSource,
-    /// Render Track-B Rust source AND drive it through the codegen
+    /// render Track-B Rust source AND drive it through the codegen
     /// sandbox so the output carries compiled WASM bytes + SHA-256.
-    /// Implies [`ExportFormat::RustSource`].
+    /// implies [`ExportFormat::RustSource`].
     Wasm,
-    /// Build the install envelope only (Track-A path) — no Track-B
+    /// build the install envelope only (Track-A path) — no Track-B
     /// codegen, no WASM.
     InstallEnvelope,
-    /// Everything: source + WASM + install envelope.
+    /// everything: source + WASM + install envelope.
     All,
 }
 
 /// `export_policy` output.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ExportPolicyOutput {
-    /// Freshly-allocated `art_<uuid>` store ID. Stream B's
+    /// freshly-allocated `art_<uuid>` store ID. Stream B's
     /// `artifact://<id>/source.rs` (etc.) resource URIs key off it.
     pub artifact_id: String,
-    /// Track-B Rust source for the first `Generated` slot. Inline so
+    /// track-B Rust source for the first `Generated` slot. Inline so
     /// MCP clients can preview without a follow-up `resources/read` call.
     /// `None` when `format` excludes source OR the spec has no Generated
     /// slots.
     pub rust_source: Option<String>,
-    /// Compiled WASM bytes, base64-encoded. `None` when `format` is
+    /// compiled WASM bytes, base64-encoded. `None` when `format` is
     /// [`ExportFormat::RustSource`] / [`ExportFormat::InstallEnvelope`]
     /// or when the spec has no Generated slots.
     pub wasm_base64: Option<String>,
-    /// Install envelope XDR, base64-encoded. `None` when `format` is
+    /// install envelope XDR, base64-encoded. `None` when `format` is
     /// [`ExportFormat::RustSource`] / [`ExportFormat::Wasm`].
     pub install_envelope_xdr_base64: Option<String>,
     /// SHA-256 of the compiled WASM bytes (lowercase hex). `None`
     /// alongside `wasm_base64 = None`.
     pub wasm_hash_hex: Option<String>,
-    /// Resource URIs the same artifacts are reachable under via
+    /// resource URIs the same artifacts are reachable under via
     /// `resources/read` (Stream B). Always non-empty (at least the
     /// `artifact://<id>` root is listed), even when individual fields
     /// are `None`.
@@ -505,7 +455,7 @@ pub struct ExportPolicyOutput {
 
 /// `export_policy` handler.
 ///
-/// Errors:
+/// errors:
 /// * `E_CODEGEN_COMPILE_FAILED` — Track-B source rendered fine but
 ///   sandboxed `cargo build --target wasm32-unknown-unknown` failed.
 /// * `E_INSTALL_PREFLIGHT_FAILED` — `build_install_envelope` rejected the
@@ -562,7 +512,7 @@ pub async fn export_policy(
         let artifacts = synthesize_track_b(&spec)
             .await
             .map_err(|e| error_to_jsonrpc(&e))?;
-        // Inline the first artifact (matching the first_generated_idx slot).
+        // inline the first artifact (matching the first_generated_idx slot).
         match artifacts.first() {
             Some(art) => {
                 let mut hasher = Sha256::new();
@@ -627,9 +577,7 @@ pub async fn export_policy(
     })
 }
 
-// =========================================================================
 // verify_install
-// =========================================================================
 
 /// `verify_install` input.
 ///
@@ -642,26 +590,26 @@ pub async fn export_policy(
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct VerifyInstallInput {
-    /// Smart-account StrKey `C…` whose on-chain context rule we will
+    /// smart-account StrKey `C…` whose on-chain context rule we will
     /// inspect.
     pub smart_account: String,
-    /// Context rule ID assigned by `add_context_rule` at install time.
+    /// context rule ID assigned by `add_context_rule` at install time.
     pub context_rule_id: u32,
-    /// Network selector (drives passphrase + default RPC).
+    /// network selector (drives passphrase + default RPC).
     pub network: NetworkKind,
-    /// Optional RPC URL override.
+    /// optional RPC URL override.
     pub rpc_url: Option<String>,
-    /// Funded source account (G-strkey) used as the simulator's `source`
+    /// funded source account (G-strkey) used as the simulator's `source`
     /// when invoking `SA.get_context_rule(rule_id)`. The simulator only
     /// needs a valid sequence number — no funds are spent. Defaults to
     /// `smart_account` when omitted (the SA contract itself does not have
     /// an account record, so callers SHOULD pass the SA owner's G-key on
     /// testnet; mainnet callers pass any funded G-key).
     pub source_account: Option<String>,
-    /// Optional spec_id to compare against. When supplied AND in store,
+    /// optional spec_id to compare against. When supplied AND in store,
     /// the stored spec drives the comparison.
     pub expected_spec_id: Option<String>,
-    /// Optional inline expected `PolicySpec`. Takes precedence over
+    /// optional inline expected `PolicySpec`. Takes precedence over
     /// `expected_spec_id` when both are present. When neither is set,
     /// the handler reports `matches: true` with empty drift as soon as
     /// the rule is confirmed to exist on-chain.
@@ -675,20 +623,20 @@ pub struct VerifyInstallOutput {
     /// corresponding field on the supplied spec. `false` when `drift` is
     /// non-empty or when `expected_spec_id` was not supplied.
     pub matches: bool,
-    /// Per-field drift report. Empty when `matches = true`.
+    /// per-field drift report. Empty when `matches = true`.
     pub drift: Vec<DriftItem>,
 }
 
-/// One drift entry between an expected (spec) and actual (on-chain)
+/// one drift entry between an expected (spec) and actual (on-chain)
 /// value for a single field path.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct DriftItem {
-    /// Dotted field path (e.g. `"context_rule.name"`).
+    /// dotted field path (e.g. `"context_rule.name"`).
     pub field: String,
-    /// Expected value as a JSON `Value`. Heterogeneous so we can carry
+    /// expected value as a JSON `Value`. Heterogeneous so we can carry
     /// strings, ints, and structured payloads uniformly.
     pub expected: serde_json::Value,
-    /// Actual value observed on-chain (or the placeholder string the
+    /// actual value observed on-chain (or the placeholder string the
     /// handler used when the on-chain lookup is not yet wired).
     pub actual: serde_json::Value,
 }
@@ -698,13 +646,13 @@ pub struct DriftItem {
 /// `ContextRule` via `simulateTransaction(SA.get_context_rule(rule_id))`
 /// and compares the decoded fields against an expected `PolicySpec`.
 ///
-/// Resolution order for the expected spec:
+/// resolution order for the expected spec:
 ///   1. `expected_spec` (inline, preferred).
 ///   2. `expected_spec_id` (looked up in the in-memory store).
 ///   3. Neither — handler returns `matches: true` with empty drift after
 ///      confirming the rule exists on-chain.
 ///
-/// Errors:
+/// errors:
 /// * [`oz_policy_core::Error::VerifyDrift`] → `E_VERIFY_DRIFT` — surfaced
 ///   when the rule does not exist on-chain (`detail = "rule-not-found"`)
 ///   or when the RPC readback fails for transport reasons. The handler
@@ -738,7 +686,7 @@ pub async fn verify_install(
         .unwrap_or_else(|| input.network.default_rpc())
         .to_string();
     let passphrase = input.network.passphrase();
-    // Source-account default: when none is supplied, fall back to the
+    // source-account default: when none is supplied, fall back to the
     // smart account itself. The SA is a contract (not an account
     // record), so `getAccount` will fail in that case and surface a
     // typed error — callers SHOULD pass a real funded G-key. We accept
@@ -787,16 +735,14 @@ pub async fn verify_install(
     })
 }
 
-// =========================================================================
-// Convenience: an `Arc<McpStore>` overload, so Stream C's `PolicyServer`
+// convenience: an `Arc<McpStore>` overload, so Stream C's `PolicyServer`
 // can pass `&self.store` directly without dereferencing the Arc first.
-// =========================================================================
 
-/// Trait alias so handlers can accept either `&McpStore` or `&Arc<McpStore>`.
-/// Stream C's `PolicyServer` holds `Arc<McpStore>` (see `server.rs`); this
+/// trait alias so handlers can accept either `&McpStore` or `&Arc<McpStore>`.
+/// stream C's `PolicyServer` holds `Arc<McpStore>` (see `server.rs`); this
 /// keeps the public surface ergonomic.
 pub trait AsStore {
-    /// Borrow the underlying store.
+    /// borrow the underlying store.
     fn as_store(&self) -> &McpStore;
 }
 
@@ -812,9 +758,7 @@ impl AsStore for Arc<McpStore> {
     }
 }
 
-// =========================================================================
-// Tests
-// =========================================================================
+// tests
 
 #[cfg(test)]
 mod tests {
@@ -828,9 +772,7 @@ mod tests {
         ContextRuleSpec, ContextType, ExistingPrimitive, ExistingPrimitiveParams, SignerSpec,
     };
 
-    // -----------------------------------------------------------------
-    // Local test fixtures.
-    // -----------------------------------------------------------------
+    // local test fixtures.
 
     fn sep41_recording() -> RecordingDoc {
         RecordingDoc {
@@ -897,10 +839,8 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
     // record_transaction — input gates only (network paths live in the
     // recorder's own integration tests).
-    // -----------------------------------------------------------------
 
     #[tokio::test]
     async fn record_transaction_rejects_both_inputs() {
@@ -940,7 +880,7 @@ mod tests {
         assert!(err.message.contains("required"));
     }
 
-    /// Network defaults: `passphrase()` + `default_rpc()` are stable
+    /// network defaults: `passphrase()` + `default_rpc()` are stable
     /// constants. Lock them so a future toolkit drift is loud.
     #[test]
     fn network_kind_defaults_match_canonical_constants() {
@@ -950,9 +890,7 @@ mod tests {
         assert_eq!(NetworkKind::Mainnet.default_rpc(), DEFAULT_MAINNET_RPC);
     }
 
-    // -----------------------------------------------------------------
     // synthesize_policy
-    // -----------------------------------------------------------------
 
     #[tokio::test]
     async fn synthesize_policy_happy_path() {
@@ -976,7 +914,7 @@ mod tests {
         // SEP-41 transfer composes to SpendingLimit + SimpleThreshold.
         assert_eq!(out.composed_count, 2, "two Existing slots expected");
         assert_eq!(out.generated_count, 0, "no Generated slots for SEP-41 Auto");
-        // Spec is stored under the same id.
+        // spec is stored under the same id.
         let stored = store.get_spec(&out.spec_id).expect("spec must be stored");
         assert_eq!(stored, out.spec);
     }
@@ -1003,7 +941,7 @@ mod tests {
     async fn synthesize_policy_compose_only_multi_target_surfaces_e_synth_not_expressible() {
         let store = McpStore::new();
         let mut rec = sep41_recording();
-        // Second target with a non-transfer function — forces multi-target.
+        // second target with a non-transfer function — forces multi-target.
         rec.contracts.push(ContractRecord {
             address: "CBLEND".to_string(),
             function: "claim".to_string(),
@@ -1031,10 +969,10 @@ mod tests {
         );
     }
 
-    /// Determinism: two calls with the same recording + options produce
+    /// determinism: two calls with the same recording + options produce
     /// byte-equal `spec` payloads (the IDs differ — that's the
     /// non-determinism boundary). This is the front-line gate for the
-    /// Phase 5 "100× determinism" requirement (plan.md §452).
+    /// phase 5 "100× determinism" requirement (plan.md §452).
     #[tokio::test]
     async fn synthesize_policy_is_deterministic_modulo_ids() {
         let store = McpStore::new();
@@ -1058,7 +996,7 @@ mod tests {
             a.spec_id, b.spec_id,
             "spec_id must be unique per invocation"
         );
-        // Payloads byte-equal.
+        // payloads byte-equal.
         let a_json = serde_json::to_string(&a.spec).expect("a json");
         let b_json = serde_json::to_string(&b.spec).expect("b json");
         assert_eq!(a_json, b_json, "spec payload must be byte-equal");
@@ -1073,7 +1011,7 @@ mod tests {
         let id = "rec_0123456789abcdef0123456789abcdef";
         let name = default_rule_name(id);
         assert!(name.starts_with("rule-"));
-        // Visible suffix is the first 8 hex chars after `rec_`.
+        // visible suffix is the first 8 hex chars after `rec_`.
         assert_eq!(&name, "rule-01234567");
         assert!(name.len() <= oz_policy_core::spec::MAX_NAME_SIZE as usize);
     }
@@ -1084,24 +1022,22 @@ mod tests {
         let huge = "ä".repeat(50); // 100 bytes
         let clamped = clamp_rule_name(&huge);
         assert!(clamped.len() <= oz_policy_core::spec::MAX_NAME_SIZE as usize);
-        // Round-trips through UTF-8 without panicking.
+        // round-trips through UTF-8 without panicking.
         let _ = clamped.chars().count();
     }
 
-    // -----------------------------------------------------------------
     // simulate_policy
-    // -----------------------------------------------------------------
 
     #[tokio::test]
     async fn simulate_policy_happy_path_empty_spec() {
-        // Empty spec + empty recording → permit passes, zero deny vectors.
-        // Mirrors `oz_policy_simhost::run::tests::run_full_suite_empty_inputs_produces_clean_report`.
+        // empty spec + empty recording → permit passes, zero deny vectors.
+        // mirrors `oz_policy_simhost::run::tests::run_full_suite_empty_inputs_produces_clean_report`.
         let store = McpStore::new();
         let rec = sep41_recording();
         let rid = store.new_id("rec");
         store.put_recording(&rid, rec);
         let spec = sample_spec("smoke");
-        // Empty out the policies so synthesize_track_b returns 0 artifacts
+        // empty out the policies so synthesize_track_b returns 0 artifacts
         // and the host has no Track-B WASMs to install.
         let mut empty_spec = spec;
         empty_spec.policies.clear();
@@ -1151,14 +1087,12 @@ mod tests {
         assert!(err.message.contains("recording_id"));
     }
 
-    // -----------------------------------------------------------------
     // export_policy
-    // -----------------------------------------------------------------
 
     #[tokio::test]
     async fn export_policy_rust_source_no_generated_returns_none_payloads() {
-        // Spec has only Existing slots → no rust_source / no wasm.
-        // Should NOT fail; instead returns an empty payload with
+        // spec has only Existing slots → no rust_source / no wasm.
+        // should NOT fail; instead returns an empty payload with
         // `resource_uris == []`.
         let store = McpStore::new();
         let sid = store.new_id("spec");
@@ -1230,7 +1164,6 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------
     // verify_install
     //
     // RFP deliverable #5 (2026-05-18): the handler now hits a real RPC
@@ -1240,10 +1173,9 @@ mod tests {
     // pure in `verify_chain::tests`; the end-to-end success path is
     // integration-tested in `wallet-adapter/src/phase7_integration.test.ts`
     // (INTEGRATION=1 gate; hits real testnet).
-    // -----------------------------------------------------------------
 
-    /// Bogus RPC URL → `E_VERIFY_DRIFT` with `rpc-readback-failed` detail.
-    /// Uses a non-routable URL so the test never hits a live endpoint and
+    /// bogus RPC URL → `E_VERIFY_DRIFT` with `rpc-readback-failed` detail.
+    /// uses a non-routable URL so the test never hits a live endpoint and
     /// fails fast (under the 30 s RPC timeout via DNS).
     #[tokio::test]
     async fn verify_install_unreachable_rpc_returns_e_verify_drift() {
@@ -1289,7 +1221,7 @@ mod tests {
         assert!(err.message.contains("expected_spec_id"));
     }
 
-    /// Inline `expected_spec` takes precedence over `expected_spec_id`
+    /// inline `expected_spec` takes precedence over `expected_spec_id`
     /// lookup. We exercise the precedence by passing a bogus id ALONG
     /// with an inline spec — the handler must use the inline spec and
     /// only fail later (at the RPC) rather than rejecting the id lookup.
@@ -1310,16 +1242,14 @@ mod tests {
         let err = verify_install(&store, input)
             .await
             .expect_err("unreachable rpc must surface E_VERIFY_DRIFT");
-        // The store lookup is skipped (inline spec preferred) → fall
+        // the store lookup is skipped (inline spec preferred) → fall
         // through to the RPC layer, which surfaces E_VERIFY_DRIFT.
         assert_eq!(err.code.0, -32106, "code must be E_VERIFY_DRIFT (-32106)");
     }
 
-    // -----------------------------------------------------------------
-    // Schema round-trips — one per tool. Locks the `derive(JsonSchema)`
+    // schema round-trips — one per tool. Locks the `derive(JsonSchema)`
     // chain so a future struct-rename can't silently break the MCP
     // tool-schema publication contract.
-    // -----------------------------------------------------------------
 
     fn assert_schema_round_trips<T: schemars::JsonSchema>(label: &str) {
         let schema = schemars::schema_for!(T);
@@ -1327,7 +1257,7 @@ mod tests {
         let back: serde_json::Value =
             serde_json::from_value(j.clone()).expect("schema must round-trip");
         assert_eq!(j, back, "{label} schema round-trip failed");
-        // Smoke: top-level keys exist.
+        // smoke: top-level keys exist.
         assert!(
             j.get("$schema").is_some() || j.get("type").is_some() || j.get("$ref").is_some(),
             "{label} schema must have $schema/type/$ref"
@@ -1349,7 +1279,7 @@ mod tests {
         assert_schema_round_trips::<DriftItem>("DriftItem");
     }
 
-    // Determinism gate for `record_transaction`'s store side: the
+    // determinism gate for `record_transaction`'s store side: the
     // recording payload (here a fixture, not an RPC call) is byte-equal
     // when stored + read back. Pinned because the recorder's RPC path is
     // covered by its own integration tests; this asserts the MCP-layer
@@ -1367,8 +1297,8 @@ mod tests {
         );
     }
 
-    /// AsStore: handlers accept either `&McpStore` or `&Arc<McpStore>`.
-    /// Locks the convenience trait so Stream C's `Arc`-holding
+    /// asStore: handlers accept either `&McpStore` or `&Arc<McpStore>`.
+    /// locks the convenience trait so Stream C's `Arc`-holding
     /// `PolicyServer` works without an extra deref dance.
     #[test]
     fn as_store_works_for_arc_and_owned() {

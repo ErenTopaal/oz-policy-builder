@@ -1,6 +1,6 @@
 //! MCP `resources/list` + `resources/read` surface.
 //!
-//! Phase 5 Stream B (this stream) exposes every artefact the tools produce
+//! phase 5 Stream B (this stream) exposes every artefact the tools produce
 //! under one of five URI families, all backed by [`crate::McpStore`]:
 //!
 //! | URI                                       | MIME type           | Payload          |
@@ -11,13 +11,13 @@
 //! | `artifact://<id>/policy.wasm`             | `application/wasm`  | base64 bytes     |
 //! | `artifact://<id>/install_envelope.xdr`    | `text/plain`        | base64 XDR text  |
 //!
-//! These URIs are also the strings handed back to clients in
+//! these URIs are also the strings handed back to clients in
 //! `export_policy` tool output (Stream A surfaces them under
 //! `resource_uri` keys).
 //!
 //! ## rmcp 1.7.0 binding
 //!
-//! Stream C wires these methods into rmcp's `ServerHandler::list_resources` /
+//! stream C wires these methods into rmcp's `ServerHandler::list_resources` /
 //! `ServerHandler::read_resource`. We deliberately stay one level below the
 //! trait — returning `rmcp::model::{Resource, ReadResourceResult}` — so the
 //! same surface is testable in isolation without spinning up a transport.
@@ -29,16 +29,14 @@ use rmcp::{
 
 use crate::store::McpStore;
 
-// ----------------------------------------------------------------------
 // URI scheme prefixes — single source of truth so the URI parser and the
 // list emitter cannot drift.
-// ----------------------------------------------------------------------
 
 const RECORDING_SCHEME: &str = "recording://";
 const SPEC_SCHEME: &str = "spec://";
 const ARTIFACT_SCHEME: &str = "artifact://";
 
-/// Sub-paths under `artifact://<id>/...`. These are part of the wire
+/// sub-paths under `artifact://<id>/...`. These are part of the wire
 /// contract — changing them is a breaking change for any MCP client that
 /// stores resource links.
 const ARTIFACT_SOURCE_SUFFIX: &str = "/source.rs";
@@ -50,7 +48,7 @@ const MIME_RUST: &str = "text/plain";
 const MIME_WASM: &str = "application/wasm";
 const MIME_XDR_TEXT: &str = "text/plain";
 
-/// Resource façade over the in-memory store. Cheap to construct — just
+/// resource façade over the in-memory store. Cheap to construct — just
 /// wraps an owned [`McpStore`] handle (which is itself `Arc`-backed).
 #[derive(Debug, Clone)]
 pub struct Resources {
@@ -58,14 +56,14 @@ pub struct Resources {
 }
 
 impl Resources {
-    /// Constructs a Resources surface bound to `store`. Stream C wires
+    /// constructs a Resources surface bound to `store`. Stream C wires
     /// the same `McpStore` into every other surface so the resources
     /// reflect tool output without any intermediate sync step.
     pub fn new(store: McpStore) -> Self {
         Self { store }
     }
 
-    /// Implements `resources/list`. Enumerates every entry currently in the
+    /// implements `resources/list`. Enumerates every entry currently in the
     /// store and emits one `Resource` per artefact (recordings + specs
     /// produce one each; artifact bundles produce up to three — only those
     /// fields that are `Some(_)` appear in the listing so clients don't
@@ -94,9 +92,9 @@ impl Resources {
         }
 
         for id in self.store.artifact_ids() {
-            // Only enumerate URIs that actually have content — listing a
+            // only enumerate URIs that actually have content — listing a
             // URI that read_resource would 404 on is one of the plan's
-            // Hard Constraints ("Every URI listed comes from a real
+            // hard Constraints ("Every URI listed comes from a real
             // entry in the store").
             let Some(bundle) = self.store.get_artifact(&id) else {
                 continue;
@@ -139,7 +137,7 @@ impl Resources {
         out
     }
 
-    /// Implements `resources/read`. Parses `uri`, looks up the entry, and
+    /// implements `resources/read`. Parses `uri`, looks up the entry, and
     /// renders it as the appropriate [`ResourceContents`] variant. URIs
     /// that don't parse OR refer to a missing entry produce
     /// [`ErrorCode::RESOURCE_NOT_FOUND`].
@@ -210,11 +208,9 @@ impl Resources {
     }
 }
 
-// ----------------------------------------------------------------------
 // URI parsing
-// ----------------------------------------------------------------------
 
-/// Parsed shape of an MCP resource URI handled by this surface.
+/// parsed shape of an MCP resource URI handled by this surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ResourceUri {
     Recording(String),
@@ -224,7 +220,7 @@ enum ResourceUri {
     ArtifactEnvelope(String),
 }
 
-/// Best-effort URI parser. Returns `None` for any URI that doesn't match
+/// best-effort URI parser. Returns `None` for any URI that doesn't match
 /// one of the five families — the caller maps that to RESOURCE_NOT_FOUND.
 fn parse_uri(uri: &str) -> Option<ResourceUri> {
     if let Some(rest) = uri.strip_prefix(RECORDING_SCHEME) {
@@ -260,11 +256,9 @@ fn parse_uri(uri: &str) -> Option<ResourceUri> {
     None
 }
 
-// ----------------------------------------------------------------------
-// Error helpers
-// ----------------------------------------------------------------------
+// error helpers
 
-/// Builds the `RESOURCE_NOT_FOUND` (-32002) error envelope per the MCP
+/// builds the `RESOURCE_NOT_FOUND` (-32002) error envelope per the MCP
 /// spec. Stream A's `error_mapping::resource_not_found()` is expected to
 /// wrap this exact construction; we inline it here so this stream's tests
 /// run without depending on Stream A's module landing first.
@@ -282,9 +276,7 @@ fn internal_serialize(uri: &str, e: serde_json::Error) -> ErrorData {
     )
 }
 
-// ----------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------
+// tests
 
 #[cfg(test)]
 mod tests {
@@ -426,7 +418,7 @@ mod tests {
         }
     }
 
-    /// Source-only artifact bundle exposes the source URI but not the WASM
+    /// source-only artifact bundle exposes the source URI but not the WASM
     /// or envelope URIs in `list_resources`.
     #[test]
     fn list_skips_empty_artifact_fields() {
@@ -451,7 +443,7 @@ mod tests {
         assert!(!uris.contains(&env_uri.as_str()));
     }
 
-    /// Reading a source URI when the bundle exists but `source = None`
+    /// reading a source URI when the bundle exists but `source = None`
     /// reports RESOURCE_NOT_FOUND — the same as if the bundle didn't
     /// exist at all. This keeps the wire contract uniform.
     #[test]
@@ -473,7 +465,7 @@ mod tests {
         assert_eq!(err.code, ErrorCode::RESOURCE_NOT_FOUND);
     }
 
-    /// Unknown URI → typed JSON-RPC RESOURCE_NOT_FOUND (-32002).
+    /// unknown URI → typed JSON-RPC RESOURCE_NOT_FOUND (-32002).
     #[test]
     fn read_unknown_uri_is_not_found_error() {
         let store = McpStore::new();

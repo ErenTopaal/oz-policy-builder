@@ -1,7 +1,7 @@
 //! `ServerHandler` implementation for the OZ Accounts Policy Builder MCP
 //! server.
 //!
-//! Phase 5 Stream C (this stream) owns the rmcp `ServerHandler` impl that
+//! phase 5 Stream C (this stream) owns the rmcp `ServerHandler` impl that
 //! advertises the server's capabilities during the `initialize` handshake
 //! and dispatches incoming requests to the per-stream module functions:
 //!
@@ -9,7 +9,7 @@
 //! * `resources/list` + `resources/read` → Stream B's [`crate::resources::Resources`]
 //! * `prompts/list` + `prompts/get` → Stream B's [`crate::prompts::Prompts`]
 //!
-//! Stream A's tools are exposed as five top-level MCP tools:
+//! stream A's tools are exposed as five top-level MCP tools:
 //! `record_transaction`, `synthesize_policy`, `simulate_policy`,
 //! `export_policy`, `verify_install`. Each accepts a JSON object that
 //! deserialises into the matching `*Input` struct from `tools.rs`; each
@@ -49,7 +49,7 @@ use crate::{
 /// `Arc<McpStore>` so every per-connection handler observes the same
 /// in-memory cache.
 ///
-/// Each rmcp transport (`StreamableHttpService` for HTTP,
+/// each rmcp transport (`StreamableHttpService` for HTTP,
 /// `ServiceExt::serve` for STDIO) constructs a fresh `PolicyServer` per
 /// connection via the `service_factory` closure (HTTP) or once at startup
 /// (STDIO). Sharing state across connections is intentional and is what
@@ -58,7 +58,7 @@ use crate::{
 /// the next.
 #[derive(Debug, Clone)]
 pub struct PolicyServer {
-    /// Shared in-memory store backing every tool / resource / prompt call.
+    /// shared in-memory store backing every tool / resource / prompt call.
     /// `Arc<McpStore>` rather than `McpStore` directly so the `ServerHandler`
     /// future bodies (which run after `&self` borrows expire) can cheap-clone
     /// the handle without locking.
@@ -66,14 +66,14 @@ pub struct PolicyServer {
 }
 
 impl PolicyServer {
-    /// Construct a `PolicyServer` over a freshly-created `McpStore`.
+    /// construct a `PolicyServer` over a freshly-created `McpStore`.
     pub fn new() -> Self {
         Self {
             store: Arc::new(McpStore::new()),
         }
     }
 
-    /// Construct a `PolicyServer` over a caller-supplied (already-warmed)
+    /// construct a `PolicyServer` over a caller-supplied (already-warmed)
     /// `McpStore`. Used by tests that want to pre-seed recordings / specs
     /// without going through the recorder / synthesizer first, and by the
     /// transport-wiring `main.rs` (which constructs one shared `McpStore`
@@ -83,13 +83,13 @@ impl PolicyServer {
         Self { store }
     }
 
-    /// Returns a `Resources` façade over `self.store`. Cheap — `Resources`
+    /// returns a `Resources` façade over `self.store`. Cheap — `Resources`
     /// just wraps an owned (Arc-backed) `McpStore` handle.
     fn resources(&self) -> Resources {
         Resources::new((*self.store).clone())
     }
 
-    /// Returns a `Prompts` registry (stateless — the three templates are
+    /// returns a `Prompts` registry (stateless — the three templates are
     /// baked into the module).
     fn prompts(&self) -> Prompts {
         Prompts::new()
@@ -102,11 +102,9 @@ impl Default for PolicyServer {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tool descriptors
-// ---------------------------------------------------------------------------
+// tool descriptors
 
-/// Tool name constants. Pulled into `pub const` so the smoke tests can
+/// tool name constants. Pulled into `pub const` so the smoke tests can
 /// reference them without re-stringifying.
 pub const TOOL_RECORD_TRANSACTION: &str = "record_transaction";
 pub const TOOL_SYNTHESIZE_POLICY: &str = "synthesize_policy";
@@ -114,7 +112,7 @@ pub const TOOL_SIMULATE_POLICY: &str = "simulate_policy";
 pub const TOOL_EXPORT_POLICY: &str = "export_policy";
 pub const TOOL_VERIFY_INSTALL: &str = "verify_install";
 
-/// The fixed surface — order matters for `tools/list` test determinism.
+/// the fixed surface — order matters for `tools/list` test determinism.
 const TOOL_NAMES: &[&str] = &[
     TOOL_RECORD_TRANSACTION,
     TOOL_SYNTHESIZE_POLICY,
@@ -123,8 +121,8 @@ const TOOL_NAMES: &[&str] = &[
     TOOL_VERIFY_INSTALL,
 ];
 
-/// Build a `Tool` descriptor for the given input type. Pulls the JSON
-/// Schema directly from `schemars` on `I` — no hand-written schema drift.
+/// build a `Tool` descriptor for the given input type. Pulls the JSON
+/// schema directly from `schemars` on `I` — no hand-written schema drift.
 fn tool_descriptor<I: JsonSchema>(name: &'static str, description: &'static str) -> Tool {
     let schema = schemars::schema_for!(I);
     let schema_json: serde_json::Value =
@@ -173,17 +171,15 @@ fn build_tool_list() -> Vec<Tool> {
     ]
 }
 
-/// Tool name surface exposed for the smoke tests.
+/// tool name surface exposed for the smoke tests.
 pub fn tool_names() -> &'static [&'static str] {
     TOOL_NAMES
 }
 
-// ---------------------------------------------------------------------------
-// ServerHandler impl
-// ---------------------------------------------------------------------------
+// serverHandler impl
 
 impl ServerHandler for PolicyServer {
-    /// Returns the server's `initialize` response. We advertise:
+    /// returns the server's `initialize` response. We advertise:
     ///
     /// * `tools` — five tools enumerated below.
     /// * `prompts` — three wizard templates from `crate::prompts`.
@@ -192,7 +188,7 @@ impl ServerHandler for PolicyServer {
     /// * Protocol version `2025-11-25` (the latest MCP revision, per
     ///   `docs/mcp-sdk-decision.md`).
     /// * `server_info.name = "oz-policy-mcp"` so clients (Claude Desktop,
-    ///   Cursor, Cline, Continue, mcp-cli) display the canonical name
+    ///   cursor, Cline, Continue, mcp-cli) display the canonical name
     ///   from the registered config.
     /// * `server_info.version = env!("CARGO_PKG_VERSION")` so a deployed
     ///   binary's reported version traces back to a single workspace tag.
@@ -202,7 +198,7 @@ impl ServerHandler for PolicyServer {
             .enable_prompts()
             .enable_resources()
             .build();
-        // Both `ServerInfo` (alias `InitializeResult`) and `Implementation`
+        // both `ServerInfo` (alias `InitializeResult`) and `Implementation`
         // are `#[non_exhaustive]`, so we construct them through their
         // builder helpers rather than literal struct expressions.
         let server_info = Implementation::new("oz-policy-mcp", env!("CARGO_PKG_VERSION"))
@@ -318,7 +314,7 @@ impl ServerHandler for PolicyServer {
         // (a `serde_json::Map<String, Value>`), whereas Stream B's
         // `Prompts::get_prompt` takes `Option<BTreeMap<String, String>>`
         // (per the MCP spec, prompt args are required to be strings).
-        // Convert by extracting each value's String representation, falling
+        // convert by extracting each value's String representation, falling
         // back to the JSON-printed form for non-string values so clients
         // that send e.g. JSON numbers get something sensible.
         let arguments = request.arguments.map(|map| {
@@ -336,13 +332,11 @@ impl ServerHandler for PolicyServer {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// helpers
 
-/// Decode a tool's input JSON into the typed `Input` struct, mapping any
+/// decode a tool's input JSON into the typed `Input` struct, mapping any
 /// serde error to `McpError::invalid_params` with the tool name attached.
-/// Same shape every tool branch uses.
+/// same shape every tool branch uses.
 fn decode_input<I: DeserializeOwned>(
     arguments: serde_json::Value,
     tool_name: &str,
@@ -355,13 +349,13 @@ fn decode_input<I: DeserializeOwned>(
     })
 }
 
-/// Build a `CallToolResult` from a typed output. Uses
+/// build a `CallToolResult` from a typed output. Uses
 /// `CallToolResult::structured` so MCP clients that prefer structured
 /// payloads (most do, since 2025-06-18) get the typed JSON directly, and
 /// older clients see the same JSON as the unstructured `Content::text`
 /// fallback (the `structured` constructor populates both).
 ///
-/// The intermediate `Json` wrapper isn't strictly necessary here — we
+/// the intermediate `Json` wrapper isn't strictly necessary here — we
 /// could call `serde_json::to_value` directly — but going through `Json`
 /// keeps the conversion in lockstep with the rmcp-recommended pattern
 /// (see `rmcp::handler::server::wrapper::Json`).
@@ -380,7 +374,7 @@ mod tests {
     fn new_and_default_match() {
         let a = PolicyServer::new();
         let b = PolicyServer::default();
-        // Two stores; same emptiness invariant. Pointer-equal Arcs would be
+        // two stores; same emptiness invariant. Pointer-equal Arcs would be
         // a stronger check but pointless — `Arc::new` returns fresh handles.
         assert!(a.store.recording_ids().is_empty());
         assert!(b.store.recording_ids().is_empty());
@@ -418,7 +412,7 @@ mod tests {
         let s = PolicyServer::new();
         let info = s.get_info();
         assert_eq!(info.server_info.name, "oz-policy-mcp");
-        // The version *must* match the package version verbatim; that's how
+        // the version *must* match the package version verbatim; that's how
         // operators correlate a running binary to a workspace tag.
         assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
         assert!(info.instructions.is_some());
@@ -426,8 +420,8 @@ mod tests {
 
     #[test]
     fn server_is_clone_and_send() {
-        // Compile-time + tiny runtime check: PolicyServer must be Send +
-        // Clone so rmcp's StreamableHttpService factory closure can hand
+        // compile-time + tiny runtime check: PolicyServer must be Send +
+        // clone so rmcp's StreamableHttpService factory closure can hand
         // out per-connection handles. Cloning must share the Arc (no deep
         // copy of the store).
         fn assert_send_clone<T: Send + Clone + 'static>() {}
@@ -437,7 +431,7 @@ mod tests {
         assert!(Arc::ptr_eq(&s.store, &s2.store));
     }
 
-    /// The fixed tool surface must always be exactly five tools, in the
+    /// the fixed tool surface must always be exactly five tools, in the
     /// documented order. Regression guard against accidental additions /
     /// reorderings that would break clients caching the list.
     #[test]
@@ -457,7 +451,7 @@ mod tests {
         );
     }
 
-    /// Every tool descriptor carries a non-empty description string — the
+    /// every tool descriptor carries a non-empty description string — the
     /// JSON-Schema `input_schema` is also populated (the test would fail
     /// to compile if `tool_descriptor` returned anything else, but we keep
     /// the assertion explicit so future contributors don't accidentally
