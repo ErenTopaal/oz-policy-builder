@@ -1,5 +1,5 @@
-//! End-to-end smoke test exercising the `TestHost` wrapper against a real
-//! Track-B policy WASM.
+//! end-to-end smoke test exercising the `TestHost` wrapper against a real
+//! track-B policy WASM.
 //!
 //! `#[ignore]` because:
 //!   1. It loads the ~48 KB vendored smart-account WASM from disk and runs
@@ -10,11 +10,11 @@
 //!      existing on disk. The default `cargo nextest run` pass therefore
 //!      should stay decoupled from the walkthrough fixture.
 //!
-//! Run with `cargo nextest run -p oz-policy-simhost --run-ignored=only`.
+//! run with `cargo nextest run -p oz-policy-simhost --run-ignored=only`.
 //!
 //! # Phase 4 Round 2 outcome
 //!
-//! Round 1's note here claimed `install_policy` failed with
+//! round 1's note here claimed `install_policy` failed with
 //! `HostError(WasmVm, InvalidAction)`. The Round 2 investigation showed
 //! the test never reached `install_policy` at all: the hardcoded
 //! signer-account StrKey
@@ -23,9 +23,9 @@
 //! `Err(Invalid)`), and the failure surfaced inside
 //! `invoke_policy_enforce → build_context_contract_scval` as
 //! `SetupFailed("unrecognised StrKey: …")` long before the host saw any
-//! ContextRule bytes.
+//! contextRule bytes.
 //!
-//! With the signer rebuilt from a valid 32-byte seed
+//! with the signer rebuilt from a valid 32-byte seed
 //! (`stellar_strkey::ed25519::PublicKey([0xaa; 32])`), the full path —
 //! `install_smart_account → install_policy → invoke_policy_enforce` for
 //! both `transfer` (permit) and `approve` (panic 1010) — succeeds end-to-
@@ -34,7 +34,7 @@
 //! `#[contracttype]`-generated `TryFromVal<Val, ContextRule>` impl after
 //! all; no Round-2 host-side fix was needed.
 //!
-//! The wider `__check_auth → do_check_auth → add_policy` chain remains
+//! the wider `__check_auth → do_check_auth → add_policy` chain remains
 //! deliberately untested here (see `host.rs` "Why not the full
 //! `__check_auth → add_policy → enforce` chain?" block): driving that
 //! requires wallet-signed `AuthEntry` credentials, which is Phase 7
@@ -42,7 +42,7 @@
 //! invokes each policy's `enforce` entry point directly per
 //! `TestContext`, which is the same observable surface the harness
 //! needs to verify permit/deny outcomes — see `plan.md` § "Phase 4 —
-//! Round 2" for the explicit gap-tracking note.
+//! round 2" for the explicit gap-tracking note.
 //!
 //! `vendored_smart_account_wasm_hash_is_stable` is unrelated and passes
 //! today: it just re-hashes the embedded bytes and confirms they match
@@ -56,11 +56,11 @@ use oz_policy_simhost::{
     TestHost,
 };
 
-/// Path to the Phase 3 fixture policy WASM, resolved relative to the
+/// path to the Phase 3 fixture policy WASM, resolved relative to the
 /// crate's manifest dir.
 fn fixture_policy_wasm_path() -> PathBuf {
     // `CARGO_MANIFEST_DIR` of this crate = `crates/oz-policy-simhost`.
-    // Workspace root is two `..` up.
+    // workspace root is two `..` up.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -71,7 +71,7 @@ fn fixture_policy_wasm_path() -> PathBuf {
         .join("policy.wasm")
 }
 
-/// Sanity: the embedded smart-account WASM matches the SHA-256 the host
+/// sanity: the embedded smart-account WASM matches the SHA-256 the host
 /// wrapper pins. (Re-runs `verify_vendored_smart_account_wasm` from the
 /// integration-test crate boundary so a host-rebuild without re-vendoring
 /// fails this gate as well.)
@@ -86,7 +86,7 @@ fn vendored_smart_account_wasm_hash_is_stable() {
     assert_eq!(hex, VENDORED_SMART_ACCOUNT_WASM_SHA256);
 }
 
-/// Full host-smoke path:
+/// full host-smoke path:
 ///   1. Build a TestHost.
 ///   2. Install the vendored smart account.
 ///   3. Install the Phase 3 fixture policy (function_allowlist on "transfer").
@@ -121,7 +121,7 @@ fn fixture_policy_allows_transfer_denies_approve() {
 
     // -------- Permit case: function_name == "transfer" (in allowlist) ----
     let target_addr = "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH";
-    // Valid G-StrKey synthesized from a deterministic 32-byte seed
+    // valid G-StrKey synthesized from a deterministic 32-byte seed
     // (`[0xaa; 32]` → checksum-validated by `stellar-strkey 0.0.13`). The
     // bogus literal previously hardcoded here was rejected by
     // `PublicKey::from_string` *before* the call ever reached the host, so

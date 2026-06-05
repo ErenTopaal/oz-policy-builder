@@ -1,8 +1,6 @@
-//! Phase 1 placeholder. Real simulation harness lands in Phase 4.
+//! placeholder kept for callers referencing the symbol.
 
-/// Returns the canonical name of the `enforce` entrypoint that all generated
-/// Soroban policy contracts expose. Used as a stable string anchor for
-/// downstream phases.
+/// canonical `enforce` entrypoint name exposed by every generated policy.
 pub fn enforce_entrypoint() -> &'static str {
     "enforce"
 }

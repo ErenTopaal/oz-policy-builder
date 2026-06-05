@@ -1,15 +1,15 @@
-//! Phase 4 Stream B — boundary-mutation deny-vector generator.
+//! phase 4 Stream B — boundary-mutation deny-vector generator.
 //!
-//! For a given `(spec, recording, seed)` triple this module emits a
+//! for a given `(spec, recording, seed)` triple this module emits a
 //! deterministic `Vec<DenyVector>` covering every constraint primitive carried
 //! by `spec.policies`. Each vector encodes a `(payload, contexts)` pair that
-//! Stream A's host driver (`crate::host`) replays through the smart account's
+//! stream A's host driver (`crate::host`) replays through the smart account's
 //! `__check_auth` entrypoint; the expected behavior is that the policy panics
 //! with `expected_error_code`.
 //!
 //! # Error-code provenance
 //!
-//! Every `expected_error_code` is either:
+//! every `expected_error_code` is either:
 //!
 //! * **OZ-defined** (3xxx range), sourced from `docs/oz-internal-shapes.md` §5
 //!   tables — `SimpleThresholdError::NotAllowed = 3202`,
@@ -22,7 +22,7 @@
 //!   `AssetNotAllowed = 1040`, `TimeWindowViolated = 1050`,
 //!   `CallFrequencyExceeded = 1060`, `SequenceOrderingViolated = 1070`.
 //!
-//! No code in this file fabricates a code; the constants below name their
+//! no code in this file fabricates a code; the constants below name their
 //! source.
 //!
 //! # Determinism contract
@@ -46,9 +46,7 @@ use proptest::strategy::ValueTree;
 use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
 use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// Error-code constants (named so their on-chain provenance is self-documenting)
-// ---------------------------------------------------------------------------
+// error-code constants (named so their on-chain provenance is self-documenting)
 
 /// `SimpleThresholdError::NotAllowed`. Source: `docs/oz-internal-shapes.md` §5,
 /// `simple_threshold.rs:204-208` (verified via `gh api` against v0.7.1: the
@@ -73,7 +71,7 @@ pub const OZ_SPENDING_LIMIT_EXCEEDED: u32 = 3221;
 /// i.e. when `fn_name != "transfer"`).
 pub const OZ_SPENDING_LIMIT_NOT_ALLOWED: u32 = 3223;
 
-// Generated-policy `PolicyError::*` codes — single source of truth is
+// generated-policy `PolicyError::*` codes — single source of truth is
 // `templates/base.rs.jinja:80-117`. The naming below mirrors the variant
 // identifiers exactly so future template renames trigger a compile-time
 // search-and-replace here, too.
@@ -99,14 +97,12 @@ pub const POLICY_CALL_FREQUENCY_EXCEEDED: u32 = 1060;
 /// `PolicyError::SequenceOrderingViolated`. Source: `templates/base.rs.jinja:115`.
 pub const POLICY_SEQUENCE_ORDERING_VIOLATED: u32 = 1070;
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+// public types
 
-/// One deny vector — a `(payload, contexts)` pair that the harness replays
+/// one deny vector — a `(payload, contexts)` pair that the harness replays
 /// against `__check_auth` and expects to panic with `expected_error_code`.
 ///
-/// Implements `Serialize` + `Deserialize` so the Phase 4 determinism gate
+/// implements `Serialize` + `Deserialize` so the Phase 4 determinism gate
 /// (`generate_deny_vectors_is_byte_equal_for_same_seed`) can JSON-encode two
 /// vectors and compare them as strings, and so the CLI's
 /// `simulate --extra-deny <json>` flag (Stream A's `run.rs`) can round-trip
@@ -118,32 +114,30 @@ pub const POLICY_SEQUENCE_ORDERING_VIOLATED: u32 = 1070;
 /// tool can publish a structured input schema for `extra_deny_vectors`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DenyVector {
-    /// Stable identifier for this vector (`"<primitive>_<mutation>"`).
-    /// Required to be byte-equal across two invocations with the same
+    /// stable identifier for this vector (`"<primitive>_<mutation>"`).
+    /// required to be byte-equal across two invocations with the same
     /// `(spec, recording, seed)`.
     pub name: String,
     pub payload: AuthPayload,
     pub contexts: Vec<TestContext>,
-    /// Discriminant of the `PolicyError` / `*Error` enum variant the harness
+    /// discriminant of the `PolicyError` / `*Error` enum variant the harness
     /// expects the policy WASM to panic with.
     pub expected_error_code: u32,
 }
 
-// ---------------------------------------------------------------------------
-// Public generator
-// ---------------------------------------------------------------------------
+// public generator
 
-/// Generate boundary-mutation deny vectors for each constraint primitive in
+/// generate boundary-mutation deny vectors for each constraint primitive in
 /// `spec.policies`.
 ///
-/// The generator is **deterministic**: two calls with the same
+/// the generator is **deterministic**: two calls with the same
 /// `(spec, recording, seed)` produce byte-equal `Vec<DenyVector>` outputs.
 /// `seed` controls the `proptest::test_runner::TestRunner`'s ChaCha-backed
 /// RNG; that RNG is only consulted for primitives whose mutation has a
 /// strategy-driven boundary value (currently `AmountRange` and the
 /// `ArgumentPattern` `Range` matcher).
 ///
-/// If `spec.policies` references a primitive this generator does not yet
+/// if `spec.policies` references a primitive this generator does not yet
 /// handle, the function emits a `DenyVector` named `"TODO: <primitive>"` with
 /// `expected_error_code = 0` so the downstream harness fails loudly rather
 /// than silently skipping (per the Stream-B brief, "no silent skip of
@@ -200,7 +194,7 @@ pub fn generate_deny_vectors(
                         "weighted_threshold",
                     );
                 }
-                // Mismatched (primitive, params) shape — the type system
+                // mismatched (primitive, params) shape — the type system
                 // allows this combination but the synthesizer should never
                 // emit it. Surface it as a loud TODO rather than silently
                 // skipping.
@@ -224,9 +218,7 @@ pub fn generate_deny_vectors(
     out
 }
 
-// ---------------------------------------------------------------------------
-// Per-primitive emitters
-// ---------------------------------------------------------------------------
+// per-primitive emitters
 
 fn push_spending_limit_vectors(
     out: &mut Vec<DenyVector>,
@@ -236,7 +228,7 @@ fn push_spending_limit_vectors(
     _runner: &mut TestRunner,
 ) {
     let Some(transfer_record) = first_sep41_transfer(recording) else {
-        // No SEP-41 transfer to mutate — the spec is malformed (Phase 2
+        // no SEP-41 transfer to mutate — the spec is malformed (Phase 2
         // decision tree should have rejected it before reaching here). Emit
         // a loud TODO so we don't silently lose coverage.
         out.push(unhandled_vector(slot_index, "spending_limit_no_transfer"));
@@ -246,7 +238,7 @@ fn push_spending_limit_vectors(
     let limit: i128 = limit_stroops_string.parse().unwrap_or(0);
     let signer_addresses = signer_addresses_from(recording);
 
-    // Vector 1 — amount_2x_cap: 2 * limit, saturating on overflow.
+    // vector 1 — amount_2x_cap: 2 * limit, saturating on overflow.
     let two_x = limit.saturating_mul(2);
     out.push(DenyVector {
         name: format!("slot{slot_index}_spending_limit_amount_2x_cap"),
@@ -258,7 +250,7 @@ fn push_spending_limit_vectors(
         expected_error_code: OZ_SPENDING_LIMIT_EXCEEDED,
     });
 
-    // Vector 2 — amount_just_over_cap: limit + 1, saturating.
+    // vector 2 — amount_just_over_cap: limit + 1, saturating.
     let just_over = limit.saturating_add(1);
     out.push(DenyVector {
         name: format!("slot{slot_index}_spending_limit_amount_just_over_cap"),
@@ -270,7 +262,7 @@ fn push_spending_limit_vectors(
         expected_error_code: OZ_SPENDING_LIMIT_EXCEEDED,
     });
 
-    // Vector 3 — wrong_function: `transfer` -> `approve`. Verified against
+    // vector 3 — wrong_function: `transfer` -> `approve`. Verified against
     // `spending_limit.rs:286-292` (v0.7.1): the enforce body falls through to
     // `panic_with_error!(e, SpendingLimitError::NotAllowed)` when fn_name is
     // not `transfer` AND the context rule is `CallContract(_)` (already
@@ -308,7 +300,7 @@ fn push_threshold_vectors(
 ) {
     let mut signers = signer_addresses_from(recording);
 
-    // Take `threshold - 1` signers; if the recording exposes fewer signers
+    // take `threshold - 1` signers; if the recording exposes fewer signers
     // than the threshold the synthesizer's own validation should have
     // rejected the spec, but we still emit a vector with whatever's available
     // (capped at `threshold - 1`) so the harness exercises the under-
@@ -318,7 +310,7 @@ fn push_threshold_vectors(
         signers.truncate(want);
     }
 
-    // Use the first contract record as the context shape if available; the
+    // use the first contract record as the context shape if available; the
     // policy rejects on signer count before reading the call args, so the
     // exact shape isn't load-bearing — it just needs to be a well-formed
     // `Context::Contract`.
@@ -357,7 +349,7 @@ fn push_generated_vectors(
 
     match constraint {
         Constraint::FunctionAllowlist { functions } => {
-            // Pick the deterministic "not-in-allowlist" placeholder unless it
+            // pick the deterministic "not-in-allowlist" placeholder unless it
             // unexpectedly collides (defense in depth).
             let mut name = "definitely_not_in_allowlist".to_string();
             while functions.iter().any(|f| f == &name) {
@@ -387,7 +379,7 @@ fn push_generated_vectors(
             let (contract_addr, mut args) = first_record
                 .map(|r| (r.address.clone(), r.args.clone()))
                 .unwrap_or_else(|| (placeholder_contract_address(), vec![]));
-            // Ensure args[arg_index] exists.
+            // ensure args[arg_index] exists.
             while args.len() <= *arg_index as usize {
                 args.push(ArgValue::U32(0));
             }
@@ -414,7 +406,7 @@ fn push_generated_vectors(
                 .map(|r| (r.address.clone(), r.args.clone()))
                 .unwrap_or_else(|| (placeholder_contract_address(), vec![]));
 
-            // Vector — amount_above_max
+            // vector — amount_above_max
             if let Some(max_str) = max_string {
                 let max: i128 = max_str.parse().unwrap_or(0);
                 let above = pick_above_max(max, runner);
@@ -431,7 +423,7 @@ fn push_generated_vectors(
                 });
             }
 
-            // Vector — amount_below_min
+            // vector — amount_below_min
             if let Some(min_str) = min_string {
                 let min: i128 = min_str.parse().unwrap_or(0);
                 let below = pick_below_min(min, runner);
@@ -452,7 +444,7 @@ fn push_generated_vectors(
         Constraint::AssetAllowlist { assets } => {
             let mut wrong_asset =
                 "CDISALLOWEDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string();
-            // Defense in depth: lengthen the placeholder if it ever clashes
+            // defense in depth: lengthen the placeholder if it ever clashes
             // with a listed asset.
             while assets.iter().any(|a| a == &wrong_asset) {
                 wrong_asset.push('X');
@@ -485,7 +477,7 @@ fn push_generated_vectors(
             // can recover it via a `before_window_start_at_<ledger>` /
             // `after_window_end_at_<ledger>` suffix.
             //
-            // Coordination note for Stream A: if `TestContext` eventually
+            // coordination note for Stream A: if `TestContext` eventually
             // grows a `ledger_seq_override: Option<u32>` field, replace the
             // name-encoding with the typed field. The error code stays the
             // same.
@@ -527,7 +519,7 @@ fn push_generated_vectors(
             // N+1 calls of the same context. The harness runs each context
             // in turn against the same host (no ledger advance between
             // them); the last invocation must panic with
-            // CallFrequencyExceeded.
+            // callFrequencyExceeded.
             let n_plus_one = max_calls.saturating_add(1) as usize;
             let (contract_addr, args, fn_name) = first_record
                 .map(|r| (r.address.clone(), r.args.clone(), r.function.clone()))
@@ -548,7 +540,7 @@ fn push_generated_vectors(
         }
 
         Constraint::SequenceOrdering { phases } => {
-            // Skip phase 0 by invoking phases[1] directly. If phases has < 2
+            // skip phase 0 by invoking phases[1] directly. If phases has < 2
             // entries the synthesizer should have rejected the spec; emit a
             // loud TODO in that case.
             if phases.len() < 2 {
@@ -576,11 +568,9 @@ fn push_generated_vectors(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Proptest strategies (one per Constraint variant that has a numeric boundary)
-// ---------------------------------------------------------------------------
+// proptest strategies (one per Constraint variant that has a numeric boundary)
 
-/// Strategy for amounts strictly above `max`, bounded so the test runner
+/// strategy for amounts strictly above `max`, bounded so the test runner
 /// always terminates. The upper bound `max + 1_000_000` is wide enough to
 /// flush rolling-window edge cases but stays well clear of `i128::MAX`.
 pub fn arb_amount_above_max(max: i128) -> impl Strategy<Value = i128> {
@@ -589,7 +579,7 @@ pub fn arb_amount_above_max(max: i128) -> impl Strategy<Value = i128> {
     (lower..=upper).boxed()
 }
 
-/// Strategy for amounts strictly below `min`. Symmetric counterpart to
+/// strategy for amounts strictly below `min`. Symmetric counterpart to
 /// [`arb_amount_above_max`].
 pub fn arb_amount_below_min(min: i128) -> impl Strategy<Value = i128> {
     let lower = min.saturating_sub(1_000_000);
@@ -597,23 +587,21 @@ pub fn arb_amount_below_min(min: i128) -> impl Strategy<Value = i128> {
     (lower..=upper).boxed()
 }
 
-/// Strategy for ledger sequences strictly before `start_ledger`. Wraps to 0
+/// strategy for ledger sequences strictly before `start_ledger`. Wraps to 0
 /// at the lower boundary so the strategy is total over `u32`.
 pub fn arb_ledger_before_window(start_ledger: u32) -> impl Strategy<Value = u32> {
     let upper = start_ledger.saturating_sub(1);
     (0u32..=upper).boxed()
 }
 
-/// Strategy for ledger sequences strictly after `end_ledger`.
+/// strategy for ledger sequences strictly after `end_ledger`.
 pub fn arb_ledger_after_window(end_ledger: u32) -> impl Strategy<Value = u32> {
     let lower = end_ledger.saturating_add(1);
     let upper = lower.saturating_add(1_000_000);
     (lower..=upper).boxed()
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+// internal helpers
 
 fn make_runner(seed: u64) -> TestRunner {
     let cfg = Config {
@@ -622,7 +610,7 @@ fn make_runner(seed: u64) -> TestRunner {
         cases: 1,
         ..Config::default()
     };
-    // ChaCha-backed RNG with the caller-supplied seed (low 8 bytes; high 24
+    // chaCha-backed RNG with the caller-supplied seed (low 8 bytes; high 24
     // bytes zeroed). `RngAlgorithm::ChaCha` is `proptest`'s canonical
     // reproducible RNG choice.
     let mut seed_bytes = [0u8; 32];
@@ -691,7 +679,7 @@ fn pick_above_max(max: i128, runner: &mut TestRunner) -> i128 {
     let strategy = arb_amount_above_max(max);
     match strategy.new_tree(runner) {
         Ok(tree) => tree.current(),
-        // Strategy refused (degenerate bounds) — fall back to the closest
+        // strategy refused (degenerate bounds) — fall back to the closest
         // valid value so we still emit a meaningful vector.
         Err(_) => max.saturating_add(1),
     }
@@ -733,7 +721,7 @@ fn mutate_arg_for_mismatch(
         ArgMatcher::Exact { value } => not_equal_argvalue(value, current),
         ArgMatcher::Allowlist { values } => not_in_argvalue_set(values, current),
         ArgMatcher::Blocklist { values } => {
-            // For a Blocklist the mismatch is: pick a value that IS on the
+            // for a Blocklist the mismatch is: pick a value that IS on the
             // blocklist (i.e., would be rejected). Use the first listed
             // value if present; otherwise fall back to `not_equal_argvalue`
             // so we still emit a different value.
@@ -746,7 +734,7 @@ fn mutate_arg_for_mismatch(
             min_string,
             max_string,
         } => {
-            // Try max+1 first, else min-1, else fall back to a sentinel.
+            // try max+1 first, else min-1, else fall back to a sentinel.
             if let Some(max_str) = max_string {
                 let max: i128 = max_str.parse().unwrap_or(0);
                 ArgValue::I128(pick_above_max(max, runner).to_string())
@@ -754,7 +742,7 @@ fn mutate_arg_for_mismatch(
                 let min: i128 = min_str.parse().unwrap_or(0);
                 ArgValue::I128(pick_below_min(min, runner).to_string())
             } else {
-                // Degenerate range with neither bound; emit a sentinel.
+                // degenerate range with neither bound; emit a sentinel.
                 ArgValue::I128("0".to_string())
             }
         }
@@ -762,7 +750,7 @@ fn mutate_arg_for_mismatch(
 }
 
 fn not_equal_argvalue(reference: &ArgValue, fallback: &ArgValue) -> ArgValue {
-    // Produce a value of the same general shape as `reference` that differs
+    // produce a value of the same general shape as `reference` that differs
     // from it. Falls back to a `fallback`-shaped sentinel when no obvious
     // "next" exists.
     match reference {
@@ -797,7 +785,7 @@ fn not_equal_argvalue(reference: &ArgValue, fallback: &ArgValue) -> ArgValue {
 }
 
 fn not_in_argvalue_set(set: &[ArgValue], current: &ArgValue) -> ArgValue {
-    // Walk a sequence of candidates derived from `current` (then a fixed
+    // walk a sequence of candidates derived from `current` (then a fixed
     // sentinel) until we find one that isn't in `set`. Bounded: emits at
     // most |set| + 2 candidates so we always terminate.
     let mut candidate = not_equal_argvalue(current, current);
@@ -809,9 +797,7 @@ fn not_in_argvalue_set(set: &[ArgValue], current: &ArgValue) -> ArgValue {
     candidate
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+// tests
 
 #[cfg(test)]
 mod tests {
@@ -825,9 +811,7 @@ mod tests {
         TemplateFamily, POLICY_SCHEMA_URI,
     };
 
-    // ---------------------------------------------------------------
-    // Test-fixture helpers
-    // ---------------------------------------------------------------
+    // test-fixture helpers
 
     fn token_address() -> String {
         "CAQCFVLOBK5GIULPNZRGSXFJYDQRQXFLEAEKBNXG2QGGYKGV5MAYDOLJ".to_string()
@@ -939,9 +923,7 @@ mod tests {
         }
     }
 
-    // ---------------------------------------------------------------
-    // Per-primitive tests
-    // ---------------------------------------------------------------
+    // per-primitive tests
 
     #[test]
     fn spending_limit_emits_amount_2x_and_just_over_and_wrong_function() {
@@ -962,9 +944,9 @@ mod tests {
             names.iter().any(|n| n.contains("wrong_function")),
             "expected wrong_function, got {names:?}"
         );
-        // Amount-overrun vectors expect the on-chain SpendingLimitExceeded
+        // amount-overrun vectors expect the on-chain SpendingLimitExceeded
         // code; the wrong_function vector expects the runtime-fallthrough
-        // NotAllowed code (see spending_limit.rs:286-292 verification in the
+        // notAllowed code (see spending_limit.rs:286-292 verification in the
         // module-level docs).
         let overruns: Vec<&DenyVector> = vectors
             .iter()
@@ -1030,7 +1012,7 @@ mod tests {
             .name
             .contains("function_allowlist_wrong_function"));
         assert_eq!(vectors[0].expected_error_code, POLICY_FUNCTION_NOT_ALLOWED);
-        // The mutated function name must not be on the allowlist.
+        // the mutated function name must not be on the allowlist.
         assert_eq!(
             vectors[0].contexts[0].function_name,
             "definitely_not_in_allowlist"
@@ -1054,7 +1036,7 @@ mod tests {
         assert_eq!(vectors.len(), 1);
         assert!(vectors[0].name.contains("argument_pattern_mismatch"));
         assert_eq!(vectors[0].expected_error_code, POLICY_ARGUMENT_MISMATCH);
-        // The mutated args[2] must differ from the Exact matcher's value.
+        // the mutated args[2] must differ from the Exact matcher's value.
         let mutated = &vectors[0].contexts[0].args[2];
         assert_ne!(mutated, &ArgValue::I128("100".to_string()));
     }
@@ -1181,7 +1163,7 @@ mod tests {
             vectors[0].expected_error_code,
             POLICY_SEQUENCE_ORDERING_VIOLATED
         );
-        // The mutated invocation targets phases[1] when the host state is at
+        // the mutated invocation targets phases[1] when the host state is at
         // phase_index=0.
         assert_eq!(vectors[0].contexts[0].function_name, "claim");
     }
@@ -1201,9 +1183,7 @@ mod tests {
         assert_eq!(vectors[0].expected_error_code, 0);
     }
 
-    // ---------------------------------------------------------------
-    // Composition + determinism
-    // ---------------------------------------------------------------
+    // composition + determinism
 
     #[test]
     fn composition_function_allowlist_plus_amount_range_plus_call_frequency() {
@@ -1227,7 +1207,7 @@ mod tests {
         )]);
         let rec = sep41_transfer_recording();
         let vectors = generate_deny_vectors(&spec, &rec, 7);
-        // FunctionAllowlist=1 + AmountRange=2 (above+below) + CallFrequency=1
+        // functionAllowlist=1 + AmountRange=2 (above+below) + CallFrequency=1
         // = 4 vectors total. Per the brief, ≥3 distinct vectors covering each
         // primitive.
         assert!(
@@ -1278,7 +1258,7 @@ mod tests {
 
     #[test]
     fn generate_deny_vectors_same_seed_same_output_for_strategy_driven_primitive() {
-        // Sanity: with a primitive that drives a strategy-backed boundary
+        // sanity: with a primitive that drives a strategy-backed boundary
         // (AmountRange) two runs with the same seed must still produce the
         // exact same vector. This guards against the strategy plumbing
         // accidentally pulling system entropy.
@@ -1300,9 +1280,7 @@ mod tests {
         );
     }
 
-    // ---------------------------------------------------------------
-    // Proptest-driven sanity checks on the strategy bounds
-    // ---------------------------------------------------------------
+    // proptest-driven sanity checks on the strategy bounds
 
     proptest! {
         #![proptest_config(ProptestConfig {
@@ -1358,7 +1336,7 @@ mod tests {
             let vectors = generate_deny_vectors(&spec, &rec, 1);
             prop_assert!(!vectors.is_empty());
             for v in &vectors {
-                // Sensible = non-zero, in OZ's 3xxx range or our 1xxx range.
+                // sensible = non-zero, in OZ's 3xxx range or our 1xxx range.
                 let c = v.expected_error_code;
                 prop_assert!(
                     (3000..=3299).contains(&c) || (1000..=1099).contains(&c),

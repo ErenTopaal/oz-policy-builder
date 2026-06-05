@@ -1,9 +1,9 @@
-//! Phase 4 — top-level run orchestrator.
+//! phase 4 — top-level run orchestrator.
 //!
 //! [`run_full_suite`] is the binary entry point the CLI (`simulate`
 //! subcommand) and the MCP server (`simulate` tool, Phase 5) drive.
 //!
-//! For a given `(spec, recording, wasm_per_slot, extra_deny)` it:
+//! for a given `(spec, recording, wasm_per_slot, extra_deny)` it:
 //!
 //! 1. Builds a [`TestHost`] seeded with a deterministic ledger sequence
 //!    derived from `recording.ledger.unwrap_or(SIMHOST_DEFAULT_LEDGER)`.
@@ -13,13 +13,13 @@
 //! 4. Runs [`crate::permit::replay_recording`] → records pass/fail in the
 //!    `permit` field of the report.
 //! 5. Calls [`crate::deny::generate_deny_vectors`] with the canonical
-//!    Phase-4 seed (42) and appends `extra_deny`. For each vector, invokes
+//!    phase-4 seed (42) and appends `extra_deny`. For each vector, invokes
 //!    `__check_auth` and asserts the panic matches `expected_error_code`.
 //! 6. Returns a [`SimReport`] — fully `Serialize + Deserialize +
-//!    JsonSchema` so it can be JSON-dumped to disk for `oz-policy-cli` or
+//!    jsonSchema` so it can be JSON-dumped to disk for `oz-policy-cli` or
 //!    routed back through the MCP boundary.
 //!
-//! Determinism contract: identical inputs produce identical reports. The
+//! determinism contract: identical inputs produce identical reports. The
 //! only non-determinism the harness tolerates is in the host's address
 //! generation, which is seeded by `SIMHOST_PRNG_SEED`.
 
@@ -34,43 +34,43 @@ use crate::deny::{generate_deny_vectors, DenyVector};
 use crate::host::{HostExecError, TestHost};
 use crate::permit::replay_recording;
 
-/// Canonical RNG seed for the deny-generator. Held in `run.rs` (rather
+/// canonical RNG seed for the deny-generator. Held in `run.rs` (rather
 /// than `deny.rs`) because the orchestrator is the contract surface — if
 /// a future caller wants a custom seed it goes through `run_full_suite`'s
 /// own knob, not by patching the generator's signature.
 pub const SIMHOST_DENY_RNG_SEED: u64 = 42;
 
-/// Default ledger sequence used when the recording doesn't carry one
+/// default ledger sequence used when the recording doesn't carry one
 /// (i.e. simulation-mode recordings). The simhost's protocol behaviour is
 /// independent of the exact ledger number, but we fix one so the report
 /// timestamps are stable across runs.
 pub const SIMHOST_DEFAULT_LEDGER: u32 = 1_700_000;
 
-/// The single context-rule slot the orchestrator binds policies under.
-/// Real on-chain SA deployments register policies against rule IDs
+/// the single context-rule slot the orchestrator binds policies under.
+/// real on-chain SA deployments register policies against rule IDs
 /// assigned by `add_context_rule`; the simhost stubs a fixed value here
 /// so the report is reproducible.
 pub const SIMHOST_DEFAULT_CONTEXT_RULE_ID: u32 = 0;
 
-/// Top-level simulation report. Serializable so consumers can route it
+/// top-level simulation report. Serializable so consumers can route it
 /// through the CLI's `--out <path>.json` flag or the MCP transport.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SimReport {
-    /// Schema-ish identifier for the spec under test — currently derived
+    /// schema-ish identifier for the spec under test — currently derived
     /// from the spec's `context_rule.name` because `PolicySpec` itself
     /// doesn't carry a stable id. Wire-stable across runs of the same
     /// spec.
     pub spec_id: String,
     pub permit: PermitResult,
     pub deny_results: Vec<DenyResult>,
-    /// Total deny vectors evaluated (generated + extra). Always equals
+    /// total deny vectors evaluated (generated + extra). Always equals
     /// `deny_results.len()`; surfaced for backward-compatible JSON
     /// consumers that grep on this field.
     pub total_vectors: usize,
-    /// Number of `deny_results` that passed (panicked with the expected
+    /// number of `deny_results` that passed (panicked with the expected
     /// code).
     pub passed: usize,
-    /// Ledger sequence the host was constructed with. Deterministic.
+    /// ledger sequence the host was constructed with. Deterministic.
     pub timestamp_ledger: u32,
 }
 
@@ -96,7 +96,7 @@ pub struct DenyResult {
     pub actual_error_code: Option<u32>,
 }
 
-/// Top-level entry point. See module doc-comment.
+/// top-level entry point. See module doc-comment.
 pub async fn run_full_suite(
     spec: &PolicySpec,
     recording: &Recording,
@@ -107,7 +107,7 @@ pub async fn run_full_suite(
     let mut host = TestHost::new(ledger, &recording.network_passphrase)?;
     let sa = host.install_smart_account("")?;
 
-    // Install each Track-B policy slot in declared order. We pair the
+    // install each Track-B policy slot in declared order. We pair the
     // compiled artifact with its slot index; the orchestrator does NOT
     // pair by `PolicySlot::Generated` filter because the synthesizer
     // already does that and produces `wasm_per_slot` in matching order
@@ -168,7 +168,7 @@ pub async fn run_full_suite(
     })
 }
 
-/// Default install-params struct fed into `install_policy`. Matches the
+/// default install-params struct fed into `install_policy`. Matches the
 /// `InstallParams { _marker: u32 }` shape rendered by Track-B codegen
 /// (see `walkthroughs/phase3-codegen-fixture/expected/slot_0/source.rs:54-62`).
 pub fn default_install_params(marker: u32) -> ArgValue {
@@ -178,9 +178,7 @@ pub fn default_install_params(marker: u32) -> ArgValue {
     }]))
 }
 
-// -------------------------------------------------------------------------
-// Tests
-// -------------------------------------------------------------------------
+// tests
 
 #[cfg(test)]
 mod tests {
@@ -224,7 +222,7 @@ mod tests {
         }
     }
 
-    /// Smoke: empty spec + empty recording + no extra deny vectors → a
+    /// smoke: empty spec + empty recording + no extra deny vectors → a
     /// permit-passes / zero-deny report, with `timestamp_ledger` reflecting
     /// the recording's ledger.
     #[tokio::test]
@@ -243,7 +241,7 @@ mod tests {
         assert_eq!(report.timestamp_ledger, 123);
     }
 
-    /// The report's JSON shape includes every field name we rely on
+    /// the report's JSON shape includes every field name we rely on
     /// downstream. Lock this in so a derive rename can't silently break
     /// the CLI's `--out report.json` contract.
     #[tokio::test]
@@ -270,8 +268,8 @@ mod tests {
         }
     }
 
-    /// Determinism: two identical invocations produce byte-equal JSON.
-    /// Mirrors the `oz-policy-codegen` Phase 3 byte-equal pattern.
+    /// determinism: two identical invocations produce byte-equal JSON.
+    /// mirrors the `oz-policy-codegen` Phase 3 byte-equal pattern.
     #[tokio::test]
     async fn run_full_suite_is_deterministic_for_same_input() {
         let spec = empty_spec("rule");

@@ -1,42 +1,6 @@
-//! Phase 4 Stream A — `soroban-env-host` driver wrapper.
-//!
-//! Wraps `soroban_env_host::Host` so the higher-level permit / deny / run
-//! orchestrators (this crate's `permit.rs` and `run.rs`) can stay XDR-free.
-//! Concretely [`TestHost`] exposes:
-//!
-//! * [`TestHost::new`] — construct a metered host with a deterministic ledger
-//!   sequence + the canonical Phase-4 PRNG seed.
-//! * [`TestHost::install_smart_account`] — register the vendored OZ smart
-//!   account WASM (see `docs/simhost-smart-account-source.md`), return the
-//!   SA's StrKey `C…` address.
-//! * [`TestHost::install_policy`] — register a generated policy WASM,
-//!   record its `(address, context_rule_id)` binding, return the policy's
-//!   StrKey address.
-//! * [`TestHost::invoke_check_auth`] — drive each `TestContext` through the
-//!   installed policy's `enforce` entrypoint, surfacing the underlying host
-//!   error code (major bits of the soroban `Error` val) on contract panic.
-//!
-//! ## Why not the full `__check_auth → add_policy → enforce` chain?
-//!
-//! The end-to-end SmartAccount entry point requires the host to be in
-//! enforcing-auth mode with realistic signed credentials so the SA's
-//! `do_check_auth` can verify each signer. That signing is wallet
-//! responsibility (Phase 7); replicating it in-process is out of scope for
-//! Phase 4 Stream A. We therefore implement `invoke_check_auth` as a
-//! per-context dispatch that loops over each `TestContext` and invokes the
-//! installed policy's `enforce` directly under recording-auth mode, which
-//! is the same observable surface the harness needs to verify
-//! permit/deny outcomes. The smart-account WASM is still installed because
-//! it pins the on-chain address shape (`stellar-strkey C…`) and reserves
-//! storage so later rounds can plumb the auth chain without reshaping the
-//! `TestHost` API.
-//!
-//! ## Cross-stream interface contract
-//!
-//! [`AuthPayload`] and [`TestContext`] are the shapes Stream B's
-//! deny-vector generator (`crate::deny`) imports. The two type bodies are
-//! mirrored verbatim in the Phase-4 Stream-B task brief; do not change the
-//! field names / shapes here without coordinating with the deny module.
+//! `soroban-env-host` driver wrapper. higher-level permit/deny/run orchestrators
+//! stay xdr-free. invokes policy `enforce` directly under recording-auth mode
+//! (full check_auth chain needs wallet-signed creds, out of scope here).
 
 use serde::{Deserialize, Serialize};
 use soroban_env_host::xdr::{
@@ -50,30 +14,18 @@ use thiserror::Error;
 
 use oz_policy_core::ArgValue;
 
-// The `Env` trait carries the macro-generated `call(addr, sym, args)`
-// method we use to drive contract calls. We import the trait as a name in
-// scope so dot-syntax dispatch resolves cleanly.
+// `Env` trait carries macro-generated `call()`; in scope for dot-syntax dispatch.
 use soroban_env_host::Env as _SorobanEnv;
 
-/// SHA-256 of the vendored OZ smart-account WASM at
-/// `crates/oz-policy-simhost/vendor/oz-minimal-smart-account-v0.7.1.wasm`.
-///
-/// Cross-checked by [`TestHost::install_smart_account`] at load time so the
-/// simhost fails loudly if the on-disk WASM has drifted from the source
-/// committed at `vendor-src/minimal-smart-account/src/lib.rs`. Update both
-/// in sync (see `docs/simhost-smart-account-source.md`).
+/// sha-256 of the vendored smart-account wasm; checked at load.
 pub const VENDORED_SMART_ACCOUNT_WASM_SHA256: &str =
     "4b855eb5d4be538753d6b99fe570b5b25b8e064123229dc899edf050788d4a7a";
 
-/// Raw bytes of the vendored OZ smart-account WASM, embedded into the
-/// crate at build time. The companion constant
-/// [`VENDORED_SMART_ACCOUNT_WASM_SHA256`] is verified against the actual
-/// hash of these bytes in [`TestHost::verify_vendored_smart_account_wasm`].
+/// embedded bytes of the vendored smart-account wasm.
 pub const VENDORED_SMART_ACCOUNT_WASM: &[u8] =
     include_bytes!("../vendor/oz-minimal-smart-account-v0.7.1.wasm");
 
-/// Canonical PRNG seed for the Phase-4 simulation harness. Fixed so the
-/// host's nonce + address generation is deterministic across runs.
+/// fixed prng seed — deterministic nonce + address gen.
 pub const SIMHOST_PRNG_SEED: [u8; 32] = *b"oz-policy-simhost-phase-4-seed!!";
 
 fn sha256_bytes(input: &[u8]) -> [u8; 32] {
@@ -95,15 +47,13 @@ fn hex32(bytes: &[u8; 32]) -> String {
     s
 }
 
-/// Build the default ledger-info value used by [`TestHost::new`]. The
-/// `network_id` is the SHA-256 of the supplied network passphrase, matching
-/// Stellar's network-id convention.
+/// default ledger info; network_id = sha256(passphrase).
 fn default_ledger_info(sequence_number: u32, network_passphrase: &str) -> LedgerInfo {
     LedgerInfo {
         protocol_version: Host::current_test_protocol(),
         sequence_number,
-        // Deterministic timestamp anchored to the ledger sequence number.
-        // Time-window primitive tests can stamp their own value via
+        // deterministic timestamp anchored to the ledger sequence number.
+        // time-window primitive tests can stamp their own value via
         // `TestHost::set_ledger_seq` if needed.
         timestamp: 1_700_000_000u64.saturating_add(u64::from(sequence_number) * 5),
         network_id: sha256_bytes(network_passphrase.as_bytes()),
@@ -114,30 +64,28 @@ fn default_ledger_info(sequence_number: u32, network_passphrase: &str) -> Ledger
     }
 }
 
-// -------------------------------------------------------------------------
-// Cross-stream interface contract — DO NOT change field shapes without
+// cross-stream interface contract — DO NOT change field shapes without
 // coordinating with `src/deny.rs` (Stream B).
-// -------------------------------------------------------------------------
 
-/// Auth payload handed to `__check_auth`. Mirrors the on-chain
+/// auth payload handed to `__check_auth`. Mirrors the on-chain
 /// `AuthPayload` (see `docs/oz-internal-shapes.md` §10) but uses
-/// StrKey-encoded signer addresses + a typed `context_rule_ids` slice so
+/// strKey-encoded signer addresses + a typed `context_rule_ids` slice so
 /// the type is wire-portable above the `soroban-env-host` boundary.
 ///
 /// `JsonSchema` is derived (Phase 5 Stream A) so the MCP `simulate_policy`
 /// tool can publish a structured input schema for `extra_deny_vectors`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AuthPayload {
-    /// StrKey `G…` / `C…` addresses for each signer that participates in
+    /// strKey `G…` / `C…` addresses for each signer that participates in
     /// this authorization. Order is preserved to mirror the recording's
     /// signer composition.
     pub signer_addresses: Vec<String>,
-    /// Per-context-rule IDs, aligned by index with the `contexts` vector
+    /// per-context-rule IDs, aligned by index with the `contexts` vector
     /// passed alongside this payload into `invoke_check_auth`.
     pub context_rule_ids: Vec<u32>,
 }
 
-/// One decoded `Context::Contract { contract, fn_name, args }` invocation
+/// one decoded `Context::Contract { contract, fn_name, args }` invocation
 /// presented to `__check_auth`. The wrapper translates each `TestContext`
 /// into a host-side `ScVal` shape during [`TestHost::invoke_check_auth`].
 ///
@@ -148,19 +96,17 @@ pub struct AuthPayload {
 /// tool can publish a structured input schema for `extra_deny_vectors`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TestContext {
-    /// Target contract StrKey `C…` address.
+    /// target contract StrKey `C…` address.
     pub contract_address: String,
-    /// Soroban function symbol (UTF-8, ≤ 32 ASCII chars).
+    /// soroban function symbol (UTF-8, ≤ 32 ASCII chars).
     pub function_name: String,
-    /// Decoded call arguments.
+    /// decoded call arguments.
     pub args: Vec<ArgValue>,
 }
 
-// -------------------------------------------------------------------------
-// Errors
-// -------------------------------------------------------------------------
+// errors
 
-/// Errors surfaced by [`TestHost::invoke_check_auth`] and friends.
+/// errors surfaced by [`TestHost::invoke_check_auth`] and friends.
 ///
 /// `PolicyPanic` is the discriminating case the run orchestrator inspects:
 /// a deny vector "passes" if and only if `invoke_check_auth` returns
@@ -168,26 +114,26 @@ pub struct TestContext {
 /// the wrong code, or `HostInternal`) is a failure mode for the deny test.
 #[derive(Debug, Error)]
 pub enum HostExecError {
-    /// The on-host contract path panicked via `panic_with_error!`. The
+    /// the on-host contract path panicked via `panic_with_error!`. The
     /// `u32` is the contract-defined error discriminant (e.g.
     /// `PolicyError::FunctionNotAllowed = 1010`).
     #[error("policy panicked with code {0}")]
     PolicyPanic(u32),
 
-    /// The host itself reported an error (budget exceeded, decode failure,
+    /// the host itself reported an error (budget exceeded, decode failure,
     /// missing storage entry, etc.) that is *not* a contract-emitted
     /// `panic_with_error!`. We keep the diagnostic intact.
     #[error("host error: {0}")]
     HostInternal(String),
 
-    /// A pre-call setup step failed (couldn't encode an argument, the
+    /// a pre-call setup step failed (couldn't encode an argument, the
     /// configured smart-account address is wrong, etc.).
     #[error("setup failed: {0}")]
     SetupFailed(String),
 }
 
 impl HostExecError {
-    /// Classify a raw [`HostError`] from the env-host into one of our
+    /// classify a raw [`HostError`] from the env-host into one of our
     /// variants. Contract-type errors (`ScErrorType::Contract`) become
     /// `PolicyPanic(code)`; everything else becomes `HostInternal` with
     /// the original `HostError`'s `Debug` rendering preserved.
@@ -202,7 +148,7 @@ impl HostExecError {
 
 impl From<HostExecError> for oz_policy_core::Error {
     fn from(e: HostExecError) -> Self {
-        // For deny / permit pathways the run orchestrator interprets these
+        // for deny / permit pathways the run orchestrator interprets these
         // results structurally — but when a HostExecError escapes into the
         // canonical error enum (e.g., a TestHost setup failure during
         // run_full_suite) we want it tagged as `E_SIM_PERMIT_DENIED` since
@@ -212,7 +158,7 @@ impl From<HostExecError> for oz_policy_core::Error {
     }
 }
 
-/// Internal setup error used by [`TestHost::new`] / `install_*` paths so
+/// internal setup error used by [`TestHost::new`] / `install_*` paths so
 /// the public methods return `oz_policy_core::Error` without exposing
 /// raw `HostError` shapes in the API.
 #[derive(Debug, Error)]
@@ -231,11 +177,9 @@ impl From<HostError> for SetupError {
     }
 }
 
-// -------------------------------------------------------------------------
-// TestHost
-// -------------------------------------------------------------------------
+// testHost
 
-/// In-process simulation host. One instance per `run_full_suite` invocation;
+/// in-process simulation host. One instance per `run_full_suite` invocation;
 /// short-lived and not `Send`/`Sync` (the underlying `soroban_env_host::Host`
 /// uses interior mutability).
 pub struct TestHost {
@@ -246,7 +190,7 @@ pub struct TestHost {
     initial_ledger_seq: u32,
 }
 
-/// Internal bookkeeping for an installed policy slot.
+/// internal bookkeeping for an installed policy slot.
 #[derive(Debug, Clone)]
 struct InstalledPolicy {
     address: String,
@@ -254,7 +198,7 @@ struct InstalledPolicy {
 }
 
 impl TestHost {
-    /// Construct a fresh in-memory host with a deterministic PRNG seed,
+    /// construct a fresh in-memory host with a deterministic PRNG seed,
     /// the given ledger sequence + network passphrase, and the canonical
     /// budget profile. Storage starts empty.
     pub fn new(ledger_seq: u32, network_passphrase: &str) -> Result<Self, oz_policy_core::Error> {
@@ -284,31 +228,31 @@ impl TestHost {
         })
     }
 
-    /// Borrow the underlying env-host — exposed so advanced callers /
+    /// borrow the underlying env-host — exposed so advanced callers /
     /// integration tests can read host state directly. Most consumers
     /// should use the high-level methods on this type instead.
     pub fn host(&self) -> &Host {
         &self.host
     }
 
-    /// StrKey `C…` of the smart account installed via
+    /// strKey `C…` of the smart account installed via
     /// [`Self::install_smart_account`]. `None` if not installed yet.
     pub fn smart_account_address(&self) -> Option<&str> {
         self.smart_account.as_deref()
     }
 
-    /// Network passphrase the host was constructed with.
+    /// network passphrase the host was constructed with.
     pub fn network_passphrase(&self) -> &str {
         &self.network_passphrase
     }
 
-    /// Initial ledger sequence number — used by the run orchestrator to
+    /// initial ledger sequence number — used by the run orchestrator to
     /// stamp `SimReport.timestamp_ledger`.
     pub fn initial_ledger_seq(&self) -> u32 {
         self.initial_ledger_seq
     }
 
-    /// Verify the embedded WASM bytes match the committed SHA-256.
+    /// verify the embedded WASM bytes match the committed SHA-256.
     pub fn verify_vendored_smart_account_wasm() -> Result<(), oz_policy_core::Error> {
         let actual = sha256_bytes(VENDORED_SMART_ACCOUNT_WASM);
         let actual_hex = hex32(&actual);
@@ -320,7 +264,7 @@ impl TestHost {
         Ok(())
     }
 
-    /// Register the vendored OZ smart-account WASM with the host. Returns
+    /// register the vendored OZ smart-account WASM with the host. Returns
     /// the StrKey `C…` of the deployed contract.
     ///
     /// `owner_signer_pubkey_hex` is reserved for forward compatibility
@@ -348,7 +292,7 @@ impl TestHost {
         Ok(sa_strkey)
     }
 
-    /// Register a generated policy WASM. Returns the StrKey `C…` of the
+    /// register a generated policy WASM. Returns the StrKey `C…` of the
     /// deployed policy contract and records the `(address, rule_id)`
     /// binding for later `invoke_check_auth` dispatch.
     ///
@@ -381,7 +325,7 @@ impl TestHost {
         let policy_strkey = scaddress_to_strkey(&policy_scaddr)
             .map_err(|e| SetupError(format!("scaddress_to_strkey: {e}")))?;
 
-        // Call the policy's `install` entry point with synthesized
+        // call the policy's `install` entry point with synthesized
         // (ContextRule, smart_account) args. This populates the
         // `Installed(smart_account, rule_id)` storage flag so subsequent
         // `enforce` calls don't trip `PolicyError::NotInstalled`.
@@ -409,11 +353,11 @@ impl TestHost {
         Ok(policy_strkey)
     }
 
-    /// Invoke the smart-account's `__check_auth` boundary with the supplied
+    /// invoke the smart-account's `__check_auth` boundary with the supplied
     /// `AuthPayload` + `Vec<Context>`. See module-level doc-comment for
     /// the per-context dispatch rationale.
     ///
-    /// On `Ok(())` every installed policy's `enforce` returned without a
+    /// on `Ok(())` every installed policy's `enforce` returned without a
     /// contract-type panic for every context. On `HostExecError::PolicyPanic`
     /// (the discriminating case the orchestrator inspects) the first
     /// context that triggered a `panic_with_error!` surfaces its panic
@@ -445,7 +389,7 @@ impl TestHost {
 
         let policies = self.installed_policies.clone();
         if policies.is_empty() {
-            // No policies installed — the SA's `do_check_auth` would
+            // no policies installed — the SA's `do_check_auth` would
             // accept any context (signers-only flow). Mirror that.
             return Ok(());
         }
@@ -458,8 +402,8 @@ impl TestHost {
         Ok(())
     }
 
-    /// Invoke a single installed policy's `enforce` entry point directly.
-    /// Public so integration tests can drive a per-policy probe without
+    /// invoke a single installed policy's `enforce` entry point directly.
+    /// public so integration tests can drive a per-policy probe without
     /// going through the wider `invoke_check_auth` dispatch.
     pub fn invoke_policy_enforce(
         &mut self,
@@ -473,7 +417,7 @@ impl TestHost {
         let sa_scaddr = strkey_to_scaddress(sa_strkey)
             .map_err(|e| HostExecError::SetupFailed(format!("smart account address: {e}")))?;
 
-        // Synthesize the four-positional-arg ScVal payload that the
+        // synthesize the four-positional-arg ScVal payload that the
         // rendered policy's `enforce(env, context, _signers, context_rule,
         // smart_account)` expects (env is implicit).
         let context_scval = build_context_contract_scval(target_context)
@@ -494,11 +438,9 @@ impl TestHost {
     }
 }
 
-// -------------------------------------------------------------------------
-// Internal helpers
-// -------------------------------------------------------------------------
+// internal helpers
 
-/// Invoke `contract.fn_name(args...)` on `host`. Returns the raw `Val`
+/// invoke `contract.fn_name(args...)` on `host`. Returns the raw `Val`
 /// produced by the contract, or the underlying `HostError` on failure
 /// (which the caller maps via `HostExecError::from_host_error`).
 fn invoke_contract(
@@ -530,12 +472,12 @@ fn invoke_contract(
         .map_err(scval_conv_err)?;
     let arg_vec_obj: VecObject = arg_val.try_into()?;
 
-    // Public, macro-generated `Env::call(addr, sym, args)` — this is the
+    // public, macro-generated `Env::call(addr, sym, args)` — this is the
     // same entry point the env-host's own auth tests use (auth.rs:3461).
     host.call(contract_addr_obj, fn_symbol, arg_vec_obj)
 }
 
-/// Map an `ScVal -> Val` conversion failure into a generic host-level
+/// map an `ScVal -> Val` conversion failure into a generic host-level
 /// `InvalidInput` error so callers see a uniform `HostError` chain.
 fn scval_conv_err<E>(_e: E) -> HostError {
     HostError::from(soroban_env_host::Error::from_type_and_code(
@@ -544,7 +486,7 @@ fn scval_conv_err<E>(_e: E) -> HostError {
     ))
 }
 
-/// Convert an `ScAddress` into its StrKey representation. Contracts (`C…`)
+/// convert an `ScAddress` into its StrKey representation. Contracts (`C…`)
 /// and accounts (`G…`) are both supported.
 fn scaddress_to_strkey(addr: &ScAddress) -> Result<String, String> {
     match addr {
@@ -556,7 +498,7 @@ fn scaddress_to_strkey(addr: &ScAddress) -> Result<String, String> {
     }
 }
 
-/// Inverse of [`scaddress_to_strkey`].
+/// inverse of [`scaddress_to_strkey`].
 fn strkey_to_scaddress(strkey: &str) -> Result<ScAddress, String> {
     if let Ok(c) = stellar_strkey::Contract::from_string(strkey) {
         return Ok(ScAddress::Contract(ContractId(xdr::Hash(c.0))));
@@ -569,11 +511,9 @@ fn strkey_to_scaddress(strkey: &str) -> Result<ScAddress, String> {
     Err(format!("unrecognised StrKey: {strkey}"))
 }
 
-// -------------------------------------------------------------------------
-// ArgValue → ScVal translation
-// -------------------------------------------------------------------------
+// argValue → ScVal translation
 
-/// Translate a typed [`ArgValue`] back into the on-host `ScVal` shape. The
+/// translate a typed [`ArgValue`] back into the on-host `ScVal` shape. The
 /// mapping is the inverse of the recorder's `ScVal → ArgValue` decode (see
 /// `oz-policy-recorder`).
 pub fn arg_value_to_scval(av: &ArgValue) -> Result<ScVal, String> {
@@ -680,16 +620,14 @@ fn parse_hex(hex: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-// -------------------------------------------------------------------------
-// Context::Contract { contract, fn_name, args } construction
-// -------------------------------------------------------------------------
+// context::Contract { contract, fn_name, args } construction
 
-/// Build the `Context::Contract { contract, fn_name, args }` ScVal that the
+/// build the `Context::Contract { contract, fn_name, args }` ScVal that the
 /// policy's `enforce` entrypoint expects as its `context` argument.
 /// soroban-sdk encodes `enum Context { Contract(ContractContext) }` as an
 /// `ScVec[Symbol("Contract"), Map{...ContractContext fields...}]`.
 ///
-/// Cross-checked against the rendered policy source at
+/// cross-checked against the rendered policy source at
 /// `walkthroughs/phase3-codegen-fixture/expected/slot_0/source.rs:170`
 /// (`match &context { Context::Contract(ContractContext { contract, fn_name, args }) => …}`).
 fn build_context_contract_scval(ctx: &TestContext) -> Result<ScVal, String> {
@@ -739,7 +677,7 @@ fn build_context_contract_scval(ctx: &TestContext) -> Result<ScVal, String> {
     ))))
 }
 
-/// Build a minimal `ContextRule` ScVal that satisfies the policy's
+/// build a minimal `ContextRule` ScVal that satisfies the policy's
 /// `enforce` signature. Only `id` is actually read by the rendered policy
 /// (it namespaces the `Installed(addr, id)` storage key), so we stub the
 /// remaining fields with empty `Vec`s + a placeholder name.
@@ -808,9 +746,7 @@ fn build_minimal_context_rule_scval(
     ))))
 }
 
-// -------------------------------------------------------------------------
-// Tests (pure logic; the network/host invocations are in tests/host_smoke.rs)
-// -------------------------------------------------------------------------
+// tests (pure logic; the network/host invocations are in tests/host_smoke.rs)
 
 #[cfg(test)]
 mod tests {
@@ -1042,7 +978,7 @@ mod tests {
         }
     }
 
-    /// Empty contexts is a no-op permit, mirroring `do_check_auth`'s
+    /// empty contexts is a no-op permit, mirroring `do_check_auth`'s
     /// early-return for `auth_contexts.is_empty()`.
     #[test]
     fn invoke_check_auth_with_empty_contexts_permits() {

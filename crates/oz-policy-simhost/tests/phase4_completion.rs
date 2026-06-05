@@ -1,6 +1,6 @@
-//! Phase 4 binary completion gate.
+//! phase 4 binary completion gate.
 //!
-//! Mirrors the Phase 3 pattern (`oz-policy-codegen/tests/phase3_completion.rs`)
+//! mirrors the Phase 3 pattern (`oz-policy-codegen/tests/phase3_completion.rs`)
 //! one level up: the simhost completion test exercises the full
 //! `run_full_suite` pipeline end-to-end against the frozen
 //! `walkthroughs/phase3-codegen-fixture` artifacts. It is **never
@@ -36,7 +36,7 @@
 //!
 //! ## What this test is honest about
 //!
-//! Per `crates/oz-policy-simhost/src/host.rs` "Why not the full
+//! per `crates/oz-policy-simhost/src/host.rs` "Why not the full
 //! `__check_auth → add_policy → enforce` chain?", the run orchestrator
 //! invokes each installed policy's `enforce` directly per `TestContext`
 //! rather than driving the smart-account's `__check_auth` boundary
@@ -115,15 +115,15 @@ fn assert_hash_matches_pinned(wasm: &[u8]) {
     );
 }
 
-/// Build a minimal `Recording` whose single `ContractRecord` matches the
+/// build a minimal `Recording` whose single `ContractRecord` matches the
 /// fixture spec's `function_allowlist = ["transfer"]` constraint, so the
 /// permit branch is *expected* to pass.
 ///
-/// One `AuthEntry` is included with a deterministically-derived
+/// one `AuthEntry` is included with a deterministically-derived
 /// `Address`-credentialed signer; the simhost's `collect_signer_addresses`
 /// walks the entry into `AuthPayload.signer_addresses`.
 fn construct_minimal_matching_recording() -> Recording {
-    // The fixture's `context_type` is `CallContract("CDG7N5LG...")`. Use
+    // the fixture's `context_type` is `CallContract("CDG7N5LG...")`. Use
     // that as the target contract for the one `transfer` call.
     let target = "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH";
     let signer = valid_signer_strkey();
@@ -168,7 +168,7 @@ fn construct_minimal_matching_recording() -> Recording {
     }
 }
 
-/// Build a deterministic G-StrKey from a fixed 32-byte seed. The
+/// build a deterministic G-StrKey from a fixed 32-byte seed. The
 /// previously-hardcoded literal in this codebase (`GAEEZQIBQHBP...`) is a
 /// bogus checksum that `stellar-strkey 0.0.13` rejects with
 /// `Err(Invalid)` — see the Phase 4 Round 2 fix in
@@ -177,11 +177,11 @@ fn valid_signer_strkey() -> String {
     stellar_strkey::ed25519::PublicKey([0xaau8; 32]).to_string()
 }
 
-/// Phase 4 binary completion gate.
+/// phase 4 binary completion gate.
 ///
-/// Drives `run_full_suite` against the frozen `phase3-codegen-fixture`
+/// drives `run_full_suite` against the frozen `phase3-codegen-fixture`
 /// artifacts and asserts the resulting `SimReport` is fully passing.
-/// See the module doc-comment for the surface this test exercises and
+/// see the module doc-comment for the surface this test exercises and
 /// the wider `__check_auth` gap it does NOT (deliberately).
 #[tokio::test]
 async fn phase4_simulate_emits_passing_report() {

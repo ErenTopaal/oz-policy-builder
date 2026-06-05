@@ -1,13 +1,13 @@
-//! Phase 4 — recording → permit replay.
+//! phase 4 — recording → permit replay.
 //!
-//! Translates a [`Recording`] into a sequence of [`TestContext`] +
+//! translates a [`Recording`] into a sequence of [`TestContext`] +
 //! [`AuthPayload`] inputs and drives them through [`TestHost::invoke_check_auth`].
 //! `Ok(())` means every observed call in the recording was permitted by
 //! the installed policy slate; a `HostExecError::PolicyPanic` is surfaced
 //! as `oz_policy_core::Error::SimPermitDenied`, naming the policy code
 //! that rejected it.
 //!
-//! This is the **permit** branch of the SimReport: the recording is the
+//! this is the **permit** branch of the SimReport: the recording is the
 //! caller's claimed-permitted flow, and the harness verifies the spec
 //! the policy was synthesised from actually admits it.
 
@@ -16,12 +16,12 @@ use oz_policy_core::Error;
 
 use crate::host::{AuthPayload, HostExecError, TestContext, TestHost};
 
-/// Replay `recording` through `host`. See module docs for semantics.
+/// replay `recording` through `host`. See module docs for semantics.
 ///
 /// `smart_account` is the StrKey returned by [`TestHost::install_smart_account`];
 /// `context_rule_id` is the slot the policies were installed against.
 ///
-/// Translation rules:
+/// translation rules:
 /// * Each `recording.contracts[i]` becomes a [`TestContext`].
 /// * Signers are collected by walking the recording's `auth_tree.roots`
 ///   and emitting `Credentials::Address.signer` StrKeys (deduplicated,
@@ -61,14 +61,14 @@ pub fn replay_recording(
     }
 }
 
-/// Walk the recording's auth-tree and produce a stable, deduplicated list
+/// walk the recording's auth-tree and produce a stable, deduplicated list
 /// of signer StrKeys.
 ///
 /// `Credentials::SourceAccount` entries are skipped because they're the
 /// transaction source account, not a SmartAccount signer. `Address` entries
 /// contribute their `signer` StrKey.
 ///
-/// Recursive walk into `sub_invocations` is intentional: nested
+/// recursive walk into `sub_invocations` is intentional: nested
 /// `__check_auth` invocations may carry additional signers and we want
 /// the synthesized `AuthPayload` to reflect the complete signer set.
 fn collect_signer_addresses(roots: &[AuthEntry]) -> Vec<String> {
@@ -79,7 +79,7 @@ fn collect_signer_addresses(roots: &[AuthEntry]) -> Vec<String> {
                 out.push(signer.clone());
             }
         }
-        // Sub-invocations don't carry their own credentials in the
+        // sub-invocations don't carry their own credentials in the
         // `AuthInvocation` shape (only the top-level entry does), but we
         // still walk them so any future shape change is picked up.
         walk_invocation(&entry.root_invocation, &mut out);
@@ -88,7 +88,7 @@ fn collect_signer_addresses(roots: &[AuthEntry]) -> Vec<String> {
 }
 
 fn walk_invocation(inv: &AuthInvocation, _out: &mut Vec<String>) {
-    // No-op today — `AuthInvocation` carries no credentials. Kept as a
+    // no-op today — `AuthInvocation` carries no credentials. Kept as a
     // dedicated function so future shape changes have an obvious hook.
     match &inv.function {
         AuthFunction::Contract { .. }
@@ -100,9 +100,7 @@ fn walk_invocation(inv: &AuthInvocation, _out: &mut Vec<String>) {
     }
 }
 
-// -------------------------------------------------------------------------
-// Tests
-// -------------------------------------------------------------------------
+// tests
 
 #[cfg(test)]
 mod tests {
@@ -166,7 +164,7 @@ mod tests {
         }
     }
 
-    /// Empty recording → empty AuthPayload + empty contexts → permit.
+    /// empty recording → empty AuthPayload + empty contexts → permit.
     #[test]
     fn replay_empty_recording_permits() {
         let mut h = TestHost::new(100, "Test SDF Network ; September 2015").expect("host");
@@ -219,7 +217,7 @@ mod tests {
         assert!(collect_signer_addresses(&roots).is_empty());
     }
 
-    /// Recording with one transfer call but NO policies installed →
+    /// recording with one transfer call but NO policies installed →
     /// permit. (The SA admits any flow when no policies are bound; the
     /// "deny" wiring lives in `run.rs` once a policy is installed.)
     #[test]
@@ -241,7 +239,7 @@ mod tests {
         let token = "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH";
         let signer = "GAEEZQIBQHBP3CG3F2BSTQHBHM5LJUFRTL2EFRC6CN4MV3OWJZ74C6XR";
         let r = recording_with_one_transfer(token, signer);
-        // Manually invoke just the translation logic to inspect the payload.
+        // manually invoke just the translation logic to inspect the payload.
         let contexts: Vec<TestContext> = r
             .contracts
             .iter()

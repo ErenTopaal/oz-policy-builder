@@ -1,25 +1,5 @@
-//! Thin CLI mirror of the MCP surface.
-//!
-//! Subcommands:
-//! * `record` — fetch a Soroban transaction (by on-chain hash or simulation
-//!   envelope) and emit a deterministic [`Recording`] JSON document.
-//! * `synthesize` — read a `Recording` JSON, run the Phase 2 decision tree,
-//!   and emit a [`PolicySpec`] JSON.
-//! * `prepare-install` — read a `PolicySpec` JSON, call
-//!   `oz_policy_installer::build_install_envelope`, and emit the resulting
-//!   [`EnvelopeArtifact`] (base64 XDR + diagnostics) JSON.
-//! * `codegen` — read a `PolicySpec` JSON, run Phase 3 Track-B codegen for
-//!   every `Generated` slot, and write `source.rs`, `policy.wasm`, and
-//!   `wasm_hash.txt` per slot under `--out`.
-//! * `simulate` — read a `PolicySpec` JSON, a `Recording` JSON, and the
-//!   per-slot WASM bytes from `--wasm-dir`, replay the recording through
-//!   `oz_policy_simhost::run::run_full_suite`, and write the resulting
-//!   `SimReport` JSON to `--out`. Exit 0 iff every permit + deny vector
-//!   passed.
-//!
-//! All subcommands print the result pretty-printed to stdout on success, or
-//! `E_*` + detail to stderr (exit non-zero) on failure. The exit code maps
-//! deterministically from the `Error` variant — see [`exit_code_for`].
+//! thin cli mirror of the mcp surface: record / synthesize / prepare-install /
+//! codegen / simulate. exits deterministic per error via `exit_code_for`.
 
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use oz_policy_core::decision_tree::SynthesisOptions;
@@ -47,25 +27,25 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Record a Stellar Soroban transaction (by on-chain hash or by simulating
+    /// record a Stellar Soroban transaction (by on-chain hash or by simulating
     /// a base64 envelope XDR) into a deterministic `Recording` JSON document.
     Record(RecordArgs),
-    /// Read a `Recording` JSON document from disk, run the Phase 2 decision
+    /// read a `Recording` JSON document from disk, run the Phase 2 decision
     /// tree, and emit the resulting `PolicySpec` JSON to stdout. Pure
     /// in-process — no network calls.
     Synthesize(SynthesizeArgs),
-    /// Read a `PolicySpec` JSON document from disk, call
+    /// read a `PolicySpec` JSON document from disk, call
     /// `oz_policy_installer::build_install_envelope`, and emit the resulting
     /// `EnvelopeArtifact` JSON to stdout. Calls `simulateTransaction` and
     /// `getLedgerEntries` on the configured RPC; never auto-submits.
     PrepareInstall(PrepareInstallArgs),
-    /// Read a `PolicySpec` JSON document from disk, run Phase 3 Track-B
+    /// read a `PolicySpec` JSON document from disk, run Phase 3 Track-B
     /// codegen for every `Generated` policy slot, and write the rendered
     /// source, optimized WASM, and lowercase-hex SHA-256 hash for each slot
     /// under `--out/slot_<i>/`. Existing (Track-A) slots are silently
     /// skipped.
     Codegen(CodegenArgs),
-    /// Read a `PolicySpec` JSON, a `Recording` JSON, and the per-slot
+    /// read a `PolicySpec` JSON, a `Recording` JSON, and the per-slot
     /// `policy.wasm` files under `--wasm-dir`. Replay the recording through
     /// `oz_policy_simhost::run::run_full_suite` and write the resulting
     /// `SimReport` JSON to `--out` (pretty-printed, deterministic). Exit 0
@@ -74,7 +54,7 @@ enum Command {
     Simulate(SimulateArgs),
 }
 
-/// Mutually exclusive: exactly one of `--hash` / `--envelope-xdr` is required.
+/// mutually exclusive: exactly one of `--hash` / `--envelope-xdr` is required.
 #[derive(Debug, Args)]
 #[command(group(
     ArgGroup::new("source")
@@ -83,24 +63,24 @@ enum Command {
         .multiple(false)
 ))]
 struct RecordArgs {
-    /// On-chain transaction hash (hex). Fetched via `getTransaction`.
+    /// on-chain transaction hash (hex). Fetched via `getTransaction`.
     #[arg(long)]
     hash: Option<String>,
 
-    /// Base64-encoded `TransactionEnvelope` XDR. Sent to
+    /// base64-encoded `TransactionEnvelope` XDR. Sent to
     /// `simulateTransaction`; not submitted on chain.
     #[arg(long = "envelope-xdr")]
     envelope_xdr: Option<String>,
 
-    /// Soroban RPC endpoint. Defaults to the public testnet RPC.
+    /// soroban RPC endpoint. Defaults to the public testnet RPC.
     #[arg(long, default_value = DEFAULT_TESTNET_RPC)]
     rpc: String,
 
-    /// Stellar network passphrase. Defaults to testnet.
+    /// stellar network passphrase. Defaults to testnet.
     #[arg(long, default_value = DEFAULT_TESTNET_NETWORK)]
     network: String,
 
-    /// Soroban `simulateTransaction` resource budget leeway. Only consulted
+    /// soroban `simulateTransaction` resource budget leeway. Only consulted
     /// on the `--envelope-xdr` path. (No-op for the current stable RPC
     /// client API; preserved here so the CLI surface stays stable when the
     /// upstream `resourceConfig` arg lands.)
@@ -154,35 +134,35 @@ impl TightnessArg {
 
 #[derive(Debug, Args)]
 struct SynthesizeArgs {
-    /// Path to a `Recording` JSON document on disk.
+    /// path to a `Recording` JSON document on disk.
     #[arg(value_name = "RECORDING_FILE")]
     recording_file: PathBuf,
 
-    /// Synthesis mode. `auto` permits both composition (Track A) and
+    /// synthesis mode. `auto` permits both composition (Track A) and
     /// generated slots (Track B). `compose-only` requires every constraint
     /// to fit an existing OZ primitive. `codegen-only` forces every
     /// constraint into a `Generated` slot.
     #[arg(long, value_enum, default_value_t = ModeArg::Auto)]
     mode: ModeArg,
 
-    /// Numeric tightness applied to observed `i128` constraints.
+    /// numeric tightness applied to observed `i128` constraints.
     #[arg(long, value_enum, default_value_t = TightnessArg::Exact)]
     tightness: TightnessArg,
 
-    /// Lifetime (in ledgers) emitted as `PolicySpec.lifetime_ledgers` and
+    /// lifetime (in ledgers) emitted as `PolicySpec.lifetime_ledgers` and
     /// (when applicable) `SpendingLimit.period_ledgers`. `None` → spec's
     /// `lifetime_ledgers` stays `None`; the `SpendingLimit` slot, if any,
     /// falls back to the decision tree's default.
     #[arg(long)]
     lifetime: Option<u32>,
 
-    /// Optional StrKey `C…` address of a contract that takes over auth
+    /// optional StrKey `C…` address of a contract that takes over auth
     /// (delegated signer). When provided, the synthesizer emits exactly
     /// one `Delegated` signer instead of the per-recording observed signers.
     #[arg(long = "delegated-signer")]
     delegated_signer: Option<String>,
 
-    /// Human-readable name for the emitted `ContextRuleSpec`. Must be
+    /// human-readable name for the emitted `ContextRuleSpec`. Must be
     /// ≤ `MAX_NAME_SIZE` (20) UTF-8 bytes per the on-chain `SmartAccount`.
     #[arg(long = "rule-name", default_value = "rule")]
     rule_name: String,
@@ -222,28 +202,28 @@ impl AccountRevisionArg {
 
 #[derive(Debug, Args)]
 struct PrepareInstallArgs {
-    /// Path to a `PolicySpec` JSON document on disk.
+    /// path to a `PolicySpec` JSON document on disk.
     #[arg(value_name = "SPEC_FILE")]
     spec_file: PathBuf,
 
-    /// StrKey `C…` address of the target smart-account contract.
+    /// strKey `C…` address of the target smart-account contract.
     #[arg(long = "smart-account")]
     smart_account: String,
 
-    /// StrKey `G…` address of the funding source account (pays fees, signs
+    /// strKey `G…` address of the funding source account (pays fees, signs
     /// the envelope).
     #[arg(long)]
     source: String,
 
-    /// Soroban RPC endpoint. Defaults to the public testnet RPC.
+    /// soroban RPC endpoint. Defaults to the public testnet RPC.
     #[arg(long, default_value = DEFAULT_TESTNET_RPC)]
     rpc: String,
 
-    /// Stellar network passphrase. Defaults to testnet.
+    /// stellar network passphrase. Defaults to testnet.
     #[arg(long, default_value = DEFAULT_TESTNET_NETWORK)]
     network: String,
 
-    /// Caller-asserted smart-account release vintage. See
+    /// caller-asserted smart-account release vintage. See
     /// `oz_policy_installer::AccountRevision` for the rationale —
     /// `unknown` / `pre-pr-655` are hard refusals in v1.
     #[arg(long = "account-revision", value_enum)]
@@ -252,11 +232,11 @@ struct PrepareInstallArgs {
 
 #[derive(Debug, Args)]
 struct CodegenArgs {
-    /// Path to a `PolicySpec` JSON document on disk.
+    /// path to a `PolicySpec` JSON document on disk.
     #[arg(value_name = "SPEC_FILE")]
     spec_file: PathBuf,
 
-    /// Output directory. One subdirectory `slot_<i>/` is written per
+    /// output directory. One subdirectory `slot_<i>/` is written per
     /// `Generated` policy slot, each containing `source.rs`, `policy.wasm`,
     /// and `wasm_hash.txt`. The directory is created if missing; existing
     /// files at those paths are overwritten.
@@ -266,29 +246,29 @@ struct CodegenArgs {
 
 #[derive(Debug, Args)]
 struct SimulateArgs {
-    /// Path to a `PolicySpec` JSON document on disk.
+    /// path to a `PolicySpec` JSON document on disk.
     #[arg(value_name = "SPEC_FILE")]
     spec_file: PathBuf,
 
-    /// Path to a `Recording` JSON document on disk (the permit-replay
+    /// path to a `Recording` JSON document on disk (the permit-replay
     /// input).
     #[arg(value_name = "RECORDING_FILE")]
     recording_file: PathBuf,
 
-    /// Directory containing one `slot_<i>/policy.wasm` per Track-B
+    /// directory containing one `slot_<i>/policy.wasm` per Track-B
     /// `Generated` slot in the spec. Track-A `Existing` slots are skipped
     /// (no WASM needed). The directory layout matches the `codegen`
     /// subcommand's `--out`.
     #[arg(long = "wasm-dir", value_name = "DIR")]
     wasm_dir: PathBuf,
 
-    /// Optional path to a JSON file containing a `Vec<DenyVector>` to
+    /// optional path to a JSON file containing a `Vec<DenyVector>` to
     /// append to the auto-generated deny suite. Useful for fuzzed
     /// regression vectors discovered in audit.
     #[arg(long = "extra-deny", value_name = "FILE")]
     extra_deny: Option<PathBuf>,
 
-    /// Destination path for the resulting `SimReport` JSON. The parent
+    /// destination path for the resulting `SimReport` JSON. The parent
     /// directory must already exist (we don't auto-create here so a
     /// fat-fingered path stays loud).
     #[arg(long = "out", value_name = "FILE")]
@@ -307,24 +287,24 @@ struct EnvelopeArtifactJson {
 }
 
 /// JSON-serialisable summary emitted by the `codegen` subcommand on success.
-/// Mirrors a single generated-slot artifact's identifying metadata; the
+/// mirrors a single generated-slot artifact's identifying metadata; the
 /// actual `source.rs` / `policy.wasm` / `wasm_hash.txt` files are written
 /// to disk under `--out/slot_<i>/`.
 #[derive(Debug, Serialize)]
 struct CodegenSlotSummary {
-    /// Index into `PolicySpec.policies` for this generated slot.
+    /// index into `PolicySpec.policies` for this generated slot.
     slot_index: usize,
-    /// Lowercase hex SHA-256 of the optimized WASM bytes — the same value
+    /// lowercase hex SHA-256 of the optimized WASM bytes — the same value
     /// written into `slot_<i>/wasm_hash.txt`.
     wasm_sha256_hex: String,
     /// `true` iff the sandbox driver served this slot from its on-disk
     /// cache (no `cargo build` was re-run).
     cache_hit: bool,
-    /// Size of the optimized WASM in bytes.
+    /// size of the optimized WASM in bytes.
     wasm_bytes: usize,
 }
 
-/// Top-level JSON output of the `codegen` subcommand.
+/// top-level JSON output of the `codegen` subcommand.
 #[derive(Debug, Serialize)]
 struct CodegenReport {
     out_dir: String,
@@ -342,7 +322,7 @@ impl From<&EnvelopeArtifact> for EnvelopeArtifactJson {
     }
 }
 
-/// Decide the process exit code from an `Error`. Distinct codes per `E_*`
+/// decide the process exit code from an `Error`. Distinct codes per `E_*`
 /// variant so CI / wrappers can branch on the failure mode.
 ///
 /// | E_* code                         | exit code |
@@ -384,19 +364,19 @@ async fn run_record(args: RecordArgs) -> Result<Recording, Error> {
         )
         .await
     } else {
-        // Unreachable: clap's `ArgGroup` enforces exactly-one above.
+        // unreachable: clap's `ArgGroup` enforces exactly-one above.
         Err(Error::RecorderSimFailed(
             "--hash or --envelope-xdr is required (clap arg-group failed?)".into(),
         ))
     }
 }
 
-/// Synthesize a `PolicySpec` from a recording on disk. Pure I/O + a single
+/// synthesize a `PolicySpec` from a recording on disk. Pure I/O + a single
 /// call into `oz_policy_core::decision_tree::synthesize`. Surface all errors
 /// verbatim — no silent masking.
 fn run_synthesize(args: SynthesizeArgs) -> Result<PolicySpec, Error> {
     let raw = std::fs::read_to_string(&args.recording_file).map_err(|e| {
-        // Recording read errors aren't an E_RECORDER_* code (those are
+        // recording read errors aren't an E_RECORDER_* code (those are
         // RPC-level); surface as RecorderXdrDecodeFailed to keep the
         // failure inside the existing error taxonomy until we add a
         // dedicated E_CLI_READ_FAILED.
@@ -415,11 +395,11 @@ fn run_synthesize(args: SynthesizeArgs) -> Result<PolicySpec, Error> {
     oz_policy_core::decision_tree::synthesize(&recording, &opts)
 }
 
-/// Read a spec from disk, run Phase 3 Track-B codegen, and write the
+/// read a spec from disk, run Phase 3 Track-B codegen, and write the
 /// per-slot artifacts under `args.out`. Returns a summary suitable for
 /// pretty-printing to stdout.
 ///
-/// Disk layout produced under `args.out`:
+/// disk layout produced under `args.out`:
 ///
 /// ```text
 /// <out>/
@@ -448,7 +428,7 @@ async fn run_codegen(args: CodegenArgs) -> Result<CodegenReport, Error> {
         ))
     })?;
 
-    // Drive codegen end-to-end. `synthesize_track_b` already returns
+    // drive codegen end-to-end. `synthesize_track_b` already returns
     // artifacts in slot order, skipping Existing slots silently.
     let artifacts = oz_policy_codegen::synthesize_track_b(&spec).await?;
 
@@ -459,7 +439,7 @@ async fn run_codegen(args: CodegenArgs) -> Result<CodegenReport, Error> {
         ))
     })?;
 
-    // We need to re-map artifact-index → original-slot-index so the per-slot
+    // we need to re-map artifact-index → original-slot-index so the per-slot
     // directories carry the spec's original numbering. `synthesize_track_b`
     // collapses Existing slots; iterate the spec to recover the mapping.
     let mut summaries = Vec::new();
@@ -492,7 +472,7 @@ async fn run_codegen(args: CodegenArgs) -> Result<CodegenReport, Error> {
             ))
         })?;
         let hex = hex_lower(&artifact.wasm_hash);
-        // Single trailing newline so `cat`/`diff` on the file look right
+        // single trailing newline so `cat`/`diff` on the file look right
         // and the value can be substring-loaded cleanly by other tools.
         std::fs::write(slot_dir.join("wasm_hash.txt"), format!("{hex}\n")).map_err(|e| {
             Error::CodegenCompileFailed(format!(
@@ -516,15 +496,15 @@ async fn run_codegen(args: CodegenArgs) -> Result<CodegenReport, Error> {
     })
 }
 
-/// Drive `oz_policy_simhost::run::run_full_suite` end-to-end from disk
+/// drive `oz_policy_simhost::run::run_full_suite` end-to-end from disk
 /// inputs and write the resulting [`SimReport`] JSON to `args.out`.
 ///
-/// Returns the [`SimReport`] so the caller can decide an exit code based on
+/// returns the [`SimReport`] so the caller can decide an exit code based on
 /// `report.permit.passed && every deny_results[i].passed`. The on-disk
 /// JSON is pretty-printed with a trailing newline so `diff`/`cat` look
 /// right.
 ///
-/// Errors:
+/// errors:
 /// * `Error::SimPermitDenied` — failed to read/parse the spec, recording,
 ///   `--extra-deny` JSON, or any WASM file; or the parent of `--out` did
 ///   not exist; or `run_full_suite` itself errored at the host boundary.
@@ -555,13 +535,13 @@ async fn run_simulate(args: SimulateArgs) -> Result<SimReport, Error> {
         ))
     })?;
 
-    // Load the per-slot WASM bytes. Slot order matches `synthesize_track_b`:
+    // load the per-slot WASM bytes. Slot order matches `synthesize_track_b`:
     // skip `Existing` slots, append one `CompiledArtifact` per `Generated`
     // slot. Each WASM lives at `<wasm-dir>/slot_<i>/policy.wasm` where `i`
     // is the *original* PolicySpec.policies index.
     let artifacts = load_wasm_artifacts(&args.wasm_dir, &spec)?;
 
-    // Optional extra deny vectors.
+    // optional extra deny vectors.
     let extra_deny = if let Some(path) = args.extra_deny.as_ref() {
         let raw = std::fs::read_to_string(path).map_err(|e| {
             Error::SimPermitDenied(format!(
@@ -596,11 +576,11 @@ async fn run_simulate(args: SimulateArgs) -> Result<SimReport, Error> {
     Ok(report)
 }
 
-/// Read `<wasm_dir>/slot_<i>/policy.wasm` for each `Generated` slot in
+/// read `<wasm_dir>/slot_<i>/policy.wasm` for each `Generated` slot in
 /// `spec.policies`, in declared order. `Existing` slots are skipped (no
 /// WASM is loaded — the simhost driver only installs Track-B artifacts).
 ///
-/// Returns the artifacts in the same order `synthesize_track_b` would —
+/// returns the artifacts in the same order `synthesize_track_b` would —
 /// which is the order `run_full_suite` expects in its `wasm_per_slot`
 /// argument.
 fn load_wasm_artifacts(
@@ -625,7 +605,7 @@ fn load_wasm_artifacts(
         out.push(oz_policy_codegen::CompiledArtifact {
             wasm,
             wasm_hash,
-            // Source isn't needed at simulation time; the simhost driver
+            // source isn't needed at simulation time; the simhost driver
             // only reads `wasm`. Echo an empty string so the projection is
             // explicit (vs. silently reading `source.rs` and surprising the
             // caller with extra I/O).
@@ -636,7 +616,7 @@ fn load_wasm_artifacts(
     Ok(out)
 }
 
-/// Compute the SHA-256 of `bytes` into a `[u8; 32]`. The CLI's `simulate`
+/// compute the SHA-256 of `bytes` into a `[u8; 32]`. The CLI's `simulate`
 /// path recomputes the hash for each loaded `policy.wasm` so callers can
 /// drop a pre-built WASM into `--wasm-dir` without smuggling a hash file
 /// alongside it.
@@ -650,7 +630,7 @@ fn sha256_32(bytes: &[u8]) -> [u8; 32] {
     arr
 }
 
-/// Lowercase-hex encode a 32-byte digest. Hand-rolled to avoid adding a
+/// lowercase-hex encode a 32-byte digest. Hand-rolled to avoid adding a
 /// dedicated hex dep to the CLI crate; this function is invoked at most
 /// once per generated slot.
 fn hex_lower(bytes: &[u8; 32]) -> String {
@@ -662,7 +642,7 @@ fn hex_lower(bytes: &[u8; 32]) -> String {
     s
 }
 
-/// Read a spec from disk and call into the installer. Surfaces real errors
+/// read a spec from disk and call into the installer. Surfaces real errors
 /// (preflight, network, primitive_address_unknown) verbatim.
 async fn run_prepare_install(args: PrepareInstallArgs) -> Result<EnvelopeArtifact, Error> {
     let raw = std::fs::read_to_string(&args.spec_file).map_err(|e| {
@@ -689,7 +669,7 @@ async fn run_prepare_install(args: PrepareInstallArgs) -> Result<EnvelopeArtifac
 }
 
 fn main() {
-    // Initialise the global `tracing` subscriber so the recorder's
+    // initialise the global `tracing` subscriber so the recorder's
     // `tracing::{info,debug,warn}!` calls reach stderr. Filter is driven by
     // `RUST_LOG` (e.g. `RUST_LOG=oz_policy_recorder=debug`); defaults to
     // `info` when the env var is absent or malformed.
@@ -718,14 +698,14 @@ fn main() {
             print_or_exit(result);
         }
         Command::Synthesize(args) => {
-            // Pure-logic — no async needed, but we run inside the runtime
+            // pure-logic — no async needed, but we run inside the runtime
             // for surface symmetry with the other branches.
             let result = run_synthesize(args);
             print_or_exit(result);
         }
         Command::PrepareInstall(args) => {
             let result = rt.block_on(run_prepare_install(args));
-            // EnvelopeArtifact isn't directly `Serialize`; project to the
+            // envelopeArtifact isn't directly `Serialize`; project to the
             // CLI's local JSON view.
             match result {
                 Ok(art) => print_or_exit::<EnvelopeArtifactJson>(Ok((&art).into())),
@@ -744,7 +724,7 @@ fn main() {
             let result = rt.block_on(run_simulate(args));
             match result {
                 Ok(report) => {
-                    // Pretty-print the report to stdout for visibility AND
+                    // pretty-print the report to stdout for visibility AND
                     // surface a fail-fast exit if any vector regressed.
                     let summary = SimulateSummary::from_report(&report, &out_path);
                     let summary_json = match serde_json::to_string_pretty(&summary) {
@@ -769,7 +749,7 @@ fn main() {
     }
 }
 
-/// Compact summary printed to stdout by the `simulate` subcommand. The
+/// compact summary printed to stdout by the `simulate` subcommand. The
 /// full `SimReport` (incl. per-vector detail) lives at `out_path` on
 /// disk; we surface the headline fields here so CI logs stay readable
 /// without `cat`-ing the JSON file.
@@ -796,7 +776,7 @@ impl SimulateSummary {
     }
 }
 
-/// Map a `SimReport` outcome to an `Error` for the exit-code decision.
+/// map a `SimReport` outcome to an `Error` for the exit-code decision.
 /// `None` => report is fully passing => exit 0.
 ///
 /// `permit` failures map to `E_SIM_PERMIT_DENIED`; any deny vector
@@ -829,8 +809,8 @@ fn simulate_outcome_to_error(r: &SimReport) -> Option<Error> {
     None
 }
 
-/// Pretty-print `result` (`Ok`) or surface the error to stderr (`Err`).
-/// Generic over `T: serde::Serialize` so the same printer handles every
+/// pretty-print `result` (`Ok`) or surface the error to stderr (`Err`).
+/// generic over `T: serde::Serialize` so the same printer handles every
 /// subcommand's success type without duplication.
 fn print_or_exit<T: serde::Serialize>(result: Result<T, Error>) {
     match result {
@@ -848,9 +828,7 @@ fn print_or_exit<T: serde::Serialize>(result: Result<T, Error>) {
     }
 }
 
-// -------------------------------------------------------------------------
-// Tests — clap-only, no network calls.
-// -------------------------------------------------------------------------
+// tests — clap-only, no network calls.
 
 #[cfg(test)]
 mod tests {
@@ -933,7 +911,7 @@ mod tests {
             "AAAA",
         ])
         .expect_err("clap must reject providing both --hash and --envelope-xdr");
-        // ArgGroup conflict is reported as ArgumentConflict.
+        // argGroup conflict is reported as ArgumentConflict.
         assert_eq!(
             err.kind(),
             clap::error::ErrorKind::ArgumentConflict,
@@ -970,9 +948,7 @@ mod tests {
         assert_eq!(exit_code_for(&Error::VerifyDrift("d".into())), 20);
     }
 
-    // -------------------------------------------------------------------
-    // Synthesize subcommand
-    // -------------------------------------------------------------------
+    // synthesize subcommand
 
     #[test]
     fn synthesize_subcommand_accepts_full_form() {
@@ -1070,9 +1046,7 @@ mod tests {
         assert_eq!(opts.context_rule_name, "x");
     }
 
-    // -------------------------------------------------------------------
-    // PrepareInstall subcommand
-    // -------------------------------------------------------------------
+    // prepareInstall subcommand
 
     #[test]
     fn prepare_install_accepts_full_form() {
@@ -1189,11 +1163,9 @@ mod tests {
         assert_eq!(args.account_revision, AccountRevisionArg::Unknown);
     }
 
-    // -------------------------------------------------------------------
-    // Codegen subcommand
-    // -------------------------------------------------------------------
+    // codegen subcommand
 
-    /// The full-form invocation must parse with `--out` populated.
+    /// the full-form invocation must parse with `--out` populated.
     #[test]
     fn codegen_subcommand_accepts_full_form() {
         let cli = Cli::try_parse_from([
@@ -1239,7 +1211,7 @@ mod tests {
             .expect_err("`--help` short-circuits parsing");
         assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
         let rendered = err.to_string();
-        // Cross-check that the help text mentions both the required spec
+        // cross-check that the help text mentions both the required spec
         // file positional and the `--out` flag — those are the load-bearing
         // pieces of the subcommand surface.
         assert!(
@@ -1257,11 +1229,9 @@ mod tests {
         assert_eq!(exit_code_for(&Error::CodegenCompileFailed("x".into())), 15);
     }
 
-    // -------------------------------------------------------------------
-    // Simulate subcommand
-    // -------------------------------------------------------------------
+    // simulate subcommand
 
-    /// Full-form `simulate` invocation parses every flag + positional.
+    /// full-form `simulate` invocation parses every flag + positional.
     #[test]
     fn simulate_subcommand_accepts_full_form() {
         let cli = Cli::try_parse_from([
@@ -1341,7 +1311,7 @@ mod tests {
         assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
     }
 
-    /// Both positional arguments are required.
+    /// both positional arguments are required.
     #[test]
     fn simulate_subcommand_requires_spec_and_recording() {
         let err = Cli::try_parse_from([
@@ -1403,7 +1373,7 @@ mod tests {
         assert!(simulate_outcome_to_error(&r).is_none());
     }
 
-    /// A permit failure maps to `E_SIM_PERMIT_DENIED`.
+    /// a permit failure maps to `E_SIM_PERMIT_DENIED`.
     #[test]
     fn simulate_outcome_permit_failure_maps_to_e_sim_permit_denied() {
         let r = SimReport {
@@ -1422,7 +1392,7 @@ mod tests {
         assert!(err.to_string().contains("denied by policy"));
     }
 
-    /// A deny vector that didn't panic maps to `E_SIM_DENY_PASSED` and
+    /// a deny vector that didn't panic maps to `E_SIM_DENY_PASSED` and
     /// names the failing vector + expected/actual codes.
     #[test]
     fn simulate_outcome_deny_open_maps_to_e_sim_deny_passed() {
