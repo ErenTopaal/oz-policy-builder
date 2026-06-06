@@ -1,11 +1,11 @@
 /**
- * Phase 7 Round 2 — testnet end-to-end install integration test.
+ * testnet end-to-end install integration test.
  *
  * **Gated by `INTEGRATION=1`** so default `pnpm test` runs do not hit the
  * network. Run with:
  *
  *   PHASE7_SA_OWNER_SECRET=$(stellar keys show sa-owner-p7r2 --network testnet) \
- *   INTEGRATION=1 pnpm test phase7_integration
+ *   INTEGRATION=1 pnpm test integration
  *
  * ## What this test does (real, no mocks)
  *
@@ -13,7 +13,7 @@
  *    `walkthroughs/phase7-testnet-install/deployed-addresses.json`.
  * 2. Calls the `prepare-install` CLI binary (built once via `cargo build`
  *    before the test runs) against the testnet RPC — this is the real
- *    Phase 2 envelope-builder pipeline; the simulator's resource footprint,
+ *    envelope-builder pipeline; the simulator's resource footprint,
  *    nonce, and read/write entries all come from a live RPC call.
  * 3. Asserts the envelope is well-formed base64 XDR that round-trips through
  *    `TransactionBuilder.fromXDR`.
@@ -21,8 +21,8 @@
  *    `signerSecretKey` flow, using the SA owner's testnet keypair) AND
  *    rewrites the OZ-SA auth entry's `signature` slot to carry a properly
  *    encoded `AuthPayload` ScVal (via `makeOzSmartAccountAuthEncoder` from
- *    `oz_smart_account_auth.ts` — Phase 8 Stream B). This is the
- *    BLOCKER fix that closes RFP deliverable #5.
+ *    `oz_smart_account_auth.ts`). This is the BLOCKER fix that closes
+ *    RFP deliverable #5.
  * 5. Submits the signed envelope to testnet RPC (real
  *    `sendTransaction` + `getTransaction` poll).
  * 6. Asserts the transaction lands `SUCCESS`, captures the resulting
@@ -70,7 +70,7 @@ const execFileAsync = promisify(execFile);
 // repository layout helpers.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-// src/phase7_integration.test.ts → wallet-adapter/ → repo root
+// src/integration.test.ts → wallet-adapter/ → repo root
 const REPO_ROOT = resolve(HERE, "..", "..");
 const CLI_BIN = join(REPO_ROOT, "target", "debug", "oz-policy-cli");
 const MCP_BIN = join(REPO_ROOT, "target", "debug", "oz-policy-mcp");
@@ -97,8 +97,9 @@ const TESTNET_PASSPHRASE = Networks.TESTNET; // "Test SDF Network ; September 20
 // secret is NOT committed. The matching G-address
 // (GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ) is in the
 // fixture; the seed is held in the developer's local stellar keys store.
-// `INTEGRATION=1` runs in CI MUST supply this via the `PHASE7_SA_OWNER_SECRET`
-// env var (or the test will skip-with-failure to surface the missing input).
+// `INTEGRATION=1` runs in CI MUST supply this via the
+// `PHASE7_SA_OWNER_SECRET` env var (or the test will skip-with-failure
+// to surface the missing input).
 
 const SA_OWNER_SECRET_ENV = "PHASE7_SA_OWNER_SECRET";
 
@@ -148,8 +149,8 @@ async function loadFixture(): Promise<PhaseFixture> {
 }
 
 // drive the prepare-install CLI to produce a real install envelope. We
-// spawn the binary rather than re-implement the Phase 2 logic in JS so
-// the test exercises the same code path users hit.
+// spawn the binary rather than re-implement the envelope-builder logic
+// in JS so the test exercises the same code path users hit.
 
 interface PreparedEnvelope {
   envelope_xdr_base64: string;
@@ -191,7 +192,7 @@ async function prepareInstallEnvelope(fx: PhaseFixture): Promise<PreparedEnvelop
 // the actual integration test.
 
 describe.skipIf(process.env.INTEGRATION !== "1")(
-  "Phase 7 Round 2 — testnet end-to-end install",
+  "testnet end-to-end install",
   () => {
     it(
       "builds a real envelope, signs it, attempts submission, and reads back via verifyInstall",
@@ -232,7 +233,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
 
         // sanity: the envelope must round-trip through TransactionBuilder.
         // failures here would mean the CLI's emitted XDR is corrupt — not
-        // an on-chain problem but a Phase-2 regression.
+        // an on-chain problem but an envelope-builder regression.
         const rehydrated = TransactionBuilder.fromXDR(
           env.envelope_xdr_base64,
           fx.network_passphrase,
@@ -248,12 +249,12 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
         expect(await wallet.getAddress()).toBe(fx.sa_owner_pubkey);
 
         // ---------- 4. Submit (real RPC) -------------------------------------
-        // phase 8 Stream B: wire the OZ-SA AuthPayload encoder so the
-        // signed envelope's `SorobanAuthorizationEntry` targeting the SA
-        // carries a properly encoded AuthPayload (rather than the
-        // simulator's Void placeholder that traps __check_auth). The
-        // SA's bootstrap rule (id 0) authorises via Signer::Delegated(
-        // GCM2…) — same keypair as the outer envelope signer.
+        // wire the OZ-SA AuthPayload encoder so the signed envelope's
+        // `SorobanAuthorizationEntry` targeting the SA carries a
+        // properly encoded AuthPayload (rather than the simulator's
+        // Void placeholder that traps __check_auth). The SA's bootstrap
+        // rule (id 0) authorises via Signer::Delegated(GCM2…) — same
+        // keypair as the outer envelope signer.
         const ozKp = Keypair.fromSecret(ownerSecret);
         const ozEncoder = makeOzSmartAccountAuthEncoder({
           smartAccount: fx.smart_account,

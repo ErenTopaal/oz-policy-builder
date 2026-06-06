@@ -1,21 +1,20 @@
-//! Phase 3 binary completion gate.
+//! codegen binary completion gate.
 //!
-//! Two tests live here, mirroring the structure of the Phase 2 completion
-//! gate (`crates/oz-policy-installer/tests/phase2_completion.rs`):
+//! two tests live here, mirroring the installer completion gate
+//! (`crates/oz-policy-installer/tests/installer_completion.rs`):
 //!
-//! 1. [`phase3_render_byte_equal`] — **never `#[ignore]`**. Pure CPU + disk
-//!    reads: reads the frozen `walkthroughs/phase3-codegen-fixture/spec.json`,
-//!    invokes `render_contract(&spec, 0)`, and asserts the produced
-//!    `src_lib_rs` is byte-equal to the committed
-//!    `expected/slot_0/source.rs`. This is the Phase 3 completion criterion
-//!    — every developer's `cargo nextest run --workspace` runs it.
+//! 1. [`codegen_renders_byte_equal`] — **never `#[ignore]`**. Pure CPU + disk
+//!    reads: reads the frozen codegen fixture `spec.json`, invokes
+//!    `render_contract(&spec, 0)`, and asserts the produced `src_lib_rs` is
+//!    byte-equal to the committed `expected/slot_0/source.rs`. Every
+//!    developer's `cargo nextest run --workspace` runs it.
 //!
-//! 2. [`phase3_compile_hash_pinned`] — `#[ignore]`. Drives the full
+//! 2. [`codegen_compile_hash_pinned`] — `#[ignore]`. Drives the full
 //!    `synthesize_track_b` pipeline (render → sandbox build → `stellar
 //!    contract optimize`) and asserts the resulting WASM's SHA-256 matches
 //!    the value pinned in `expected/slot_0/wasm_hash.txt`. CI runs this
 //!    via `cargo nextest run --workspace -- --include-ignored
-//!    phase3_compile_hash_pinned` on hosts with the toolchain + stellar CLI
+//!    codegen_compile_hash_pinned` on hosts with the toolchain + stellar CLI
 //!    available. Same ignore pattern as `tests/minimal_compile.rs`.
 //!
 //! ## Why split the gate?
@@ -59,7 +58,7 @@ fn load_spec() -> PolicySpec {
     serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse spec at {}: {e}", path.display()))
 }
 
-/// Phase 3 completion gate (render half).
+/// codegen completion gate (render half).
 ///
 /// Renders the fixture spec's single Generated slot and asserts the output
 /// `src_lib_rs` is byte-equal to the frozen
@@ -76,7 +75,7 @@ fn load_spec() -> PolicySpec {
 ///     --out walkthroughs/phase3-codegen-fixture/expected/
 /// ```
 #[test]
-fn phase3_render_byte_equal() {
+fn codegen_renders_byte_equal() {
     let spec = load_spec();
     let rendered = render_contract(&spec, GENERATED_SLOT_INDEX)
         .expect("Phase 3 completion: render_contract must succeed on the frozen fixture");
@@ -119,7 +118,7 @@ fn phase3_render_byte_equal() {
     }
 }
 
-/// Phase 3 completion gate (compile half).
+/// codegen completion gate (compile half).
 ///
 /// Drives the full `synthesize_track_b` pipeline against the fixture spec
 /// and asserts the resulting WASM's SHA-256 matches the pinned value in
@@ -130,11 +129,11 @@ fn phase3_render_byte_equal() {
 /// CI invocation (via the verification gate script):
 ///
 /// ```sh
-/// cargo nextest run -p oz-policy-codegen --run-ignored only phase3_compile_hash_pinned
+/// cargo nextest run -p oz-policy-codegen --run-ignored only codegen_compile_hash_pinned
 /// ```
 #[ignore]
 #[tokio::test]
-async fn phase3_compile_hash_pinned() {
+async fn codegen_compile_hash_pinned() {
     let spec = load_spec();
 
     let artifacts = oz_policy_codegen::synthesize_track_b(&spec)

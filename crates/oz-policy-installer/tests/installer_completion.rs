@@ -1,17 +1,18 @@
-//! phase 2 binary completion gate.
+//! installer binary completion gate.
 //!
-//! this test is the **literal** completion criterion for Phase 2 of the OZ
-//! accounts Policy Builder. It must run in the default `cargo nextest run
-//! --workspace` invocation (no `#[ignore]` gate, no network calls): the
-//! phase 2 deliverable is "decision tree turns a frozen Recording into a
-//! frozen PolicySpec, byte-equal forever".
+//! this test is the **literal** completion criterion for the
+//! recording → spec leg of the OZ accounts Policy Builder. It must run
+//! in the default `cargo nextest run --workspace` invocation (no
+//! `#[ignore]` gate, no network calls): the deliverable is "decision
+//! tree turns a frozen Recording into a frozen PolicySpec, byte-equal
+//! forever".
 //!
 //! ## What it does (deterministically, offline)
 //!
 //! 1. Reads the frozen `Recording` JSON for the SEP-41 testnet fixture
 //!    (`walkthroughs/02-sep41-subscription/recording.json`).
 //! 2. Calls `oz_policy_core::decision_tree::synthesize(&recording, &opts)`
-//!    with the canonical Phase 2 options:
+//!    with the canonical options:
 //!    `mode=ComposeOnly, tightness=Exact, lifetime_ledgers=Some(432_000),
 //!    context_rule_name="sep41-subscription"`.
 //! 3. Reads the frozen expected `PolicySpec` JSON
@@ -26,12 +27,11 @@
 //!
 //! ## Why this test lives in `oz-policy-installer/tests/`
 //!
-//! phase 2's two streams converge in the installer (Stream B), and the
-//! completion gate naturally lives next to the envelope-shape gate
-//! (`phase2_envelope_structure.rs`). The installer already depends on
+//! the completion gate naturally lives next to the envelope-shape gate
+//! (`envelope_structure.rs`). The installer already depends on
 //! `oz-policy-core`, so the decision-tree call is a direct path import,
-//! no extra dev-dep needed beyond `serde_json` (newly added in
-//! `Cargo.toml` for this test).
+//! no extra dev-dep needed beyond `serde_json` (added in `Cargo.toml`
+//! for this test).
 
 use oz_policy_core::decision_tree::{synthesize, SynthesisOptions, Tightness};
 use oz_policy_core::recording::Recording;
@@ -45,14 +45,14 @@ use oz_policy_core::spec::SynthesisMode;
 const WALKTHROUGH_DIR: &str = "../../walkthroughs/02-sep41-subscription";
 
 #[test]
-fn phase2_completion() {
-    phase2_completion_gate_byte_equal_synth();
+fn installer_completion() {
+    installer_completion_gate_byte_equal_synth();
 }
 
 /// internal helper. The outer wrapper is named so the verification gate's
-/// positional filter `cargo nextest run --workspace phase2_completion`
+/// positional filter `cargo nextest run --workspace installer_completion`
 /// matches (nextest's positional substring match is over the test name).
-fn phase2_completion_gate_byte_equal_synth() {
+fn installer_completion_gate_byte_equal_synth() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let recording_path = format!("{manifest_dir}/{WALKTHROUGH_DIR}/recording.json");
     let expected_path = format!("{manifest_dir}/{WALKTHROUGH_DIR}/expected-spec-track-a.json");

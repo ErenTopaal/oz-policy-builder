@@ -1,10 +1,11 @@
-//! phase 4 binary completion gate.
+//! simulate binary completion gate.
 //!
-//! mirrors the Phase 3 pattern (`oz-policy-codegen/tests/phase3_completion.rs`)
-//! one level up: the simhost completion test exercises the full
-//! `run_full_suite` pipeline end-to-end against the frozen
-//! `walkthroughs/phase3-codegen-fixture` artifacts. It is **never
-//! `#[ignore]`** — every `cargo nextest run --workspace` run hits it.
+//! mirrors the codegen completion pattern
+//! (`oz-policy-codegen/tests/codegen_completion.rs`) one level up: the
+//! simhost completion test exercises the full `run_full_suite` pipeline
+//! end-to-end against the frozen `walkthroughs/phase3-codegen-fixture`
+//! artifacts. It is **never `#[ignore]`** — every `cargo nextest run
+//! --workspace` run hits it.
 //!
 //! ## Surface tested
 //!
@@ -12,10 +13,10 @@
 //!    `function_allowlist = ["transfer"]`).
 //! 2. Loads the prebuilt
 //!    `walkthroughs/phase3-codegen-fixture/expected/slot_0/policy.wasm` —
-//!    no recompile, no fabricated bytes (per the Phase 4 Round 2 brief's
-//!    "no fabricated WASM" rule). Hash is recomputed over the on-disk
-//!    bytes via the same `sha2` 0.10.9 the simhost uses for its
-//!    smart-account verify path, and asserted against
+//!    no recompile, no fabricated bytes (the "no fabricated WASM" rule).
+//!    Hash is recomputed over the on-disk bytes via the same `sha2`
+//!    0.10.9 the simhost uses for its smart-account verify path, and
+//!    asserted against
 //!    `expected/slot_0/wasm_hash.txt` so a drift between the two on-disk
 //!    files trips this test rather than silently passing.
 //! 3. Synthesizes a minimal `Recording` that matches the spec's single
@@ -40,12 +41,12 @@
 //! `__check_auth → add_policy → enforce` chain?", the run orchestrator
 //! invokes each installed policy's `enforce` directly per `TestContext`
 //! rather than driving the smart-account's `__check_auth` boundary
-//! (which would require wallet-signed `AuthEntry` credentials — Phase 7
-//! work). This is the same observable surface deny vectors and the
-//! permit replay need; the Phase 4 binary completion criterion is "every
-//! constraint primitive in the spec produces at least one passing permit
-//! AND at least one passing deny vector," NOT "the full __check_auth
-//! wrapper works."
+//! (which would require wallet-signed `AuthEntry` credentials, handled
+//! by the testnet integration path). This is the same observable
+//! surface deny vectors and the permit replay need; the binary
+//! completion criterion is "every constraint primitive in the spec
+//! produces at least one passing permit AND at least one passing deny
+//! vector," NOT "the full __check_auth wrapper works."
 
 use oz_policy_codegen::CompiledArtifact;
 use oz_policy_core::recording::{
@@ -171,20 +172,20 @@ fn construct_minimal_matching_recording() -> Recording {
 /// build a deterministic G-StrKey from a fixed 32-byte seed. The
 /// previously-hardcoded literal in this codebase (`GAEEZQIBQHBP...`) is a
 /// bogus checksum that `stellar-strkey 0.0.13` rejects with
-/// `Err(Invalid)` — see the Phase 4 Round 2 fix in
-/// `tests/host_smoke.rs` for the full story.
+/// `Err(Invalid)` — see the fix in `tests/host_smoke.rs` for the full
+/// story.
 fn valid_signer_strkey() -> String {
     stellar_strkey::ed25519::PublicKey([0xaau8; 32]).to_string()
 }
 
-/// phase 4 binary completion gate.
+/// simulate binary completion gate.
 ///
 /// drives `run_full_suite` against the frozen `phase3-codegen-fixture`
 /// artifacts and asserts the resulting `SimReport` is fully passing.
 /// see the module doc-comment for the surface this test exercises and
 /// the wider `__check_auth` gap it does NOT (deliberately).
 #[tokio::test]
-async fn phase4_simulate_emits_passing_report() {
+async fn simulate_emits_passing_report() {
     // 1. Spec + WASM.
     let spec = load_spec();
     let wasm = load_policy_wasm();

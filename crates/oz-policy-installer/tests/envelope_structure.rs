@@ -1,4 +1,4 @@
-//! phase 2 envelope-structure gate — `#[ignore]`-gated (network-dependent).
+//! envelope-structure gate — `#[ignore]`-gated (network-dependent).
 //!
 //! this test reads the frozen `expected-spec-track-a.json` from the
 //! `02-sep41-subscription` walkthrough and calls
@@ -27,8 +27,7 @@
 //! `InvokeHostFunction` op, verify the invoked function name is
 //! `add_context_rule`, and verify the policies map carries exactly one
 //! entry for the `spending_limit` primitive (the Track-A canonical shape
-//! per `docs/oz-internal-shapes.md` §6 and the amended Phase 2 criterion in
-//! `plan.md`):
+//! per `docs/oz-internal-shapes.md` §6):
 //!
 //! 1. The registry gains a published `spending_limit` testnet address
 //!    (canonical, traceable source linked in `src/registry.rs`), OR
@@ -61,7 +60,7 @@ const WALKTHROUGH_DIR: &str = "../../walkthroughs/02-sep41-subscription";
 
 #[tokio::test]
 #[ignore = "Phase 2 v1 envelope shape: BLOCKED on registry primitive-address (see test header)"]
-async fn phase2_envelope_locks_in_primitive_address_unknown_failure_shape() {
+async fn envelope_locks_in_primitive_address_unknown_failure_shape() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let expected_path = format!("{manifest_dir}/{WALKTHROUGH_DIR}/expected-spec-track-a.json");
 
