@@ -185,11 +185,9 @@ impl ServerHandler for PolicyServer {
     /// * `prompts` — three wizard templates from `crate::prompts`.
     /// * `resources` — recordings, specs, and artifact bundles from
     ///   `crate::resources`.
-    /// * Protocol version `2025-11-25` (the latest MCP revision, per
-    ///   `docs/mcp-sdk-decision.md`).
-    /// * `server_info.name = "oz-policy-mcp"` so clients (Claude Desktop,
-    ///   cursor, Cline, Continue, mcp-cli) display the canonical name
-    ///   from the registered config.
+    /// * protocol version `2025-11-25`.
+    /// * `server_info.name = "oz-policy-mcp"` so mcp clients display the
+    ///   canonical name from the registered config.
     /// * `server_info.version = env!("CARGO_PKG_VERSION")` so a deployed
     ///   binary's reported version traces back to a single workspace tag.
     fn get_info(&self) -> ServerInfo {

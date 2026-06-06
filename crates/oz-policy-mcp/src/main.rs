@@ -3,9 +3,8 @@
 //!
 //! supports two transports per `plan.md` Phase 5 (Implementation → main.rs):
 //!
-//! * **STDIO** (`--stdio`, default) — reads JSON-RPC frames from `stdin`,
-//!   writes to `stdout`. Used by IDE-style clients (Claude Desktop, Cursor,
-//!   cline, Continue) that subprocess-spawn the server.
+//! * **STDIO** (`--stdio`, default) — reads json-rpc frames from `stdin`,
+//!   writes to `stdout`. used by mcp clients that subprocess-spawn the server.
 //! * **Streamable HTTP** (`--http <port>`) — binds `0.0.0.0:<port>` and
 //!   exposes `POST /mcp` (the rmcp `StreamableHttpService` per MCP spec
 //!   2025-11-25) plus an unauthenticated `GET /healthz` probe for k8s /

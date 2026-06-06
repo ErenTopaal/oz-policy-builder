@@ -1,7 +1,7 @@
 //! MCP `prompts/list` + `prompts/get` surface.
 //!
 //! phase 5 Stream B owns the three wizard prompt templates that the
-//! anthropic agent skill (Phase 6) and other MCP clients pull from the
+//! agent skill and other mcp clients pull from the
 //! server. Each template hand-walks a user through one of the canonical
 //! flows in `plan.md` § Phase 5 Implementation → Prompts:
 //!
