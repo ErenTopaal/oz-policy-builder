@@ -1,38 +1,61 @@
-# Rust
+# rust
 target/
 **/*.rs.bk
-Cargo.lock.bak
+*.swp
 
-# Worktrees (managed by harness)
-.claude/worktrees/
-.worktrees/
-
-# Node
+# node / pnpm
 node_modules/
 dist/
 *.tsbuildinfo
 .pnpm-store/
 
-# Editor / OS
+# os / editor
 .DS_Store
 .vscode/
 .idea/
-*.swp
+*.iml
 
-# Local env / secrets
+# env / secrets
 .env
-.env.local
+.env.*
 *.local
+secrets/
 
-# Logs and tmp
+# logs / tmp
 *.log
 tmp/
+target-tmp/
 
-# Reproducible-build manifests are per-release artifacts (uploaded to the
-# GitHub release, not committed). See scripts/reproducible-build.sh and
-# .github/workflows/reproducible-build.yml.
+# build caches / manifests not committed
 reproducible-build-manifest-*.json
-# Docker-side cargo/target caches used by the reproducible-build workflow
-# when invoked locally with the recipe in docs/reproducible-build.md.
 .docker-cargo-home/
 .docker-target/
+
+# fuzz scratch
+crates/*/fuzz/corpus/
+crates/*/fuzz/artifacts/
+
+# worktrees
+.worktrees/
+.claude/worktrees/
+
+# project-specific docs / reports we don't publish
+*.md
+!README.md
+!LICENSE-APACHE
+!skills/**/*.md
+researches/
+audits/
+docs/
+plan.md
+STATUS.md
+HANDOFF.md
+CHANGELOG.md
+NOTICE
+completion.md
+
+# personal scratch / probes
+_probe*.mjs
+_probe*.ts
+_probe*.py
+scratch/
