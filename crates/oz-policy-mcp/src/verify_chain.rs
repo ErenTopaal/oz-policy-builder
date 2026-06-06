@@ -731,7 +731,7 @@ fn template_family_label(t: &TemplateFamily) -> &'static str {
 
 // tests — exercise the decoder + comparator with hand-built ScVal
 // fixtures. The simulate path itself is integration-tested through
-// `wallet-adapter/src/phase7_integration.test.ts`.
+// `wallet-adapter/src/integration.test.ts`.
 
 #[cfg(test)]
 mod tests {

@@ -70,7 +70,7 @@ tempfile = "=3.27.0"
 # sha2: integration test (`tests/minimal_compile.rs`) recomputes the
 # `wasm_hash_of_src` cache key for its hand-crafted RenderedCrate.
 sha2 = "=0.10.9"
-# serde_json: Phase 3 completion gate (`tests/phase3_completion.rs`)
+# serde_json: codegen completion gate (`tests/codegen_completion.rs`)
 # deserializes the frozen `walkthroughs/phase3-codegen-fixture/spec.json`
 # through `PolicySpec` and asserts byte-equality / hash pinning against
 # the committed expected artifacts.

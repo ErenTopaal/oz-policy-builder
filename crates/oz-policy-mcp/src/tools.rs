@@ -1171,7 +1171,7 @@ mod tests {
     // INPUT-LAYER gates (store miss → invalid_params; bogus RPC → typed
     // E_VERIFY_DRIFT). The decode + drift comparator are unit-tested
     // pure in `verify_chain::tests`; the end-to-end success path is
-    // integration-tested in `wallet-adapter/src/phase7_integration.test.ts`
+    // integration-tested in `wallet-adapter/src/integration.test.ts`
     // (INTEGRATION=1 gate; hits real testnet).
 
     /// bogus RPC URL → `E_VERIFY_DRIFT` with `rpc-readback-failed` detail.
