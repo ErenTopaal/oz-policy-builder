@@ -1,4 +1,4 @@
-# Phase 9 Stream A — cargo-fuzz harness for `oz-policy-codegen::render`.
+# cargo-fuzz harness for `oz-policy-codegen::render`.
 #
 # This crate is DELIBERATELY EXCLUDED from the workspace (`/Cargo.toml`
 # `[workspace] exclude = […]`) for two reasons:

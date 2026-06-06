@@ -33,9 +33,8 @@ const report: PlaceholderReport = {
   network: "testnet",
   status: "placeholder",
   error:
-    "Soroswap walkthrough corpus not yet frozen (Phase 8 dependency). " +
-    "TODO: implement once `walkthroughs/03-soroswap-bounded/recording.json` " +
-    "and `expected-spec-auto.json` land. See plan.md Phase 8.",
+    "soroswap example body not wired yet. " +
+    "todo: implement once the script mirrors 01/02.",
 };
 
 process.stdout.write(JSON.stringify(report, null, 2) + "\n");

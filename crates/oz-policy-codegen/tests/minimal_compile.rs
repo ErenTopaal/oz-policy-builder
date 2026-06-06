@@ -5,8 +5,8 @@
 //! end-to-end: it constructs a `RenderedCrate` whose `src/lib.rs` is a
 //! trivial-but-valid Soroban contract authored by hand against the pinned
 //! `soroban-sdk = 25.3.0` surface (the same API documented in the crate's
-//! README). The askama templates owned by Stream A are intentionally NOT
-//! used here — this test verifies the sandbox driver in isolation.
+//! README). The askama templates are intentionally NOT used here — this
+//! test verifies the sandbox driver in isolation.
 //!
 //! The test is `#[ignore]` because it requires:
 //!
@@ -17,9 +17,7 @@
 //!     `soroban-sdk-25.3.0.crate` (the very first build of the workspace
 //!     populates this).
 //!
-//! CI runs this only via `cargo nextest run --include-ignored`. Local
-//! confirmation (per `plan.md` Phase 3 verification gate) was performed
-//! once and the resulting WASM hash recorded in the Stream-B report.
+//! CI runs this only via `cargo nextest run --include-ignored`.
 
 use oz_policy_codegen::sandbox::{compile, RenderedCrate};
 use sha2::{Digest, Sha256};
@@ -39,7 +37,7 @@ fn hex(bytes: &[u8; 32]) -> String {
 /// that returns a constant. This is real Soroban code — it links against
 /// `soroban-sdk` and produces a valid `cdylib` WASM. We deliberately do
 /// NOT exercise the `Policy` trait here; that surface is the
-/// askama-template integration owned by Stream A.
+/// askama-template integration tested elsewhere.
 fn hand_crafted_rendered_crate() -> RenderedCrate {
     // The crate name MUST match the Cargo.toml `name = …` below; the
     // sandbox driver locates the built WASM by replacing `-` with `_`

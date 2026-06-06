@@ -1,6 +1,6 @@
 /**
  * verifyInstall — spawn mcp server, call `verify_install` tool, surface drift.
- * stdio only (matches what claude-desktop/cursor configs use).
+ * stdio only.
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";

@@ -18,7 +18,7 @@ oz-policy-core = { path = "../oz-policy-core" }
 # templates live at the workspace-root `templates/` dir, pointed to by
 # `crates/oz-policy-codegen/askama.toml`.
 askama = { workspace = true }
-# serde: used to derive `Serialize` on `RenderedCrate` so callers (Stream B
+# serde: used to derive `Serialize` on `RenderedCrate` so callers (the
 # sandbox driver, CLI codegen subcommand, MCP server) can echo a render
 # transcript to disk for audit purposes.
 serde = { workspace = true }

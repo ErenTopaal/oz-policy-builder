@@ -10,8 +10,7 @@
  *      envelope for the Blend `PolicySpec`. This will (currently) fail with
  *      `E_INSTALL_PREFLIGHT_FAILED('primitive_address_unknown ...')` because
  *      the per-network deployment registry of OZ primitive contracts hasn't
- *      shipped yet (see `crates/oz-policy-installer/src/registry.rs` and
- *      `plan.md` Phase 7's dependency notes).
+ *      shipped yet (see `crates/oz-policy-installer/src/registry.rs`).
  *   4. If `prepare-install` succeeded, sign with `PasskeyWallet` and submit.
  *   5. Print a single JSON report to stdout.
  *
@@ -49,9 +48,9 @@ const RPC_URL = "https://soroban-testnet.stellar.org";
 const NETWORK_PASSPHRASE = Networks.TESTNET; // "Test SDF Network ; September 2015"
 const FRIENDBOT_URL = "https://friendbot.stellar.org";
 
-// phase 1 frozen Blend recording lives here. We derive the spec by re-running
-// synthesize against the frozen recording (deterministic). The spec target
-// contract C-address is the Blend TestnetV2 pool from the walkthrough README.
+// frozen blend recording lives here. we derive the spec by re-running
+// synthesize against the frozen recording (deterministic). the spec target
+// contract c-address is the blend testnetv2 pool.
 const BLEND_RECORDING_PATH = "walkthroughs/01-blend-yield/expected-recording.json";
 const BLEND_POOL_CADDRESS = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
 
