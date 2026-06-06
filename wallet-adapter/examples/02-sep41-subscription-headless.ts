@@ -44,7 +44,7 @@ const RPC_URL = "https://soroban-testnet.stellar.org";
 const NETWORK_PASSPHRASE = Networks.TESTNET;
 const FRIENDBOT_URL = "https://friendbot.stellar.org";
 
-// Phase 1 frozen SEP-41 walkthrough.
+// phase 1 frozen SEP-41 walkthrough.
 const SEP41_RECORDING_PATH = "walkthroughs/02-sep41-subscription/recording.json";
 const SEP41_USDC_SAC = "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH";
 

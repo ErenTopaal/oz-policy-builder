@@ -67,9 +67,7 @@ import { verifyInstall } from "./verify.js";
 
 const execFileAsync = promisify(execFile);
 
-// -------------------------------------------------------------------------
-// Repository layout helpers.
-// -------------------------------------------------------------------------
+// repository layout helpers.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // src/phase7_integration.test.ts → wallet-adapter/ → repo root
@@ -89,29 +87,23 @@ const SPEC_PATH = join(
   "spec.json",
 );
 
-// -------------------------------------------------------------------------
-// Frozen testnet endpoint. Hard-coded so the test cannot accidentally hit
+// frozen testnet endpoint. Hard-coded so the test cannot accidentally hit
 // mainnet (the `network` discriminant in installPolicy also gates that).
-// -------------------------------------------------------------------------
 
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
 const TESTNET_PASSPHRASE = Networks.TESTNET; // "Test SDF Network ; September 2015"
 
-// -------------------------------------------------------------------------
 // SA owner secret seed (testnet only). Pulled from env so the literal
 // secret is NOT committed. The matching G-address
 // (GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ) is in the
 // fixture; the seed is held in the developer's local stellar keys store.
 // `INTEGRATION=1` runs in CI MUST supply this via the `PHASE7_SA_OWNER_SECRET`
 // env var (or the test will skip-with-failure to surface the missing input).
-// -------------------------------------------------------------------------
 
 const SA_OWNER_SECRET_ENV = "PHASE7_SA_OWNER_SECRET";
 
-// -------------------------------------------------------------------------
-// Fixture loader. Strict — any missing field surfaces immediately so the
+// fixture loader. Strict — any missing field surfaces immediately so the
 // test never silently runs against the wrong addresses.
-// -------------------------------------------------------------------------
 
 interface PhaseFixture {
   smart_account: string;
@@ -155,11 +147,9 @@ async function loadFixture(): Promise<PhaseFixture> {
   };
 }
 
-// -------------------------------------------------------------------------
-// Drive the prepare-install CLI to produce a real install envelope. We
+// drive the prepare-install CLI to produce a real install envelope. We
 // spawn the binary rather than re-implement the Phase 2 logic in JS so
 // the test exercises the same code path users hit.
-// -------------------------------------------------------------------------
 
 interface PreparedEnvelope {
   envelope_xdr_base64: string;
@@ -187,7 +177,7 @@ async function prepareInstallEnvelope(fx: PhaseFixture): Promise<PreparedEnvelop
     {
       // 60 s is conservative; the simulator usually returns within 5 s.
       timeout: 60_000,
-      // Inherit cwd from process; CLI_BIN is absolute.
+      // inherit cwd from process; CLI_BIN is absolute.
     },
   );
   void stderr; // CLI logs go to stderr; we don't assert on them.
@@ -198,9 +188,7 @@ async function prepareInstallEnvelope(fx: PhaseFixture): Promise<PreparedEnvelop
   return parsed;
 }
 
-// -------------------------------------------------------------------------
-// The actual integration test.
-// -------------------------------------------------------------------------
+// the actual integration test.
 
 describe.skipIf(process.env.INTEGRATION !== "1")(
   "Phase 7 Round 2 — testnet end-to-end install",
@@ -223,7 +211,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
         expect(fx.network).toBe("testnet");
         expect(fx.network_passphrase).toBe(TESTNET_PASSPHRASE);
         expect(fx.rpc_url).toBe(TESTNET_RPC);
-        // Pin the addresses so a corpus drift is caught before any RPC call.
+        // pin the addresses so a corpus drift is caught before any RPC call.
         expect(fx.smart_account).toBe(
           "CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A",
         );
@@ -242,8 +230,8 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
         expect(env.host_function_count).toBe(1);
         expect(env.min_resource_fee).toBeGreaterThan(0);
 
-        // Sanity: the envelope must round-trip through TransactionBuilder.
-        // Failures here would mean the CLI's emitted XDR is corrupt — not
+        // sanity: the envelope must round-trip through TransactionBuilder.
+        // failures here would mean the CLI's emitted XDR is corrupt — not
         // an on-chain problem but a Phase-2 regression.
         const rehydrated = TransactionBuilder.fromXDR(
           env.envelope_xdr_base64,
@@ -260,7 +248,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
         expect(await wallet.getAddress()).toBe(fx.sa_owner_pubkey);
 
         // ---------- 4. Submit (real RPC) -------------------------------------
-        // Phase 8 Stream B: wire the OZ-SA AuthPayload encoder so the
+        // phase 8 Stream B: wire the OZ-SA AuthPayload encoder so the
         // signed envelope's `SorobanAuthorizationEntry` targeting the SA
         // carries a properly encoded AuthPayload (rather than the
         // simulator's Void placeholder that traps __check_auth). The
@@ -296,7 +284,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
             ozAuthPayloadEncoder: ozEncoder,
           });
         } catch (err) {
-          // Any failure is now a real regression: the BLOCKER is closed
+          // any failure is now a real regression: the BLOCKER is closed
           // (RFP deliverable #5, 2026-05-18). Surface the failure shape
           // verbatim so we can diagnose what regressed.
           if (err instanceof WalletInstallError) {
@@ -317,7 +305,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
         // ---------- 5. SUCCESS assertions ------------------------------------
         expect(installResult.txHash).toMatch(/^[0-9a-f]{64}$/);
         expect(Number.isInteger(installResult.contextRuleId)).toBe(true);
-        // The bootstrap rule is id 0; this install MUST mint a new rule
+        // the bootstrap rule is id 0; this install MUST mint a new rule
         // (id ≥ 1). Asserting strictly > 0 catches any drift where the
         // installer accidentally rebinds the bootstrap rule.
         expect(installResult.contextRuleId).toBeGreaterThan(0);
@@ -329,7 +317,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
         );
 
         // ---------- 6. verifyInstall via real MCP on-chain readback ---------
-        // Load the canonical PolicySpec so verifyInstall can diff each
+        // load the canonical PolicySpec so verifyInstall can diff each
         // field. This is the same spec the prepare-install CLI consumed.
         const specRaw = await readFile(SPEC_PATH, "utf-8");
         const expectedSpec: unknown = JSON.parse(specRaw);
@@ -350,7 +338,7 @@ describe.skipIf(process.env.INTEGRATION !== "1")(
           JSON.stringify(report, null, 2),
         );
 
-        // The RFP-deliverable-5 closure assertion: the on-chain rule
+        // the RFP-deliverable-5 closure assertion: the on-chain rule
         // must match the spec field-for-field.
         expect(report.matches).toBe(true);
         expect(report.drift).toEqual([]);

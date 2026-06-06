@@ -1,17 +1,4 @@
-/**
- * `@oz-policy-builder/wallet-adapter` — public entry point.
- *
- * Stream A exposes:
- *  - SEP-43 shared types (`./sep43`)
- *  - Freighter (browser) adapter (`./adapters/freighter`)
- *
- * Stream B exposes:
- *  - passkey-kit / headless-keypair adapter (`./adapters/passkey`)
- *
- * Stream C exposes the high-level install/verify orchestration:
- *  - `installPolicy` + `WalletInstallError` (`./install`)
- *  - `verifyInstall` + `VerifyInstallReport` + `VerifyInstallError` (`./verify`)
- */
+/** public entry point — sep43 types, adapters, install + verify orchestration. */
 
 export {
   type SignAuthEntryParams,

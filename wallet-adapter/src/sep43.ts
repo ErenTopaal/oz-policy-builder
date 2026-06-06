@@ -1,17 +1,8 @@
 /**
- * SEP-43 (Draft v1.2.1) — Standard Web Wallet API Interface
- * Source: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0043.md
- *
- * Shared types Stream A authors. Streams B (passkey-kit adapter) and C
- * (install/verify orchestration) import from here — they do NOT redefine
- * these shapes.
- *
- * Design notes:
- * - We intentionally restrict `submit` to `false` (never auto-submit). Our
- *   install/verify pipeline owns submission so that simulate -> sign -> submit
- *   is an explicit, auditable sequence.
- * - `WalletErrorCode` numerics MUST match the SEP-43 spec (-1..-4) so that
- *   adapters can pass through the wallet's native `code` field unchanged.
+ * SEP-43 web-wallet api types.
+ * https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0043.md
+ * we restrict `submit` to `false` — install/verify owns submission so the
+ * simulate → sign → submit sequence is auditable.
  */
 
 /** Options accepted by {@link WalletAdapter.signTransaction}. */
@@ -73,17 +64,7 @@ export interface WalletAdapter {
   ): Promise<SignAuthEntryResult>;
 }
 
-/**
- * Canonical SEP-43 error codes (Draft v1.2.1, §"Errors").
- *
- * - `Internal` (-1): wallet-internal failure, e.g. a JS runtime error inside
- *   the extension.
- * - `ExternalService` (-2): an upstream service (Horizon, RPC, etc.) returned
- *   an error to the wallet.
- * - `InvalidRequest` (-3): client passed malformed input, e.g. invalid XDR.
- * - `UserRejected` (-4): the user explicitly declined. Clients SHOULD NOT
- *   retry without user action.
- */
+/** sep-43 error codes (must stay -1..-4 to round-trip native wallet codes). */
 export enum WalletErrorCode {
   Internal = -1,
   ExternalService = -2,
@@ -91,24 +72,15 @@ export enum WalletErrorCode {
   UserRejected = -4,
 }
 
-/**
- * Thrown by adapters when a wallet operation fails. Adapters MUST map the
- * underlying wallet's native error onto one of {@link WalletErrorCode} so
- * that consumers can handle errors uniformly.
- */
+/** thrown when a wallet op fails. adapters map native codes onto WalletErrorCode. */
 export class WalletError extends Error {
-  /**
-   * @param code SEP-43 numeric code (one of {@link WalletErrorCode}).
-   * @param detail Human-readable detail from the underlying wallet.
-   */
   constructor(
     public readonly code: WalletErrorCode,
     public readonly detail: string,
   ) {
     super(`[wallet:${code}] ${detail}`);
     this.name = "WalletError";
-    // Restore prototype chain when transpiled down — needed for `instanceof`
-    // to work across module boundaries in some bundlers.
+    // restore prototype chain so `instanceof` works across bundle boundaries.
     Object.setPrototypeOf(this, WalletError.prototype);
   }
 }

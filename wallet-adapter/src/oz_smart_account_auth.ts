@@ -1,63 +1,16 @@
 /**
- * OpenZeppelin SmartAccount `AuthPayload` ScVal encoder + auth-digest
- * computer + full `SorobanAuthorizationEntry` builder.
+ * OZ SmartAccount AuthPayload encoder + auth-digest + auth-entry builder.
  *
- * **Phase 8 Stream B.** Closes the Phase 7 Round 2 BLOCKER documented in
- * `walkthroughs/phase7-testnet-install/BLOCKER.md`:
+ * the OZ MinimalSmartAccount __check_auth reads args[1] as
+ * AuthPayload { signers: Map<Signer, Bytes>, context_rule_ids: Vec<u32> }.
+ * simulator emits Void there (traps with UnreachableCodeReached); this module
+ * post-processes the entry into a real AuthPayload ScVal and computes the
+ * post-PR-#655 auth digest signers must actually sign.
  *
- *   The OZ MinimalSmartAccount's `__check_auth` reads its second positional
- *   argument as `AuthPayload { signers: Map<Signer, Bytes>, context_rule_ids:
- *   Vec<u32> }`. The `record_signature_payload` simulator mode emits `Void`
- *   in that slot — which traps the SA with `UnreachableCodeReached`. This
- *   module is the client-side post-processor that converts a Void-signature
- *   auth entry into a properly encoded `AuthPayload` ScVal, plus computes
- *   the post-PR-#655 auth digest each signer must actually sign.
- *
- * ## Shapes (verified against source — see `docs/oz-internal-shapes.md` §10
- * which transcribes `OpenZeppelin/stellar-contracts@v0.7.1`)
- *
- * ```rust
- * #[contracttype]
- * pub struct AuthPayload {
- *     pub signers: Map<Signer, Bytes>,
- *     pub context_rule_ids: Vec<u32>,
- * }
- *
- * #[contracttype]
- * pub enum Signer {
- *     Delegated(Address),
- *     External(Address, Bytes),
- * }
- * ```
- *
- * Soroban encodes `#[contracttype]` structs as `ScVal::Map([{Symbol(field),
- * <value>}, ...])` with entries **sorted ascending by field name** (the
- * host's `ScMap` invariant). For `AuthPayload`, that yields
- * `["context_rule_ids", "signers"]` in that order.
- *
- * Soroban encodes `#[contracttype]` enums as `ScVal::Vec([Symbol(variant),
- * <field0>, <field1>, ...])`. For `Signer::Delegated(addr)`, that's
- * `Vec([Symbol("Delegated"), Address(addr)])`.
- *
- * ## Auth digest (post-PR-#655)
- *
- * From `packages/accounts/src/smart_account/storage.rs:493-495` (verified
- * verbatim in `docs/oz-internal-shapes.md` §10):
- *
- * ```rust
- * let mut preimage = signature_payload.to_bytes().to_bytes();
- * preimage.append(&signatures.context_rule_ids.clone().to_xdr(e));
- * let auth_digest = e.crypto().sha256(&preimage);
- * ```
- *
- * - `signature_payload` is the standard 32-byte Soroban auth signature
- *   payload, i.e. `sha256(HashIdPreimageSorobanAuthorization.to_xdr())`
- *   (see `stellar-xdr` `EnvelopeType::SorobanAuthorization`).
- * - `context_rule_ids.clone().to_xdr(e)` is the XDR encoding of
- *   `ScVal::Vec(Some([ScVal::U32(id), ...]))`.
- * - `auth_digest = sha256(signature_payload || xdr(context_rule_ids_scval))`.
- *
- * Signers sign `auth_digest`, NOT the raw `signature_payload`.
+ * AuthPayload struct fields sort ascending: [context_rule_ids, signers].
+ * Signer enum: Vec([Symbol(variant), addr, ...]).
+ * auth_digest = sha256(signature_payload || xdr(context_rule_ids_scval)).
+ * signers sign auth_digest, NOT signature_payload.
  */
 
 import { createHash } from "node:crypto";
@@ -68,9 +21,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+// public types
 
 /**
  * Logical representation of the `Signer` enum from
@@ -94,9 +45,7 @@ export interface OzAuthPayload {
   contextRuleIds: number[];
 }
 
-// ---------------------------------------------------------------------------
-// Encoding helpers
-// ---------------------------------------------------------------------------
+// encoding helpers
 
 /** Coerce `Uint8Array | Buffer` to a Node `Buffer` (stellar-sdk requires Buffer). */
 function toBuf(b: Uint8Array | Buffer): Buffer {
@@ -171,7 +120,7 @@ export function encodeAuthPayload(payload: OzAuthPayload): xdr.ScVal {
       });
     },
   );
-  // Sort the inner Map<Signer, Bytes> by the XDR-serialised key bytes —
+  // sort the inner Map<Signer, Bytes> by the XDR-serialised key bytes —
   // this matches the host's `ScMap` ordering invariant.
   signerEntries.sort((a, b) =>
     Buffer.compare(a.key().toXDR(), b.key().toXDR()),
@@ -179,7 +128,7 @@ export function encodeAuthPayload(payload: OzAuthPayload): xdr.ScVal {
   const signersScVal = xdr.ScVal.scvMap(signerEntries);
 
   // ---- outer struct map (sorted by field name) --------------------------
-  // The `#[contracttype]` struct layout is keyed by field name, sorted
+  // the `#[contracttype]` struct layout is keyed by field name, sorted
   // ascending lexicographically. For AuthPayload: "context_rule_ids" <
   // "signers".
   const outerEntries: xdr.ScMapEntry[] = [
@@ -196,9 +145,7 @@ export function encodeAuthPayload(payload: OzAuthPayload): xdr.ScVal {
   return xdr.ScVal.scvMap(outerEntries);
 }
 
-// ---------------------------------------------------------------------------
-// Auth digest
-// ---------------------------------------------------------------------------
+// auth digest
 
 /** SHA-256 over the concatenation of its arguments (Node `crypto`). */
 function sha256(...chunks: Array<Uint8Array | Buffer>): Buffer {
@@ -265,9 +212,7 @@ export function computeSignaturePayload(params: {
   return sha256(preimage.toXDR());
 }
 
-// ---------------------------------------------------------------------------
-// Full auth-entry builder
-// ---------------------------------------------------------------------------
+// full auth-entry builder
 
 /** Either a real {@link Keypair} or an opaque ed25519 signer function. */
 export interface OzSignerWithKey {
@@ -349,7 +294,7 @@ export function makeOzSmartAccountAuthEncoder(args: {
 }): (envelopeXdrBase64: string) => Promise<string> {
   return async (envelopeXdrBase64: string): Promise<string> => {
     const env = xdr.TransactionEnvelope.fromXDR(envelopeXdrBase64, "base64");
-    // Only Soroban v1 envelopes carry InvokeHostFunctionOp + auth.
+    // only Soroban v1 envelopes carry InvokeHostFunctionOp + auth.
     if (env.switch() !== xdr.EnvelopeType.envelopeTypeTx()) {
       throw new Error(
         `makeOzSmartAccountAuthEncoder: expected envelopeTypeTx, got ${env.switch().name}`,
@@ -358,17 +303,17 @@ export function makeOzSmartAccountAuthEncoder(args: {
     const v1 = env.v1();
     const tx = v1.tx();
     const ops = tx.operations();
-    // Append ContextRuleData(<id>) read_only footprint entries for each
+    // append ContextRuleData(<id>) read_only footprint entries for each
     // rule used to authorise — Soroban's recording-mode simulator
     // doesn't discover these because it shims out `__check_auth`'s
     // storage reads. Without these entries the enforce-mode host trap
     // would fire with `outside the footprint` on `has_contract_data(
-    // ContextRuleData(<id>))`. See
+    // contextRuleData(<id>))`. See
     // walkthroughs/phase7-testnet-install/CLOSURE_ATTEMPT_2026-05-18.md
     // for the live testnet repro.
     appendContextRuleDataToFootprint(tx, args.smartAccount, args.contextRuleIds);
-    // Also append the Account ledger entries for each Delegated signer.
-    // The host's enforce-mode `account_authentication` reads the account
+    // also append the Account ledger entries for each Delegated signer.
+    // the host's enforce-mode `account_authentication` reads the account
     // entry to fetch the ED25519 public key for signature verification;
     // recording mode shims that out so the footprint is missing them.
     const delegatedGs: string[] = [];
@@ -376,14 +321,14 @@ export function makeOzSmartAccountAuthEncoder(args: {
       if (s.signer.kind === "delegated") delegatedGs.push(s.signer.address);
     }
     appendAccountEntriesToFootprint(tx, delegatedGs);
-    // For each nested Account-credentials auth entry, the host also
+    // for each nested Account-credentials auth entry, the host also
     // reads a `LedgerKeyContractData(<G>, LedgerKeyNonce(<nonce>),
     // temporary)` to consume the nonce. We compute the per-G nonce the
     // same way `makeOzSmartAccountAuthEncoder` does (sa_nonce + index
     // offset) so the footprint key matches the actual host read.
     const saNoncesByIndex = collectSaNonces(tx, args.smartAccount);
     appendNonceEntriesToFootprint(tx, delegatedGs, saNoncesByIndex);
-    // Bump the `readBytes` budget + instruction count + fee to cover
+    // bump the `readBytes` budget + instruction count + fee to cover
     // the entries we just added.
     const addedEntries =
       args.contextRuleIds.length +
@@ -399,7 +344,7 @@ export function makeOzSmartAccountAuthEncoder(args: {
       const targetAddr = new Address(args.smartAccount).toScAddress();
       const targetXdr = targetAddr.toXDR();
       const newAuths: xdr.SorobanAuthorizationEntry[] = [];
-      // Track the nested Delegated-signer entries we need to APPEND for
+      // track the nested Delegated-signer entries we need to APPEND for
       // each rewritten SA entry — `__check_auth` calls
       // `addr.require_auth_for_args((auth_digest,))` for each
       // `Signer::Delegated(addr)` entry it observes, and the host
@@ -420,7 +365,7 @@ export function makeOzSmartAccountAuthEncoder(args: {
           newAuths.push(a);
           continue;
         }
-        // Compute the auth digest the SA's `__check_auth` uses (signature
+        // compute the auth digest the SA's `__check_auth` uses (signature
         // payload XOR'd with context_rule_ids per OZ PR-#655 — see
         // computeAuthDigest doc). Both the SA AuthPayload signature AND
         // the nested Account-auth `__check_auth(auth_digest)` arg need
@@ -438,7 +383,7 @@ export function makeOzSmartAccountAuthEncoder(args: {
           args.contextRuleIds,
         );
 
-        // Match — rewrite.
+        // match — rewrite.
         const replaced = await buildOzAuthEntry({
           rootInvocation: a.rootInvocation(),
           smartAccount: args.smartAccount,
@@ -449,7 +394,7 @@ export function makeOzSmartAccountAuthEncoder(args: {
           signatureExpirationLedger: saExp,
         });
         newAuths.push(replaced);
-        // For every Delegated(G) signer with a Keypair on hand, emit
+        // for every Delegated(G) signer with a Keypair on hand, emit
         // the nested entry that satisfies the `G.require_auth_for_args(
         // auth_digest)` call inside `__check_auth`. Each nested entry
         // uses a DERIVED nonce (sa_nonce + per-signer offset) so two
@@ -480,7 +425,7 @@ export function makeOzSmartAccountAuthEncoder(args: {
         }
         rewroteAny = true;
       }
-      // Append all nested entries AFTER the rewritten ones — order
+      // append all nested entries AFTER the rewritten ones — order
       // doesn't matter for the host, but keeping SA entries first
       // matches what the simulator's record mode would produce.
       for (const ne of nestedEntries) newAuths.push(ne);
@@ -539,7 +484,7 @@ function buildDelegatedAccountAuthEntry(params: {
   signatureExpirationLedger: number;
   networkPassphrase: string;
 }): xdr.SorobanAuthorizationEntry {
-  // The host's auth-tree matcher (`maybe_extend_invocation_match` in
+  // the host's auth-tree matcher (`maybe_extend_invocation_match` in
   // `soroban-env-host-25.0.1/src/auth.rs:1663`) only checks the entry's
   // ROOT invocation directly: `root_authorized_invocation.function ==
   // function` where `function` is built from the CURRENT call frame's
@@ -683,10 +628,10 @@ function bumpReadBytesBudget(tx: xdr.Transaction, addBytes: number): void {
   if (Number(ext.switch()) !== 1) return;
   const sorobanData = ext.sorobanData();
   const resources = sorobanData.resources();
-  // Bump readBytes for the extra footprint entries.
+  // bump readBytes for the extra footprint entries.
   const currentRead = resources.readBytes();
   resources.readBytes(currentRead + addBytes);
-  // Bump writeBytes too — the host's enforce-mode auth path may need
+  // bump writeBytes too — the host's enforce-mode auth path may need
   // to write a fresh TTL entry for the consumed nonce, plus the
   // simulator's recording walker under-counts the write footprint for
   // the SA's storage map updates that happen after auth succeeds.
@@ -694,7 +639,7 @@ function bumpReadBytesBudget(tx: xdr.Transaction, addBytes: number): void {
   // budget cap (130 KiB).
   const currentWrite = resources.writeBytes();
   resources.writeBytes(currentWrite + 2048);
-  // Bump instructions to account for the runtime cost of the auth
+  // bump instructions to account for the runtime cost of the auth
   // path that the simulator's recording shim under-counted. The shim
   // skipped __check_auth's body, so the enforce-mode pass needs the
   // headroom — 5 million instructions is generous enough to cover an
@@ -702,7 +647,7 @@ function bumpReadBytesBudget(tx: xdr.Transaction, addBytes: number): void {
   // contract data reads, and well under the per-op cap (100M).
   const currentInstr = resources.instructions();
   resources.instructions(currentInstr + 5_000_000);
-  // The resource_fee covers cpu/bytes/storage — bump it generously.
+  // the resource_fee covers cpu/bytes/storage — bump it generously.
   // 200,000 stroops (~$0.002 USD per submission) is plenty for the
   // extra ED25519 verifies + a handful of contract-data reads.
   const feeBumpStroops = 200_000;
@@ -710,7 +655,7 @@ function bumpReadBytesBudget(tx: xdr.Transaction, addBytes: number): void {
   sorobanData.resourceFee(
     new xdr.Int64(currentFee + BigInt(feeBumpStroops)),
   );
-  // Also bump the tx envelope's `fee` (= resource_fee + inclusion_fee)
+  // also bump the tx envelope's `fee` (= resource_fee + inclusion_fee)
   // so the outer fee check passes.
   const txFee = tx.fee();
   tx.fee(txFee + feeBumpStroops);
@@ -858,7 +803,7 @@ function appendContextRuleDataToFootprint(
     });
     const lk = xdr.LedgerKey.contractData(key);
     const lkXdr = lk.toXDR();
-    // Dedup: skip if an entry with the same XDR-encoded key is present.
+    // dedup: skip if an entry with the same XDR-encoded key is present.
     const already = readOnly.some(
       (existing) => Buffer.compare(existing.toXDR(), lkXdr) === 0,
     );

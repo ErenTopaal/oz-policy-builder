@@ -1,20 +1,6 @@
 /**
- * `verifyInstall` — call the MCP `verify_install` tool via a subprocess
- * and surface its structured drift report.
- *
- * Phase 7 Stream C. The implementation drives a real JSON-RPC session
- * over `child_process.spawn(...)` STDIO — there is no in-process
- * shortcut. This keeps the wire format the same as what
- * `claude_desktop_config.json` / `cursor settings.json` use when they
- * spawn the server themselves, which means the failure modes (server
- * panic, JSON-RPC parse error, malformed tool response) are covered by
- * the test surface here AND by the MCP integration tests
- * (`crates/oz-policy-mcp/tests/stdio_smoke.rs`).
- *
- * Browser flows that want to call the MCP server via the Streamable
- * HTTP transport (Phase 5 Stream C — `POST /mcp` with bearer auth)
- * should add a sibling `verifyInstallHttp` helper in a future commit;
- * the v1 API mirrors `mcpServerCmd` for clarity.
+ * verifyInstall — spawn mcp server, call `verify_install` tool, surface drift.
+ * stdio only (matches what claude-desktop/cursor configs use).
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
@@ -29,31 +15,11 @@ export interface VerifyInstallParams {
   network: "testnet" | "mainnet";
   /** Soroban RPC URL the MCP server will hit. */
   rpcUrl: string;
-  /**
-   * Optional `PolicySpec` for diff comparison. When omitted, the MCP
-   * server returns `matches: true` with empty drift as soon as the
-   * on-chain rule is confirmed to exist.
-   *
-   * The shape is opaque here so this package does not need to take a
-   * dependency on every internal type. Stream A/B's TypeScript codegen
-   * (Phase 6, future) will tighten this to a typed import.
-   */
+  /** optional PolicySpec for diff. omitted → matches: true on existence only. */
   expectedSpec?: unknown;
-  /**
-   * Funded source-account G-strkey used by the MCP server when it
-   * simulates `SA.get_context_rule(rule_id)`. Required because the
-   * SA itself is a contract (no account record) and the simulator
-   * needs a real account's sequence number. The integration test
-   * passes the SA owner's G-key here.
-   */
+  /** funded G-strkey used by the mcp server to simulate `SA.get_context_rule`. */
   sourceAccount?: string;
-  /**
-   * Command + args used to spawn the MCP server. Default:
-   * `['cargo', 'run', '-p', 'oz-policy-mcp', '--', '--stdio']`.
-   *
-   * For CI without cargo, pass the path to a precompiled binary, e.g.
-   * `['./target/release/oz-policy-mcp', '--stdio']`.
-   */
+  /** mcp server spawn command, default `['cargo', 'run', '-p', 'oz-policy-mcp', '--', '--stdio']`. */
   mcpServerCmd?: string[];
   /**
    * Timeout (ms) for the entire MCP session (initialize +
@@ -256,12 +222,12 @@ function parseVerifyResult(result: unknown): VerifyInstallReport {
   }
   const r = result as Record<string, unknown>;
 
-  // Prefer typed `structuredContent` (MCP-2025-11-25).
+  // prefer typed `structuredContent` (MCP-2025-11-25).
   if (r.structuredContent && typeof r.structuredContent === "object") {
     return validateReport(r.structuredContent, "structuredContent");
   }
 
-  // Fallback: extract the first `text` content entry and JSON-parse.
+  // fallback: extract the first `text` content entry and JSON-parse.
   const content = r.content;
   if (Array.isArray(content)) {
     for (const item of content) {
@@ -341,9 +307,7 @@ function validateReport(
   return { matches: r.matches, drift };
 }
 
-// =====================================================================
 // MCP STDIO session driver.
-// =====================================================================
 
 /** JSON-RPC 2.0 request/notification envelope. */
 interface JsonRpcRequest {
@@ -388,7 +352,7 @@ class McpStdioSession {
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.onStdoutChunk(chunk));
     child.stderr.on("data", (chunk: string) => {
-      // Cap captured stderr so a chatty server can't OOM the runner.
+      // cap captured stderr so a chatty server can't OOM the runner.
       const max = 16_384;
       if (this.stderr.length < max) {
         this.stderr += chunk.slice(0, max - this.stderr.length);
@@ -492,7 +456,7 @@ class McpStdioSession {
   private onStdoutChunk(chunk: string): void {
     this.buf += chunk;
     this.pendingByteCount += chunk.length;
-    // Cap the buffer at 4 MiB to avoid runaway memory on a misbehaving server.
+    // cap the buffer at 4 MiB to avoid runaway memory on a misbehaving server.
     const MAX_BUF = 4 * 1024 * 1024;
     if (this.pendingByteCount > MAX_BUF) {
       const err = new VerifyInstallError(
@@ -519,7 +483,7 @@ class McpStdioSession {
     try {
       parsed = JSON.parse(line);
     } catch (e) {
-      // Don't fail the whole session on a non-JSON line — rmcp's STDIO
+      // don't fail the whole session on a non-JSON line — rmcp's STDIO
       // transport only writes JSON-RPC frames, but a misbehaving server
       // (panic, log misroute) could emit a stray line. We surface this
       // as a session-level error only if no response ever comes through.
@@ -534,7 +498,7 @@ class McpStdioSession {
     if (parsed === null || typeof parsed !== "object") return;
     const p = parsed as Record<string, unknown>;
     if (typeof p.id !== "number" && typeof p.id !== "string") {
-      // Notification or invalid response — ignore.
+      // notification or invalid response — ignore.
       return;
     }
     const id = p.id as number | string;

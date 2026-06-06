@@ -140,9 +140,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// =====================================================================
 // installPolicy happy path
-// =====================================================================
 
 describe("installPolicy — happy path", () => {
   it("returns { txHash, contextRuleId, ledger } extracted from RPC + return value", async () => {
@@ -156,7 +154,7 @@ describe("installPolicy — happy path", () => {
       latestLedger: 100_000,
       latestLedgerCloseTime: 1_700_000_000,
     });
-    // The opaque ScVal returned by getTransaction.returnValue. The
+    // the opaque ScVal returned by getTransaction.returnValue. The
     // `scValToNative` mock will turn this into the canonical object.
     const fakeScVal = { __kind: "scval" } as unknown;
     getTransactionMock.mockResolvedValue({
@@ -201,19 +199,19 @@ describe("installPolicy — happy path", () => {
       ledger: 100_042,
     });
 
-    // Adapter received the unsigned envelope + passphrase verbatim.
+    // adapter received the unsigned envelope + passphrase verbatim.
     expect(adapter.signTransaction).toHaveBeenCalledWith(ENVELOPE_XDR_B64, {
       networkPassphrase: TESTNET_PASSPHRASE,
     });
-    // The signed XDR (NOT the unsigned) went through fromXDR.
+    // the signed XDR (NOT the unsigned) went through fromXDR.
     expect(fromXdrMock).toHaveBeenCalledWith(
       SIGNED_TX_XDR_B64,
       TESTNET_PASSPHRASE,
     );
-    // The reconstructed tx went through sendTransaction.
+    // the reconstructed tx went through sendTransaction.
     expect(sendTransactionMock).toHaveBeenCalledTimes(1);
     expect(sendTransactionMock).toHaveBeenCalledWith({ __kind: "fake-tx" });
-    // We invoked the canonical extractor with the actual ScVal payload.
+    // we invoked the canonical extractor with the actual ScVal payload.
     expect(scValToNativeMock).toHaveBeenCalledWith(fakeScVal);
   });
 
@@ -270,9 +268,7 @@ describe("installPolicy — happy path", () => {
   });
 });
 
-// =====================================================================
 // installPolicy error branches
-// =====================================================================
 
 describe("installPolicy — error branches", () => {
   it("re-throws WalletError(UserRejected) as WalletInstallError(E_WALLET_REJECTED)", async () => {
@@ -294,7 +290,7 @@ describe("installPolicy — error branches", () => {
       code: "E_WALLET_REJECTED",
       detail: "user declined",
     });
-    // Critically: we never hit the RPC.
+    // critically: we never hit the RPC.
     expect(sendTransactionMock).not.toHaveBeenCalled();
     expect(getTransactionMock).not.toHaveBeenCalled();
   });
@@ -339,7 +335,7 @@ describe("installPolicy — error branches", () => {
       code: "E_INSTALL_SUBMIT_FAILED",
       detail: expect.stringContaining("status=ERROR"),
     });
-    // We never reached getTransaction.
+    // we never reached getTransaction.
     expect(getTransactionMock).not.toHaveBeenCalled();
   });
 
@@ -442,7 +438,7 @@ describe("installPolicy — error branches", () => {
     await expect(promise).rejects.toMatchObject({
       code: "E_INSTALL_POLL_TIMEOUT",
     });
-    // We polled at least twice before giving up.
+    // we polled at least twice before giving up.
     expect(getTransactionMock.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -488,9 +484,7 @@ describe("installPolicy — error branches", () => {
   });
 });
 
-// =====================================================================
 // ozAuthPayloadEncoder hook
-// =====================================================================
 
 describe("installPolicy — ozAuthPayloadEncoder hook", () => {
   it("wipes op.auth[], re-simulates, runs encoder, then wallet signs (RFP #5)", async () => {
@@ -505,7 +499,7 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
       await vi.importActual<typeof import("@stellar/stellar-sdk")>(
         "@stellar/stellar-sdk",
       );
-    // Build a minimal real Soroban v1 envelope so `clearOpAuthEntries`'
+    // build a minimal real Soroban v1 envelope so `clearOpAuthEntries`'
     // XDR-decode path runs over real bytes (the wipe-and-resimulate
     // pipeline parses the envelope before passing to the encoder).
     const sourceKp = real.Keypair.random();
@@ -542,10 +536,10 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
       return assembledXdrCaptured;
     };
     fromXdrMock.mockImplementation((_xdrIn: string) => {
-      // The install path calls fromXDR twice: once on the wiped
+      // the install path calls fromXDR twice: once on the wiped
       // envelope (must be a real Transaction so `instanceof` check
       // passes) and once on the wallet's signed XDR (any opaque).
-      // We return a real-prototype object for both — the wallet-
+      // we return a real-prototype object for both — the wallet-
       // signed path uses sendTransaction which just forwards.
       return Object.create(
         real.Transaction.prototype,
@@ -602,7 +596,7 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
       ozAuthPayloadEncoder: encoder,
     });
 
-    // Pipeline ordering:
+    // pipeline ordering:
     //   1. `clearOpAuthEntries` produces a wiped envelope.
     //   2. `simulateTransaction` is called once on the wiped tx.
     //   3. `assembleTransaction` is called once to bake sim results.
@@ -639,7 +633,7 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
       .setTimeout(0)
       .build()
       .toXDR();
-    // The wipe + re-simulate path runs BEFORE the encoder, so we need
+    // the wipe + re-simulate path runs BEFORE the encoder, so we need
     // working mocks for simulateTransaction + assembleTransaction even
     // though we expect the encoder itself to throw.
     fromXdrMock.mockImplementation(() =>
@@ -688,9 +682,7 @@ describe("installPolicy — ozAuthPayloadEncoder hook", () => {
   });
 });
 
-// =====================================================================
-// Mainnet consent guard
-// =====================================================================
+// mainnet consent guard
 
 describe("installPolicy — mainnet consent", () => {
   it("throws E_MAINNET_REQUIRES_CONSENT when network=mainnet without confirmMainnet", async () => {
@@ -755,9 +747,7 @@ describe("installPolicy — mainnet consent", () => {
   });
 });
 
-// =====================================================================
 // extractContextRuleId — direct unit tests (the load-bearing decoder)
-// =====================================================================
 
 describe("extractContextRuleId", () => {
   it("returns the integer id from a well-formed native ContextRule", () => {

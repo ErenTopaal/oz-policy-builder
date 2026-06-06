@@ -118,7 +118,7 @@ export class PasskeyWallet implements WalletAdapter {
       try {
         this.headlessKeypair = Keypair.fromSecret(opts.signerSecretKey);
       } catch (err) {
-        // Wrap stellar-sdk's "invalid version byte" / "invalid checksum" into
+        // wrap stellar-sdk's "invalid version byte" / "invalid checksum" into
         // a SEP-43 InvalidRequest so consumers see a consistent shape.
         const detail =
           err instanceof Error ? err.message : "invalid signerSecretKey";
@@ -236,7 +236,7 @@ export class PasskeyWallet implements WalletAdapter {
         "passkey-only PasskeyWallet signAuthEntry not yet wired; supply signerSecretKey for headless path",
       );
     }
-    // Validate the XDR by attempting to decode; we don't actually transform
+    // validate the XDR by attempting to decode; we don't actually transform
     // the entry here (the headless G-account path doesn't need smart-wallet
     // wrapping). The validation surfaces malformed input as InvalidRequest.
     if (!authEntryXdr || typeof authEntryXdr !== "string") {
@@ -245,7 +245,7 @@ export class PasskeyWallet implements WalletAdapter {
         "authEntryXdr must be a non-empty base64 string",
       );
     }
-    // The passphrase is captured into the SHA-256 preimage that real
+    // the passphrase is captured into the SHA-256 preimage that real
     // smart-wallet __check_auth implementations verify against; we sign the
     // raw payload bytes here (the consumer is responsible for any further
     // wrapping). This deliberately mirrors the "I am a G-account credential"

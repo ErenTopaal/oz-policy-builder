@@ -136,7 +136,7 @@ describe("PasskeyWallet.signTransaction (headless)", () => {
     );
 
     // 3. The XDR decodes to a `TransactionEnvelope` with at least one signature.
-    //    We pull it back through stellar-sdk to prove it's structurally valid.
+    //    we pull it back through stellar-sdk to prove it's structurally valid.
     const reconstructed = TransactionBuilder.fromXDR(
       signedTxXdr,
       NETWORK_PASSPHRASE,
@@ -195,7 +195,7 @@ describe("PasskeyWallet.signAuthEntry (headless)", () => {
       signerSecretKey: kp.secret(),
     });
 
-    // Any base64 string works for the headless smoke path — we sign the bytes.
+    // any base64 string works for the headless smoke path — we sign the bytes.
     const payload = Buffer.from("auth-entry-bytes", "utf-8").toString("base64");
     const { signedAuthEntry, signerAddress } = await wallet.signAuthEntry(
       payload,
@@ -206,7 +206,7 @@ describe("PasskeyWallet.signAuthEntry (headless)", () => {
     // ed25519 signatures are 64 bytes; base64-encoded that's 88 chars.
     expect(signedAuthEntry!.length).toBeGreaterThanOrEqual(80);
 
-    // The signature must verify against the keypair.
+    // the signature must verify against the keypair.
     const sig = Buffer.from(signedAuthEntry!, "base64");
     const verifies = kp.verify(Buffer.from(payload, "base64"), sig);
     expect(verifies).toBe(true);
@@ -228,7 +228,7 @@ describe("PasskeyWallet.signAuthEntry (headless)", () => {
 
 describe.skip("PasskeyWallet (WebAuthn / passkey path)", () => {
   // TODO: cover in Phase 7 Round 2 with playwright + virtual authenticator.
-  // Requires browser + CDP `WebAuthn.addVirtualAuthenticator` per
+  // requires browser + CDP `WebAuthn.addVirtualAuthenticator` per
   // https://chromedevtools.github.io/devtools-protocol/tot/WebAuthn/.
   it("signs an auth entry via PasskeyKit.sign", () => {
     // intentionally empty — see TODO above.

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WalletError, WalletErrorCode } from "../sep43.js";
 
-// Mock the freighter-api module BEFORE importing the adapter so that the
+// mock the freighter-api module BEFORE importing the adapter so that the
 // adapter's top-level imports bind to the mock. Vitest hoists `vi.mock`
 // calls to the top of the file automatically.
 vi.mock("@stellar/freighter-api", () => ({
@@ -12,7 +12,7 @@ vi.mock("@stellar/freighter-api", () => ({
   signAuthEntry: vi.fn(),
 }));
 
-// These imports MUST come after `vi.mock` so the mock is bound.
+// these imports MUST come after `vi.mock` so the mock is bound.
 import {
   getAddress,
   isConnected,

@@ -49,13 +49,13 @@ const RPC_URL = "https://soroban-testnet.stellar.org";
 const NETWORK_PASSPHRASE = Networks.TESTNET; // "Test SDF Network ; September 2015"
 const FRIENDBOT_URL = "https://friendbot.stellar.org";
 
-// Phase 1 frozen Blend recording lives here. We derive the spec by re-running
+// phase 1 frozen Blend recording lives here. We derive the spec by re-running
 // synthesize against the frozen recording (deterministic). The spec target
 // contract C-address is the Blend TestnetV2 pool from the walkthrough README.
 const BLEND_RECORDING_PATH = "walkthroughs/01-blend-yield/expected-recording.json";
 const BLEND_POOL_CADDRESS = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
 
-// Path to the workspace-root binary. We assume the binary has been built
+// path to the workspace-root binary. We assume the binary has been built
 // (`cargo build -p oz-policy-cli`). The example surfaces the build state
 // honestly — if the binary doesn't exist we report `network_error` (the
 // shorthand status bucket for any "couldn't even get to RPC" outcome).
@@ -73,7 +73,7 @@ async function fundViaFriendbot(address: string): Promise<void> {
 }
 
 async function synthesize(workdir: string, recordingPath: string): Promise<string> {
-  // Run `oz-policy-cli synthesize <recording>` to produce a PolicySpec JSON.
+  // run `oz-policy-cli synthesize <recording>` to produce a PolicySpec JSON.
   const { stdout } = await execFileAsync(CLI_BIN, [
     "synthesize",
     "--mode",
@@ -108,7 +108,7 @@ async function prepareInstall(
     "post-pr-655",
   ]);
   const artifact = JSON.parse(stdout);
-  // Field name is whatever `EnvelopeArtifact` serializes to; we accept
+  // field name is whatever `EnvelopeArtifact` serializes to; we accept
   // either `envelope_xdr` (snake) or `envelopeXdr` (camel) for resilience.
   const envelopeXdr =
     artifact.envelope_xdr ?? artifact.envelopeXdr ?? artifact.envelope;
@@ -121,7 +121,7 @@ async function prepareInstall(
 }
 
 async function submitTransaction(signedXdr: string): Promise<{ hash: string; status: string }> {
-  // We use the Soroban RPC `sendTransaction` method directly so we don't
+  // we use the Soroban RPC `sendTransaction` method directly so we don't
   // need to spin up a `Server` instance from stellar-sdk. The JSON-RPC
   // payload is part of the public Soroban RPC contract:
   // https://developers.stellar.org/network/soroban-rpc/methods/sendTransaction
@@ -173,7 +173,7 @@ async function main(): Promise<Report> {
   const workdir = await mkdtemp(join(tmpdir(), "oz-example-blend-"));
   let specPath: string;
   try {
-    // Resolve relative to the wallet-adapter directory (the script's cwd is
+    // resolve relative to the wallet-adapter directory (the script's cwd is
     // workspace-root if invoked as `pnpm tsx wallet-adapter/examples/...`).
     const recordingPath = await fileExists(BLEND_RECORDING_PATH)
       ? BLEND_RECORDING_PATH

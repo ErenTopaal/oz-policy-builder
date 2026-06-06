@@ -1,28 +1,6 @@
 /**
- * `installPolicy` — sign + submit + poll + extract `context_rule_id`.
- *
- * Phase 7 Stream C. Drives the high-level "install" pipeline once the
- * Phase 2 `oz-policy-installer` (or the MCP `export_policy` tool) has
- * produced a base64 `TransactionEnvelope` XDR.
- *
- * Flow:
- *   1. `adapter.signTransaction(envelopeXdrBase64, { networkPassphrase })`
- *      — collects a user-authorized signed envelope. NEVER auto-signed.
- *   2. `rpc.Server.sendTransaction(signedTx)` — pushes the envelope to a
- *      Soroban RPC. The result carries the canonical tx hash.
- *   3. `rpc.Server.getTransaction(hash)` polled at 1 s intervals up to 60 s.
- *   4. On SUCCESS: extract the `context_rule_id` from the Soroban return
- *      value (`add_context_rule` returns a `ContextRule` struct with an
- *      `id: u32` field — see `docs/oz-internal-shapes.md` §6.2 and the
- *      installer's `envelope.rs` module doc).
- *   5. Return `{ txHash, contextRuleId, ledger }`.
- *
- * Hard invariant (declared at the type and at runtime): mainnet submission
- * requires an explicit `confirmMainnet: true` on the input. Calling
- * `installPolicy` against a `mainnet` envelope without the flag throws
- * `WalletInstallError(code: 'E_MAINNET_REQUIRES_CONSENT')` before any
- * wallet/RPC interaction. This is a deliberate footgun guard — see
- * `plan.md` § Cross-Phase Invariants ("No auto-deployment, ever").
+ * installPolicy — sign + submit + poll + extract context_rule_id.
+ * mainnet requires explicit `confirmMainnet: true` flag (deliberate footgun guard).
  */
 
 import {
@@ -35,7 +13,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 
-// stellar-sdk re-exports `assembleTransaction` under the `rpc` namespace.
+// stellar-sdk re-exports `assembleTransaction` under the rpc namespace.
 const { assembleTransaction } = sorobanRpc;
 
 import { WalletAdapter, WalletError, WalletErrorCode } from "./sep43.js";
@@ -52,32 +30,16 @@ export interface InstallPolicyParams {
   network: "testnet" | "mainnet";
   /** Network passphrase the wallet must sign against. */
   networkPassphrase: string;
-  /**
-   * Explicit consent flag required for `network === "mainnet"`. The
-   * function throws `WalletInstallError(E_MAINNET_REQUIRES_CONSENT)` when
-   * `network === "mainnet"` and this is anything other than `true`.
-   */
+  /** required `true` when `network === "mainnet"`, else throw. */
   confirmMainnet?: boolean;
-  /**
-   * Override the poll interval (ms). Defaults to 1000 ms. Reduced in
-   * tests so the 60-s timeout doesn't burn a CI minute. Capped at the
-   * total timeout below.
-   */
+  /** poll interval (ms); default 1000. */
   pollIntervalMs?: number;
-  /**
-   * Override the total timeout (ms). Defaults to 60_000 ms. Reduced in
-   * tests so the timeout branch is reachable in <100 ms.
-   */
+  /** total poll timeout (ms); default 60_000. */
   pollTimeoutMs?: number;
   /**
-   * Optional **pre-sign** encoder that runs BEFORE the wallet adapter
-   * signs the outer envelope. The encoder receives the UNSIGNED
-   * `TransactionEnvelope` (base64 XDR) and may rewrite its
-   * `InvokeHostFunction.auth` entries — used to inject OZ-SA
-   * `AuthPayload` ScVals into any auth entry whose credentials target an
-   * OZ-SA address (Phase 8 + RFP deliverable #5 closes the Phase 7 Round 2
-   * BLOCKER documented in
-   * `walkthroughs/phase7-testnet-install/BLOCKER.md`).
+   * pre-sign encoder run before the wallet signs the outer envelope.
+   * receives unsigned envelope xdr and may rewrite InvokeHostFunction.auth
+   * entries (used to inject OZ-SA auth payloads).
    *
    * Returns the rewritten unsigned XDR (base64). The rewritten envelope
    * is what the wallet adapter signs. Order matters: rewriting auth
@@ -111,11 +73,7 @@ export type WalletInstallErrorCode =
   | "E_INSTALL_RESULT_DECODE_FAILED"
   | "E_MAINNET_REQUIRES_CONSENT";
 
-/**
- * Typed error thrown by {@link installPolicy}. Every failure path the
- * caller might want to branch on is encoded as a string `code` (cf. the
- * Rust crate's `Error::*` variants — same naming convention).
- */
+/** typed error from `installPolicy`; codes mirror the rust `Error::*` naming. */
 export class WalletInstallError extends Error {
   constructor(
     public readonly code: WalletInstallErrorCode,
@@ -133,22 +91,11 @@ const DEFAULT_POLL_INTERVAL_MS = 1_000;
 /** Default total poll timeout (60 seconds). */
 const DEFAULT_POLL_TIMEOUT_MS = 60_000;
 
-/**
- * Sign the install envelope via the wallet adapter, submit to Soroban
- * RPC, poll until SUCCESS or FAILED, extract `context_rule_id` from the
- * returned `ContextRule` struct, and return the resolved IDs.
- *
- * @see InstallPolicyParams
- * @see InstallPolicyResult
- * @see WalletInstallError
- */
+/** sign → submit → poll → extract context_rule_id. */
 export async function installPolicy(
   params: InstallPolicyParams,
 ): Promise<InstallPolicyResult> {
-  // -----------------------------------------------------------------
-  // Mainnet consent gate. Runs BEFORE any wallet/RPC interaction so a
-  // forgotten flag is loud and free.
-  // -----------------------------------------------------------------
+  // mainnet consent gate, before any wallet/rpc work.
   if (params.network === "mainnet" && params.confirmMainnet !== true) {
     throw new WalletInstallError(
       "E_MAINNET_REQUIRES_CONSENT",
@@ -156,43 +103,15 @@ export async function installPolicy(
     );
   }
 
-  // -----------------------------------------------------------------
-  // 1. OZ-SA auth-tree refresh pipeline (RFP deliverable #5, 2026-05-18):
-  //
-  //    The envelope handed in by `prepare-install` carries the initial
-  //    simulator output: a `SorobanAuthorizationEntry` targeting the SA
-  //    with a `Void` signature. That entry traps `__check_auth` because
-  //    OZ's `AuthPayload` decoder errors on `Void`. The encoder swaps in
-  //    a typed `AuthPayload` ScVal — but doing so puts the simulator
-  //    into ENFORCE mode (real signature). Enforce mode runs
-  //    `__check_auth` to completion, which then calls
-  //    `Signer::Delegated(G).require_auth_for_args(auth_digest)` — and
-  //    that nested call requires its OWN matching `SorobanAuthorization-
-  //    Entry` keyed by Account(G), absent from the simulator's
-  //    short-trap snapshot. The host rejects with "Unauthorized function
-  //    call for address GCM2…".
-  //
-  //    The fix is a three-step refresh:
-  //      a. Wipe `op.auth[]` so the simulator runs in RECORD mode
-  //         (`__check_auth` is bypassed by the recording-mode shim).
-  //      b. Re-simulate — the host's recording walker now discovers
-  //         BOTH the SA-credentials entry AND the nested Account(G)
-  //         entry (with Void signatures on both).
-  //      c. Run the encoder once on the wiped+re-simulated envelope —
-  //         it signs the SA entry with `AuthPayload` AND signs the
-  //         Account(G) entry with the standard ed25519 payload.
-  //
-  //    Without ozAuthPayloadEncoder, we leave the envelope alone
-  //    (callers targeting non-OZ contracts hit the standard path).
-  // -----------------------------------------------------------------
+  // OZ-SA auth-tree refresh: wipe op.auth[] → re-simulate in record mode →
+  // run encoder so SA + nested account(G) entries both get signed. without
+  // ozAuthPayloadEncoder we leave the envelope alone.
   let envelopeToSign = params.envelopeXdrBase64;
   if (params.ozAuthPayloadEncoder) {
     try {
-      // (a) Wipe op.auth[] in the envelope so simulator runs in record
-      //     mode (bypasses __check_auth's real Void-trap).
+      // (a) wipe op.auth[] so simulator runs in record mode.
       const wiped = clearOpAuthEntries(envelopeToSign, params.networkPassphrase);
-      // (b) Re-simulate the wiped envelope — host fills in the full
-      //     auth tree (SA + nested G entry) with Void signatures.
+      // (b) re-simulate — host fills in SA + nested G entries.
       const reSimServer = new sorobanRpc.Server(params.rpcUrl);
       const wipedTx = TransactionBuilder.fromXDR(
         wiped,
@@ -216,7 +135,7 @@ export async function installPolicy(
         .setTimeout(TimeoutInfinite)
         .build();
       let assembledXdr = assembled.toXDR();
-      // The simulator's recording mode often emits sigExpLedger=0 on
+      // the simulator's recording mode often emits sigExpLedger=0 on
       // synthesised auth entries — that fails the host's expiry check
       // at submit time. Set a sensible expiration (latestLedger +
       // 60_480, ≈ 5 days at 5s block time) on every Address-credentials
@@ -243,9 +162,7 @@ export async function installPolicy(
     }
   }
 
-  // -----------------------------------------------------------------
   // 2. Wallet sign — on the (possibly-encoder-rewritten) envelope.
-  // -----------------------------------------------------------------
   let signedTxXdr: string;
   try {
     const signed = await params.adapter.signTransaction(envelopeToSign, {
@@ -270,7 +187,7 @@ export async function installPolicy(
     throw new WalletInstallError("E_INSTALL_SUBMIT_FAILED", detail);
   }
 
-  // Re-hydrate the signed XDR into a Transaction so we can hand it to
+  // re-hydrate the signed XDR into a Transaction so we can hand it to
   // `sendTransaction`. The SDK requires a typed `Transaction` /
   // `FeeBumpTransaction` here — passing the raw base64 would force the
   // SDK to guess, and `sendTransaction` does not accept strings.
@@ -288,9 +205,7 @@ export async function installPolicy(
     );
   }
 
-  // -----------------------------------------------------------------
   // 2. Submit to Soroban RPC.
-  // -----------------------------------------------------------------
   const server = new sorobanRpc.Server(params.rpcUrl);
   let send: sorobanRpc.Api.SendTransactionResponse;
   try {
@@ -301,7 +216,7 @@ export async function installPolicy(
   }
 
   if (send.status === "ERROR" || send.status === "TRY_AGAIN_LATER") {
-    // Surface the rich error context Soroban RPC returns under `status=ERROR`:
+    // surface the rich error context Soroban RPC returns under `status=ERROR`:
     // `errorResult` (a TransactionResult XDR — base64) plus
     // `diagnosticEventsXdr` (a list of DiagnosticEvent XDR strings) carry
     // the canonical reason. Without them the error message is unhelpful
@@ -318,7 +233,7 @@ export async function installPolicy(
       if (sendAny.errorResultXdr) {
         xtra += ` errorResultXdr=${String(sendAny.errorResultXdr)}`;
       } else if (sendAny.errorResult) {
-        // Newer SDKs hand back a typed `errorResult` (xdr.TransactionResult)
+        // newer SDKs hand back a typed `errorResult` (xdr.TransactionResult)
         // — toXDR yields a base64 string.
         const er = sendAny.errorResult as {
           toXDR?: (encoding?: string) => string;
@@ -341,9 +256,7 @@ export async function installPolicy(
   // PENDING and DUPLICATE both produce a valid hash we can poll.
   const txHash = send.hash;
 
-  // -----------------------------------------------------------------
   // 3. Poll until SUCCESS / FAILED / timeout.
-  // -----------------------------------------------------------------
   const pollIntervalMs = params.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const pollTimeoutMs = params.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const startedAt = Date.now();
@@ -408,13 +321,13 @@ export async function installPolicy(
           } as sorobanRpc.Api.GetSuccessfulTransactionResponse;
           break;
         }
-        // Fallback #2: pull the id from the context_rule_added event.
+        // fallback #2: pull the id from the context_rule_added event.
         const eventFallback = await rawGetContextRuleIdFromEvents(
           params.rpcUrl,
           txHash,
         ).catch(() => null);
         if (eventFallback) {
-          // Synthesise a minimal ScVal::Map carrying just `{ id: u32 }`
+          // synthesise a minimal ScVal::Map carrying just `{ id: u32 }`
           // so `extractContextRuleId` can decode it via the same path
           // it uses on the SDK happy path.
           const synthReturn = xdr.ScVal.scvMap([
@@ -440,7 +353,7 @@ export async function installPolicy(
           } as sorobanRpc.Api.GetSuccessfulTransactionResponse;
           break;
         }
-        // Couldn't recover the id via either fallback; keep polling.
+        // couldn't recover the id via either fallback; keep polling.
         await sleep(pollIntervalMs);
         continue;
       }
@@ -476,17 +389,15 @@ export async function installPolicy(
     );
   }
 
-  // -----------------------------------------------------------------
   // 4. Extract context_rule_id from the host-fn return value.
   //
   //   `add_context_rule(...) -> ContextRule`
-  //   ContextRule = #[contracttype] struct { id: u32, ... }
+  //   contextRule = #[contracttype] struct { id: u32, ... }
   //
-  // Soroban encodes `#[contracttype]` structs as `ScVal::Map([{Symbol(
+  // soroban encodes `#[contracttype]` structs as `ScVal::Map([{Symbol(
   // field), <value>}, ...])`. The SDK helper `scValToNative` walks that
   // map and produces an object with snake_case keys, so we can read
   // `.id` directly.
-  // -----------------------------------------------------------------
   const success = finalResp;
   const returnValue: xdr.ScVal | undefined = success.returnValue;
   if (!returnValue) {
@@ -573,7 +484,7 @@ function stampSigExpirationLedger(
   try {
     env = xdr.TransactionEnvelope.fromXDR(envelopeXdrBase64, "base64");
   } catch {
-    // Mocked / synthetic XDR — silently passthrough. The real
+    // mocked / synthetic XDR — silently passthrough. The real
     // testnet path always receives a parsable envelope from
     // `assembleTransaction(...).build().toXDR()`.
     return envelopeXdrBase64;
@@ -762,7 +673,7 @@ async function rawGetTransactionResult(
   };
   const r = json?.result;
   if (!r || r.status !== "SUCCESS" || !r.resultMetaXdr) return null;
-  // Try the SDK's typed decode first (works for TransactionMetaV3,
+  // try the SDK's typed decode first (works for TransactionMetaV3,
   // which is what most pre-26 testnet/mainnet ledgers emit).
   try {
     const meta = xdr.TransactionMeta.fromXDR(r.resultMetaXdr, "base64");
@@ -775,7 +686,7 @@ async function rawGetTransactionResult(
       }
     }
   } catch {
-    // Fall through to the V4-aware extractor below — protocol 23+
+    // fall through to the V4-aware extractor below — protocol 23+
     // emits `TransactionMetaV4` which stellar-sdk 12.3.0 doesn't
     // recognise (`Bad union switch: 4`).
   }
@@ -820,8 +731,8 @@ function extractReturnValueV4(
   ledger: number,
 ): { returnValue: xdr.ScVal; ledger: number } | null {
   const bytes = Buffer.from(resultMetaXdrBase64, "base64");
-  // Walk every 4-byte-aligned offset and try to decode an ScVal.
-  // The largest-decodable Map ScVal is the most likely candidate for
+  // walk every 4-byte-aligned offset and try to decode an ScVal.
+  // the largest-decodable Map ScVal is the most likely candidate for
   // `return_value` (it's a struct = ScVal::Map for OZ's `ContextRule`).
   let bestMap: xdr.ScVal | null = null;
   let bestSize = 0;
@@ -829,7 +740,7 @@ function extractReturnValueV4(
     try {
       const slice = bytes.subarray(off);
       const sv = xdr.ScVal.fromXDR(slice);
-      // The decoder consumes only the bytes it needs; if it
+      // the decoder consumes only the bytes it needs; if it
       // succeeds, check whether the decoded value is a Map and
       // whether it covers more bytes than the current best.
       if (sv.switch().name === "scvMap") {
@@ -840,7 +751,7 @@ function extractReturnValueV4(
         }
       }
     } catch {
-      // Not a valid ScVal at this offset; keep scanning.
+      // not a valid ScVal at this offset; keep scanning.
     }
   }
   if (bestMap) {

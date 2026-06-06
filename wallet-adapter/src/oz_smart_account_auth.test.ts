@@ -41,10 +41,8 @@ import {
   type OzSigner,
 } from "./oz_smart_account_auth.js";
 
-// ---------------------------------------------------------------------------
-// Fixed test inputs. These are pinned so the SHA-256 anchor in this file
+// fixed test inputs. These are pinned so the SHA-256 anchor in this file
 // stays stable across runs and the digest can be reproduced from the docs.
-// ---------------------------------------------------------------------------
 
 /** Phase 7 SA owner G-address (matches the frozen testnet fixture). */
 const G_OWNER = "GCM2CB7P7ZL4QCCI62WIOCLFW2LT5AP7HPUQY7J6JQQUQT4XXZZNWHLJ";
@@ -59,9 +57,7 @@ function sha256Hex(b: Uint8Array | Buffer): string {
   return createHash("sha256").update(b).digest("hex");
 }
 
-// =========================================================================
 // 1. encodeAuthPayload — ScVal::Map shape + key ordering
-// =========================================================================
 
 describe("encodeAuthPayload — ScVal::Map shape", () => {
   it("produces an ScVal::Map with sorted symbol keys [context_rule_ids, signers]", () => {
@@ -70,7 +66,7 @@ describe("encodeAuthPayload — ScVal::Map shape", () => {
 
     const sc = encodeAuthPayload({ signers, contextRuleIds: [0] });
 
-    // Top-level discriminant must be scvMap.
+    // top-level discriminant must be scvMap.
     expect(sc.switch().name).toBe("scvMap");
 
     const entries = sc.map();
@@ -78,27 +74,27 @@ describe("encodeAuthPayload — ScVal::Map shape", () => {
     const e = entries as xdr.ScMapEntry[];
     expect(e.length).toBe(2);
 
-    // Keys must be symbols, in this exact order.
+    // keys must be symbols, in this exact order.
     expect(e[0]!.key().switch().name).toBe("scvSymbol");
     expect(e[0]!.key().sym().toString()).toBe("context_rule_ids");
     expect(e[1]!.key().switch().name).toBe("scvSymbol");
     expect(e[1]!.key().sym().toString()).toBe("signers");
 
-    // The signers value must itself be an scvMap.
+    // the signers value must itself be an scvMap.
     expect(e[1]!.val().switch().name).toBe("scvMap");
     const signersInner = e[1]!.val().map() as xdr.ScMapEntry[];
     expect(signersInner.length).toBe(1);
-    // The inner key is a Vec([Symbol("Delegated"), Address(G_OWNER)]).
+    // the inner key is a Vec([Symbol("Delegated"), Address(G_OWNER)]).
     const innerKey = signersInner[0]!.key();
     expect(innerKey.switch().name).toBe("scvVec");
     const innerKeyVec = innerKey.vec() as xdr.ScVal[];
     expect(innerKeyVec[0]!.sym().toString()).toBe("Delegated");
-    // The inner value is a Bytes equal to FAKE_SIG.
+    // the inner value is a Bytes equal to FAKE_SIG.
     expect(signersInner[0]!.val().switch().name).toBe("scvBytes");
     const bytes = signersInner[0]!.val().bytes();
     expect(Buffer.compare(bytes, Buffer.from(FAKE_SIG))).toBe(0);
 
-    // The context_rule_ids value is an scvVec of scvU32.
+    // the context_rule_ids value is an scvVec of scvU32.
     expect(e[0]!.val().switch().name).toBe("scvVec");
     const idVec = e[0]!.val().vec() as xdr.ScVal[];
     expect(idVec.length).toBe(1);
@@ -116,9 +112,7 @@ describe("encodeAuthPayload — ScVal::Map shape", () => {
   });
 });
 
-// =========================================================================
 // 2. encodeSignerScVal — enum encoding
-// =========================================================================
 
 describe("encodeSignerScVal — #[contracttype] enum layout", () => {
   it("encodes Signer::Delegated(addr) as Vec([Symbol('Delegated'), Address])", () => {
@@ -146,9 +140,7 @@ describe("encodeSignerScVal — #[contracttype] enum layout", () => {
   });
 });
 
-// =========================================================================
 // 3. computeAuthDigest — sha256 properties
-// =========================================================================
 
 describe("computeAuthDigest — sha256(signature_payload || xdr(ids))", () => {
   it("returns a 32-byte deterministic digest for fixed inputs", () => {
@@ -186,7 +178,7 @@ describe("computeAuthDigest — sha256(signature_payload || xdr(ids))", () => {
   it("matches the spec formula sha256(signature_payload || xdr(ids))", () => {
     const sp = new Uint8Array(32).fill(0x42);
     const ids = [0, 1, 2];
-    // Re-derive independently from the source formula to prove this
+    // re-derive independently from the source formula to prove this
     // function is not just returning an opaque value.
     const expected = createHash("sha256")
       .update(Buffer.from(sp))
@@ -197,9 +189,7 @@ describe("computeAuthDigest — sha256(signature_payload || xdr(ids))", () => {
   });
 });
 
-// =========================================================================
 // 4. SHA-256 byte anchor — pins the wire format for the Phase 7 fixture
-// =========================================================================
 
 describe("AuthPayload byte anchor — Phase 7 fixture", () => {
   it("encodeAuthPayload with [G_OWNER → FAKE_SIG] + ids=[0] has a stable SHA-256", () => {
@@ -208,21 +198,19 @@ describe("AuthPayload byte anchor — Phase 7 fixture", () => {
     const sc = encodeAuthPayload({ signers, contextRuleIds: [0] });
     const xdrBytes = sc.toXDR();
     const digestHex = sha256Hex(xdrBytes);
-    // This anchor is computed by `sha256(encodeAuthPayload(...).toXDR())`
+    // this anchor is computed by `sha256(encodeAuthPayload(...).toXDR())`
     // for the inputs above. Any wire-format change makes this fail.
-    // The literal value is verified by re-running the encoder against the
+    // the literal value is verified by re-running the encoder against the
     // fixed inputs at Stream-B-freeze time.
     expect(digestHex).toMatch(/^[0-9a-f]{64}$/);
-    // Pin the actual value — captured on 2026-05-16 from the encoder.
+    // pin the actual value — captured on 2026-05-16 from the encoder.
     expect(digestHex).toBe(
       "a30dec25dd420596b1541fa39ebf206057f1175c585d982aa536f12f77d7d53c",
     );
   });
 });
 
-// =========================================================================
 // 5. buildOzAuthEntry — full SorobanAuthorizationEntry assembly
-// =========================================================================
 
 function makeRootInvocation(saAddress: string): xdr.SorobanAuthorizedInvocation {
   // SA.add_context_rule(...) — args content does not matter for the
@@ -260,15 +248,15 @@ describe("buildOzAuthEntry — full SorobanAuthorizationEntry", () => {
     });
 
     expect(entry).toBeInstanceOf(xdr.SorobanAuthorizationEntry);
-    // Credentials = SorobanCredentials::Address.
+    // credentials = SorobanCredentials::Address.
     const creds = entry.credentials();
     expect(creds.switch().name).toBe("sorobanCredentialsAddress");
     const addrCreds = creds.address();
-    // The SA's address is in the credentials.
+    // the SA's address is in the credentials.
     expect(Address.fromScAddress(addrCreds.address()).toString()).toBe(C_SA);
     expect(addrCreds.signatureExpirationLedger()).toBe(1_000_000);
 
-    // The signature ScVal must be an AuthPayload (scvMap with the two
+    // the signature ScVal must be an AuthPayload (scvMap with the two
     // expected symbol keys).
     const sig = addrCreds.signature();
     expect(sig.switch().name).toBe("scvMap");
@@ -282,7 +270,7 @@ describe("buildOzAuthEntry — full SorobanAuthorizationEntry", () => {
   it("uses the signEd25519 callback when no keypair is supplied", async () => {
     const kp = Keypair.random();
     const inv = makeRootInvocation(C_SA);
-    // Hand the encoder a stub signer; the produced signature bytes are
+    // hand the encoder a stub signer; the produced signature bytes are
     // determined by `signEd25519`.
     const stubSig = Buffer.alloc(64, 0x33);
     let invocations = 0;
@@ -356,7 +344,7 @@ describe("buildOzAuthEntry — full SorobanAuthorizationEntry", () => {
       invocation: inv,
     });
     expect(sp.length).toBe(32);
-    // Re-derive independently from the source formula.
+    // re-derive independently from the source formula.
     const networkId = createHash("sha256")
       .update(Buffer.from(Networks.TESTNET, "utf8"))
       .digest();
@@ -373,9 +361,7 @@ describe("buildOzAuthEntry — full SorobanAuthorizationEntry", () => {
   });
 });
 
-// =========================================================================
 // 6. Round-trip — toXDR → fromXDR → equality
-// =========================================================================
 
 describe("AuthPayload XDR round-trip", () => {
   it("encodeAuthPayload → toXDR → ScVal.fromXDR → byte-equal", () => {
@@ -384,7 +370,7 @@ describe("AuthPayload XDR round-trip", () => {
     const sc1 = encodeAuthPayload({ signers, contextRuleIds: [0, 5, 42] });
     const xdrBytes = sc1.toXDR();
     const sc2 = xdr.ScVal.fromXDR(xdrBytes);
-    // Same wire bytes again on the second round-trip.
+    // same wire bytes again on the second round-trip.
     expect(Buffer.compare(sc2.toXDR(), xdrBytes)).toBe(0);
   });
 

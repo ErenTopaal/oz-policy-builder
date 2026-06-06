@@ -81,7 +81,7 @@ class FakeChildProcess extends EventEmitter {
     super();
     this.stdout = new Readable({ read() {} });
     this.stderr = new Readable({ read() {} });
-    // Buffer of partial chunks until we see a newline.
+    // buffer of partial chunks until we see a newline.
     let buf = "";
     const self = this;
     this.stdin = new Writable({
@@ -99,7 +99,7 @@ class FakeChildProcess extends EventEmitter {
           const directive = self.script(line);
           if (directive) directives.push(directive);
         }
-        // Defer the response I/O until AFTER the write Promise resolves
+        // defer the response I/O until AFTER the write Promise resolves
         // so the production code has registered its `recv` listener.
         // `setImmediate` fires after microtasks AND after the writable's
         // internal `nextTick` cb-resolution — which is exactly the moment
@@ -164,7 +164,7 @@ function makeHappyPathScript(
       };
     }
     if (req.method === "notifications/initialized") {
-      // No reply for notifications.
+      // no reply for notifications.
       return;
     }
     if (req.method === "tools/call" && req.params?.name === "verify_install") {
@@ -181,7 +181,7 @@ function makeHappyPathScript(
       };
       return { stdout: JSON.stringify(payload) + "\n" };
     }
-    // Unknown method — emit an error so a future drift in the production
+    // unknown method — emit an error so a future drift in the production
     // code is caught loudly.
     return {
       stdout:
@@ -202,9 +202,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// =====================================================================
-// Happy paths
-// =====================================================================
+// happy paths
 
 describe("verifyInstall — happy path", () => {
   it("returns matches=true / drift=[] when the MCP server reports a clean install", async () => {
@@ -231,7 +229,7 @@ describe("verifyInstall — happy path", () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(spawnMock.mock.calls[0]?.[0]).toBe("fake-mcp");
     expect(spawnMock.mock.calls[0]?.[1]).toEqual(["--stdio"]);
-    // Arguments passed to verify_install are the snake_case translation
+    // arguments passed to verify_install are the snake_case translation
     // of the TS input shape, with expected_spec round-tripped.
     expect(capturedArgs).toEqual({
       smart_account: "C".repeat(56),
@@ -240,7 +238,7 @@ describe("verifyInstall — happy path", () => {
       rpc_url: "https://soroban-testnet.stellar.org",
       expected_spec: { schema: "https://example.test/policy/v1" },
     });
-    // The subprocess was torn down.
+    // the subprocess was torn down.
     expect(child.killed).toBe(true);
   });
 
@@ -322,7 +320,7 @@ describe("verifyInstall — happy path", () => {
           };
         }
         if (req.method === "notifications/initialized") return;
-        // Respond WITHOUT structuredContent so the text-fallback parser path is hit.
+        // respond WITHOUT structuredContent so the text-fallback parser path is hit.
         return {
           stdout:
             JSON.stringify({
@@ -353,9 +351,7 @@ describe("verifyInstall — happy path", () => {
   });
 });
 
-// =====================================================================
-// Defaults
-// =====================================================================
+// defaults
 
 describe("verifyInstall — defaults", () => {
   it("uses the default cargo cmd when mcpServerCmd is omitted", async () => {
@@ -381,9 +377,7 @@ describe("verifyInstall — defaults", () => {
   });
 });
 
-// =====================================================================
-// Error branches
-// =====================================================================
+// error branches
 
 describe("verifyInstall — error branches", () => {
   it("rejects with E_VERIFY_SUBPROCESS_SPAWN_FAILED when spawn() throws", async () => {
@@ -407,7 +401,7 @@ describe("verifyInstall — error branches", () => {
 
   it("rejects with E_VERIFY_SUBPROCESS_SPAWN_FAILED when the child emits 'error' before any reply", async () => {
     const child = new FakeChildProcess((line: string) => {
-      // First write triggers an 'error' event.
+      // first write triggers an 'error' event.
       void line;
       return { error: new Error("posix_spawn ENOENT") };
     });
@@ -429,7 +423,7 @@ describe("verifyInstall — error branches", () => {
 
   it("rejects with E_VERIFY_SUBPROCESS_TIMEOUT when no reply arrives", async () => {
     const child = new FakeChildProcess(() => {
-      // Never reply.
+      // never reply.
       return undefined;
     });
     spawnMock.mockReturnValue(child as never);
@@ -484,7 +478,7 @@ describe("verifyInstall — error branches", () => {
         };
       }
       if (req.method === "notifications/initialized") return;
-      // Tool returns an error.
+      // tool returns an error.
       return {
         stdout:
           JSON.stringify({
@@ -574,9 +568,7 @@ describe("verifyInstall — error branches", () => {
   });
 });
 
-// =====================================================================
-// VerifyInstallError shape
-// =====================================================================
+// verifyInstallError shape
 
 describe("VerifyInstallError", () => {
   it("formats its message as [<code>] <detail> and exposes code+detail", () => {
