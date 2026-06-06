@@ -1,78 +1,46 @@
-# fly.toml — Fly.io app manifest for the hosted MCP endpoint.
-#
-# This is a TEMPLATE: the operator MUST adjust `app` (Fly app names are
-# globally unique) and SHOULD adjust `primary_region` before the first
-# `fly launch`. Everything else is a defensible default for an
-# always-on, low-traffic Rust HTTP service.
-#
-# See `infra/README.md` for the human deploy procedure. See
-# `infra/fly/Dockerfile.runtime` for the build manifest. See
-# `infra/fly/deploy.sh` for the thin wrapper script.
+# fly.io app manifest for the hosted mcp endpoint. template — operator must
+# adjust `app` (globally unique) and may adjust `primary_region` before
+# `fly launch`.
 
-# Placeholder app name. Fly requires globally-unique names across all
-# users; rename before `fly launch`. Marked `<placeholder>` so a grep
-# can find it.
-app = "oz-policy-builder"  # <placeholder> — rename before deploy
+# placeholder; rename before first `fly launch`.
+app = "oz-policy-builder"  # <placeholder>.
 
-# Primary region: `iad` (Ashburn, US East) chosen for low latency to
-# Stellar Horizon and Soroban RPC nodes operated out of US East.
-# Override to any Fly region listed at https://fly.io/docs/reference/regions/.
-primary_region = "iad"  # <placeholder> — override to taste
-
-# kill_signal / kill_timeout: keep Fly's defaults. The MCP server's
-# axum + tower stack handles SIGTERM gracefully via tokio's runtime
-# shutdown.
+# `iad` chosen for proximity to stellar rpc nodes. override per region list.
+primary_region = "iad"  # <placeholder>.
 
 [build]
-  # The runtime Dockerfile lives next to this manifest. Fly's
-  # `fly deploy` honours the `[build].dockerfile` key relative to the
-  # config file's directory.
   dockerfile = "Dockerfile.runtime"
 
 [env]
-  # Non-secret defaults. The bearer token MUST be set via
-  # `fly secrets set OZ_POLICY_MCP_TOKEN=…` (NOT here). Anything in
-  # `[env]` lands in the public manifest; secrets stay out.
+  # non-secret defaults. bearer token MUST come via `fly secrets set`.
   RUST_LOG = "oz_policy_mcp=info,axum=info,tower_http=info"
-  # Tell the MCP binary which port to bind. The Dockerfile.runtime
-  # ENTRYPOINT passes `--http 8080` explicitly; this env var is a
-  # belt-and-braces signal for any sidecar tooling.
   PORT = "8080"
 
-# HTTP service definition. The MCP binary serves `POST /mcp` (the
-# JSON-RPC framing per the MCP 2025-11-25 Streamable HTTP spec) and an
-# unauthenticated `GET /healthz` for liveness probes.
+# mcp serves POST /mcp + unauthenticated GET /healthz.
 [[services]]
   protocol = "tcp"
   internal_port = 8080
-  # `auto_stop_machines = true` puts the machine to sleep after a few
-  # minutes of no traffic; cold-start is sub-second for this binary.
-  # `min_machines_running = 1` keeps at least one machine warm so the
-  # `/healthz` probe never times out during scale-to-zero.
+  # auto-stop after idle; keep 1 warm so /healthz never times out.
   auto_stop_machines = true
   auto_start_machines = true
   min_machines_running = 1
-  # Hard cap on concurrent in-flight requests. The MCP tool surface is
-  # CPU-bound (codegen + simhost spin Rust threads); refuse early
-  # rather than queue indefinitely.
+  # cpu-bound surface (codegen + simhost) — refuse early instead of queueing.
   [services.concurrency]
     type = "requests"
     hard_limit = 50
     soft_limit = 25
 
-  # Public-facing TLS port (Fly's Anycast edge terminates TLS).
+  # fly anycast edge terminates tls.
   [[services.ports]]
     port = 443
     handlers = ["tls", "http"]
     force_https = true
-  # Plain HTTP port redirects to HTTPS via `force_https = true`.
+  # plain http redirects to https.
   [[services.ports]]
     port = 80
     handlers = ["http"]
 
-  # Active health check against the unauthenticated `/healthz`
-  # endpoint. Fly hits this from the same private network the app
-  # binds on, so the check bypasses TLS termination.
+  # active /healthz check.
   [[services.http_checks]]
     interval = "30s"
     timeout = "5s"
@@ -80,14 +48,10 @@ primary_region = "iad"  # <placeholder> — override to taste
     method = "GET"
     path = "/healthz"
     protocol = "http"
-    # Don't require a specific response body — the MCP server returns
-    # `200 OK` with a small JSON `{"status":"ok"}` document; matching
-    # only on the status code keeps this resilient across patch bumps.
+    # match only on status code; body is `{"status":"ok"}`.
     tls_skip_verify = false
 
-# VM sizing. `shared-cpu-1x` with 256 MB is enough for the steady-state
-# MCP surface. Bump to `512mb` or `shared-cpu-2x` if codegen / simhost
-# requests start OOM-killing or queueing.
+# bump to 512mb / shared-cpu-2x if codegen/simhost requests start oom-killing.
 [[vm]]
   size = "shared-cpu-1x"
   memory = "256mb"

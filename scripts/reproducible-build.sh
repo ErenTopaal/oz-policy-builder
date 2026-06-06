@@ -1,34 +1,10 @@
 #!/usr/bin/env bash
-# scripts/reproducible-build.sh — re-derive every committed walkthrough WASM
-# from source and assert byte-equality with the pinned hashes.
-#
-# Usage:
-#   scripts/reproducible-build.sh [RELEASE_TAG]
-#
-# Pinned hashes live in the walkthrough corpora; this script discovers them
-# by reading `wasm_hash.txt` next to each `policy.wasm`. The corpora are
-# the source of truth — bumping a pin requires regenerating both the
-# committed WASM and the committed hash file in lockstep (see
-# `walkthroughs/<n>/README.md` for each corpus's reproduction recipe).
-#
-# Hard exit conditions:
-#   * any required tool missing (`rustc`, `cargo`, `stellar`, `jq`,
-#     `sha256sum`/`shasum`)
-#   * the host `rustc`/`stellar` version doesn't match the workspace pin
-#   * cargo workspace build fails
-#   * any re-derived WASM hash differs from its committed pin (both hashes
-#     are printed to stderr before exit)
-#
-# Successful runs write a JSON manifest at
-# `reproducible-build-manifest-<release_tag>.json` at the workspace root —
-# this is the artifact attached to each release tag for third-party
-# verification.
+# re-derive every committed walkthrough wasm and check pinned hashes.
+# usage: scripts/reproducible-build.sh [RELEASE_TAG]
+# hard fail on: missing tool, version drift, build failure, hash mismatch.
+# success writes `reproducible-build-manifest-<tag>.json` at workspace root.
 
 set -euo pipefail
-
-# -----------------------------------------------------------------------------
-# Configuration & helpers
-# -----------------------------------------------------------------------------
 
 WORKTREE="$(git rev-parse --show-toplevel)"
 cd "$WORKTREE"
@@ -36,21 +12,17 @@ cd "$WORKTREE"
 RELEASE_TAG="${1:-untagged-$(date -u +%Y-%m-%dT%H%M%SZ)}"
 MANIFEST="$WORKTREE/reproducible-build-manifest-$RELEASE_TAG.json"
 
-# Expected pins. These are the versions every published manifest must
-# reflect; any drift here is a release blocker.
+# expected pins — drift here is a release blocker.
 EXPECTED_RUSTC="1.89.0"
 EXPECTED_STELLAR_CLI="25.1.0"
-# wasm-opt is embedded inside stellar-cli; the version is not surfaced by
-# `stellar --help`. Documented in docs/oz-internal-shapes.md §
-# "Reproducible-build prereqs" and verified against
-# https://github.com/stellar/stellar-cli/blob/v25.1.0/cmd/soroban-cli/Cargo.toml.
+# wasm-opt is embedded inside stellar-cli; not surfaced by `stellar --help`.
 EXPECTED_WASM_OPT="0.116.1"
 EXPECTED_BINARYEN="116"
 
 log()  { printf '[reproducible-build] %s\n' "$*" >&2; }
 fail() { printf '[reproducible-build][FATAL] %s\n' "$*" >&2; exit 1; }
 
-# Portable SHA-256 helper. Linux ships `sha256sum`; macOS ships `shasum`.
+# portable sha-256: linux ships sha256sum, macos ships shasum.
 sha256_file() {
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum "$1" | awk '{print $1}'
@@ -61,24 +33,22 @@ sha256_file() {
     fi
 }
 
-# -----------------------------------------------------------------------------
-# 1. Capture environment fingerprint
-# -----------------------------------------------------------------------------
+# 1. capture environment fingerprint.
 
 log "validating toolchain"
 
 for bin in rustc cargo stellar jq git; do
-    command -v "$bin" >/dev/null 2>&1 || fail "$bin is not on PATH (install per docs/reproducible-build.md)"
+    command -v "$bin" >/dev/null 2>&1 || fail "$bin is not on PATH"
 done
 
-# `rustc --version` → `rustc 1.89.0 (29483883e 2025-08-04)`
+# `rustc --version` → `rustc 1.89.0 (29483883e 2025-08-04)`.
 RUST_VERSION_FULL="$(rustc --version)"
 RUST_VERSION_NUM="$(printf '%s' "$RUST_VERSION_FULL" | awk '{print $2}')"
 if [ "$RUST_VERSION_NUM" != "$EXPECTED_RUSTC" ]; then
     fail "rustc version drift: expected $EXPECTED_RUSTC, got $RUST_VERSION_NUM (full: $RUST_VERSION_FULL)"
 fi
 
-# `stellar --version` → multi-line, first line is `stellar <ver>`.
+# `stellar --version` first line is `stellar <ver>`.
 STELLAR_CLI_VERSION_FULL="$(stellar --version | head -n1)"
 STELLAR_CLI_VERSION_NUM="$(printf '%s' "$STELLAR_CLI_VERSION_FULL" | awk '{print $2}')"
 if [ "$STELLAR_CLI_VERSION_NUM" != "$EXPECTED_STELLAR_CLI" ]; then
@@ -102,27 +72,13 @@ log "ci/Dockerfile        = sha256:$DOCKERFILE_SHA"
 log "deny.toml            = sha256:$DENY_TOML_SHA"
 log "sandbox-profile      = sha256:$SANDBOX_PROFILE_SHA"
 
-# -----------------------------------------------------------------------------
-# 2. Discover pinned WASM hashes
-# -----------------------------------------------------------------------------
-#
-# Each entry is a triple:
-#   spec_path        — `--spec-file` argument for `oz-policy-cli codegen`
-#   slot_dir         — the committed slot dir; we read wasm_hash.txt from it
-#   recompute_slot   — the per-slot subdir produced by `codegen --out`
-#
-# We discover triples instead of hard-coding them so a new walkthrough or
-# fixture starts being verified the moment its `wasm_hash.txt` is dropped
-# next to a spec.
-
-# Use plain parallel arrays (no associative arrays) so the script runs on
-# bash 3.2 (macOS default) as well as bash 5.x (Linux/CI).
+# 2. discover pinned wasm hashes by scanning `wasm_hash.txt` next to specs.
+# parallel arrays so the script runs on macos bash 3.2 too.
 SPECS=()
 SLOT_DIRS=()
 SLOT_NAMES=()
 
-# Numbered walkthroughs: 01-blend-yield/, 03-soroswap-bounded/, etc.
-# Spec file is `expected-spec-auto.json` (Stream A's freeze marker).
+# numbered walkthroughs; spec marker is `expected-spec-auto.json`.
 shopt -s nullglob
 for dir in walkthroughs/[0-9][0-9]-*/; do
     spec="${dir}expected-spec-auto.json"
@@ -136,7 +92,7 @@ for dir in walkthroughs/[0-9][0-9]-*/; do
     done
 done
 
-# Phase 3 codegen fixture: spec is `spec.json`, slots under `expected/`.
+# codegen fixture: spec is `spec.json`, slots under `expected/`.
 phase3_dir="walkthroughs/phase3-codegen-fixture"
 if [ -f "$phase3_dir/spec.json" ]; then
     for hashfile in "$phase3_dir/expected/"slot_*/wasm_hash.txt; do
@@ -156,17 +112,7 @@ fi
 
 log "discovered ${#SPECS[@]} pinned WASM(s) to verify"
 
-# -----------------------------------------------------------------------------
-# 3. Build the workspace (clean)
-# -----------------------------------------------------------------------------
-#
-# We do NOT `cargo clean` here unconditionally — that would re-fetch the
-# entire dependency closure on every run (minutes on first run, seconds on
-# subsequent re-runs). The codegen pipeline below uses its own sandboxed
-# cache (`OZ_POLICY_CODEGEN_CACHE_DIR`), so the host build's `target/` is
-# only consulted to compile the CLI itself.
-#
-# Pass `OZ_REPRODUCIBLE_BUILD_CLEAN=1` to force a clean.
+# 3. build the cli release. set OZ_REPRODUCIBLE_BUILD_CLEAN=1 to force cargo clean.
 if [ "${OZ_REPRODUCIBLE_BUILD_CLEAN:-0}" = "1" ]; then
     log "OZ_REPRODUCIBLE_BUILD_CLEAN=1 — running cargo clean"
     cargo clean
@@ -177,13 +123,7 @@ cargo build --release -p oz-policy-cli --locked
 CLI_BIN="$WORKTREE/target/release/oz-policy-cli"
 [ -x "$CLI_BIN" ] || fail "expected $CLI_BIN to be executable after cargo build"
 
-# -----------------------------------------------------------------------------
-# 4. Re-derive every walkthrough WASM and verify hash
-# -----------------------------------------------------------------------------
-#
-# Group entries by spec_file so we run `codegen` once per spec (it produces
-# every Generated slot in one call). Maintaining the mapping by spec keeps
-# the loop O(specs), not O(slots).
+# 4. re-derive every wasm and verify hash. codegen runs once per spec.
 
 declare -a UNIQUE_SPECS=()
 for s in "${SPECS[@]}"; do
@@ -194,9 +134,7 @@ for s in "${SPECS[@]}"; do
     [ "$seen" -eq 0 ] && UNIQUE_SPECS+=("$s")
 done
 
-# Per-slot pinned vs actual hashes are collected into a flat JSON array
-# entry-by-entry; we accumulate into this temp file so jq's final pass can
-# assemble the manifest without a giant inline `--arg` matrix.
+# per-slot entries → temp file; jq's final pass assembles the manifest.
 SLOTS_JSON_TMP="$(mktemp)"
 trap 'rm -f "$SLOTS_JSON_TMP"' EXIT
 printf '[' > "$SLOTS_JSON_TMP"
@@ -212,7 +150,7 @@ for spec in "${UNIQUE_SPECS[@]}"; do
         fail "oz-policy-cli codegen $spec exited non-zero"
     fi
 
-    # Iterate every committed slot that belongs to this spec.
+    # every committed slot that belongs to this spec.
     for i in "${!SPECS[@]}"; do
         [ "${SPECS[$i]}" = "$spec" ] || continue
         slot_dir="${SLOT_DIRS[$i]}"
@@ -237,7 +175,7 @@ for spec in "${UNIQUE_SPECS[@]}"; do
             mismatch_count=$((mismatch_count + 1))
         fi
 
-        # Emit a JSON object per slot, separated by commas.
+        # emit a json object per slot, comma-separated.
         if [ "$slots_first_entry" -eq 0 ]; then
             printf ',' >> "$SLOTS_JSON_TMP"
         fi
@@ -263,9 +201,7 @@ if [ "$mismatch_count" -ne 0 ]; then
     fail "$mismatch_count WASM hash mismatch(es); refusing to emit manifest"
 fi
 
-# -----------------------------------------------------------------------------
-# 5. Emit manifest
-# -----------------------------------------------------------------------------
+# 5. emit the manifest.
 
 GIT_COMMIT="$(git rev-parse HEAD)"
 GIT_DIRTY="$( [ -n "$(git status --porcelain)" ] && printf 'true' || printf 'false' )"
@@ -297,7 +233,7 @@ jq -n \
        rust:        { version: $rust_version, banner: $rust_full },
        stellar_cli: { version: $stellar_cli_version, banner: $stellar_cli_full },
        wasm_opt:    { version: $wasm_opt_version, binaryen: $binaryen_version,
-                      source: "embedded in stellar-cli; see docs/oz-internal-shapes.md" }
+                      source: "embedded in stellar-cli" }
      },
      input_hashes: {
        "rust-toolchain.toml":            $toolchain_sha,

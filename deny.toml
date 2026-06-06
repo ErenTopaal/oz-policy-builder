@@ -1,14 +1,4 @@
-# cargo-deny configuration for the OZ Accounts Policy Builder.
-#
-# Schema: v2 (cargo-deny >= 0.14 / 0.19.6 default). In v2 the advisories
-# check is deny-by-default for vulnerabilities, unsound, and notices; the
-# `vulnerability = "deny"` / `unmaintained = "warn"` fields from v1 no
-# longer exist. Yanked and unmaintained controls remain configurable.
-#
-# References:
-#   https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html
-#   https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html
-#   https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
+# cargo-deny config. v2 schema — advisories deny-by-default.
 
 [graph]
 all-features = false
@@ -18,42 +8,21 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
-# v2 schema: vulnerabilities / unsound / notices are deny-by-default.
-# We additionally deny yanked crates and warn on unmaintained advisories.
-# (Per plan.md: "vulnerability = deny" intent is enforced by v2 default;
-# "unmaintained = warn" is set explicitly here.)
 yanked = "deny"
 unmaintained = "workspace"
 ignore = [
-    # The next three advisories all live in `rustls-webpki 0.101.7`, which
-    # ships only through `stellar-rpc-client 25.1.0 → jsonrpsee-http-client
-    # 0.20.4 → hyper-rustls 0.24.2 → rustls 0.21.12`. Upgrading any link in
-    # that chain requires upgrading `stellar-rpc-client` itself — which is
-    # pinned to `=25.1.0` per the Phase-1 reproducible-build invariant in
-    # `plan.md` Tech Stack. We surface these here (rather than deleting the
-    # advisory check) so future audits see the explicit acknowledgement; the
-    # entries should be removed the moment `stellar-rpc-client` cuts a
-    # release that re-pins `rustls-webpki >= 0.103.13`.
-    #
-    # Reachability assessment: all three CVEs require a *misissued* server
-    # certificate or a malformed CRL signed by a trusted CA to be exploitable.
-    # The recorder talks to operator-configured Soroban RPC endpoints (default
-    # `soroban-testnet.stellar.org`), which present standard public-CA TLS
-    # certificates; these classes of attack are not in our threat model.
-    #
-    # RUSTSEC-2026-0098 — name constraints for URI names incorrectly accepted.
+    # all three live in rustls-webpki 0.101.7 pinned via stellar-rpc-client
+    # 25.1.0 → jsonrpsee-http-client → hyper-rustls → rustls 0.21.12.
+    # upgrade requires bumping stellar-rpc-client; remove once that ships.
+    # reachability: all three require misissued server cert / malformed CRL —
+    # not in our threat model (operator-configured public-CA endpoints).
     "RUSTSEC-2026-0098",
-    # RUSTSEC-2026-0099 — name constraints + wildcard mismatch in webpki.
     "RUSTSEC-2026-0099",
-    # RUSTSEC-2026-0104 — reachable panic in CRL parsing.
     "RUSTSEC-2026-0104",
 ]
 
 [licenses]
-# Standard-permissive licenses surfaced by our concrete dep graph. Any
-# additional permissive license that appears during `cargo deny check`
-# may be added here; copyleft (GPL/AGPL/LGPL) is a stop-and-ask blocker
-# per task constraints and must NOT be silently added.
+# permissive licenses only. copyleft (GPL/AGPL/LGPL) is a stop-and-ask.
 allow = [
     "Apache-2.0",
     "MIT",
@@ -65,12 +34,7 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "Zlib",
     "MIT-0",
-    # MPL-2.0: weak file-level copyleft, surfaced transitively by
-    # `option-ext` (a dep of `dirs` → `dirs-sys`). The codegen crate uses
-    # `dirs` to resolve `${HOME}/.cache/oz-policy-codegen`. MPL-2.0 is NOT
-    # in the GPL/AGPL/LGPL blocklist that this file's authors flagged as a
-    # stop-and-ask; allowing it here keeps the cache-dir resolution path
-    # available without vendoring our own platform-specific lookup.
+    # mpl-2.0 — weak file-level copyleft, transitively via `option-ext` (dirs).
     "MPL-2.0",
 ]
 confidence-threshold = 0.8
@@ -79,8 +43,7 @@ confidence-threshold = 0.8
 ignore = false
 
 [bans]
-# `multiple-versions = "warn"` (not deny) — transitive deps commonly
-# pull two minor versions; this surfaces them in logs without failing CI.
+# warn (not deny) on multiple-versions — transitive churn is normal.
 multiple-versions = "warn"
 wildcards = "allow"
 highlight = "all"

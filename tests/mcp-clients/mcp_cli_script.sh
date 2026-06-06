@@ -1,23 +1,7 @@
 #!/usr/bin/env bash
-# Drives the same scripted MCP session as `crates/oz-policy-mcp/tests/stdio_smoke.rs`
-# through the Anthropic `mcp-cli` reference tool, then writes the
-# transcript to ./oz-policy-mcp-mcp-cli-transcript.json. Phase 5
-# Stream D's cross-client matrix job consumes this script alongside the
-# Claude Desktop / Cursor / Cline / Continue drivers and asserts the
-# five resulting transcripts are byte-equal (modulo UUID redaction —
-# the redactor mirrors the one in `stdio_smoke.rs`).
-#
-# Required environment:
-#   OZ_POLICY_MCP_BIN    — absolute path to the `oz-policy-mcp` binary
-#                          (default: ./target/release/oz-policy-mcp)
-#   MCP_CLI              — path to mcp-cli (default: $(which mcp-cli))
-#   OZ_POLICY_MCP_TOKEN  — unused for STDIO; set for HTTP variants
-#
-# Exit codes:
-#   0 — transcript written successfully
-#   1 — missing binary / unmet prereq
-#   2 — mcp-cli call failed
-#   3 — assertion mismatch on tool list
+# drive an mcp session through the `mcp-cli` reference tool, write transcript.
+# env: OZ_POLICY_MCP_BIN (default ./target/release/oz-policy-mcp), MCP_CLI.
+# exit codes: 0 ok, 1 prereq missing, 2 call failed, 3 tool-list mismatch.
 
 set -euo pipefail
 
@@ -36,31 +20,18 @@ if [[ -z "$MCP_CLI" ]] || [[ ! -x "$MCP_CLI" ]]; then
   exit 1
 fi
 
-# `mcp-cli` invokes the server, sends the requested method/params, and
-# prints the JSON-RPC response on stdout. The flags below match the
-# session covered by `stdio_smoke.rs`.
-#
-# Each call below runs in a separate `mcp-cli` invocation, so the in-
-# memory store doesn't persist across calls — that means the
-# tools/call inputs that need a prior recording_id / spec_id can't be
-# chained automatically in a multi-process shell harness. The
-# byte-equality comparison in the CI matrix job is therefore restricted
-# to the *first four* requests (initialize / tools/list /
-# resources/list / prompts/list) — the tool/call steps are validated
-# end-to-end by the in-process `stdio_smoke.rs` Rust integration test.
-#
-# Pass `--transport stdio --server-cmd "$BIN --stdio"` to wire the
-# subprocess. Per mcp-cli's docs the exact flag names vary by minor
-# version; the harness invocation below targets v0.x.
+# each call spawns a fresh mcp-cli; in-memory store doesn't persist between calls.
+# byte-equality matrix only checks the first four requests; tool/call validated
+# end-to-end by the rust integration test.
 
 declare -a TRANSPORT=(--transport stdio --server-cmd "$BIN --stdio")
 
-# --- tools/list ---
+# tools/list
 "$MCP_CLI" "${TRANSPORT[@]}" --method tools/list > "${OUT}.tools.json" || {
   echo "FATAL: tools/list failed" >&2
   exit 2
 }
-# Sanity: the canonical 5-tool surface must be present.
+# sanity: canonical 5-tool surface must be present.
 EXPECTED_TOOLS=(record_transaction synthesize_policy simulate_policy export_policy verify_install)
 for t in "${EXPECTED_TOOLS[@]}"; do
   if ! grep -q "\"name\":\"$t\"" "${OUT}.tools.json"; then
@@ -69,19 +40,19 @@ for t in "${EXPECTED_TOOLS[@]}"; do
   fi
 done
 
-# --- resources/list ---
+# resources/list
 "$MCP_CLI" "${TRANSPORT[@]}" --method resources/list > "${OUT}.resources.json" || {
   echo "FATAL: resources/list failed" >&2
   exit 2
 }
 
-# --- prompts/list ---
+# prompts/list
 "$MCP_CLI" "${TRANSPORT[@]}" --method prompts/list > "${OUT}.prompts.json" || {
   echo "FATAL: prompts/list failed" >&2
   exit 2
 }
 
-# --- tools/call record_transaction (touches Stellar testnet RPC) ---
+# tools/call record_transaction (hits stellar testnet rpc)
 "$MCP_CLI" "${TRANSPORT[@]}" --method tools/call \
   --params "{\"name\":\"record_transaction\",\"arguments\":{\"network\":\"testnet\",\"hash\":\"$BLEND_HASH\",\"rpc_url\":\"https://soroban-testnet.stellar.org\"}}" \
   > "${OUT}.record.json" || {
@@ -89,8 +60,7 @@ done
     exit 2
   }
 
-# Concatenate the per-call transcripts into a single JSON document for
-# the CI matrix comparator.
+# concat per-call transcripts into a single doc for the matrix comparator.
 jq -s '{ tools: .[0], resources: .[1], prompts: .[2], record: .[3] }' \
   "${OUT}.tools.json" \
   "${OUT}.resources.json" \

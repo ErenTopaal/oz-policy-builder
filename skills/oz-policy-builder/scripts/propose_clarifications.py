@@ -1,31 +1,14 @@
 #!/usr/bin/env python3
-"""propose_clarifications.py — emit clarification questions for a Recording.
+"""emit clarification questions for a recording.
 
-The skill workflow (see ../SKILL.md, step 4) calls this script after
-`record_transaction` to surface the small, fixed list of ambiguity-resolving
-questions the user should answer before `synthesize_policy` runs.
+triggers (mirrored from `prompts.rs`):
+  1. single observed i128 amount → cap-or-weekly?
+  2. delegated signer → reuse or new agent key?
+  3. soroswap router → slippage cap default + 200 bps; override?
+  4. `Default` context rule → switch to `CallContract(<target>)`?
 
-The triggers are sourced verbatim from `plan.md` § "Phase 6 — Agent skill" /
-*Implementation* and `crates/oz-policy-mcp/src/prompts.rs`:
-
-  1. Single observed i128 amount → ask "cap at observed only, or allow a
-     weekly/monthly total?".
-  2. Delegated signer present (any `Credentials::Address` entry in the auth
-     tree) → ask "reuse this delegated address, or generate a fresh agent
-     key?".
-  3. Soroswap router invocation (function name contains "swap") → ask
-     "slippage cap defaults to observed + 200 bps; override?".
-  4. `Default` context rule selected (i.e. no single contract target the
-     synthesizer can scope to) → ask "switch to `CallContract(<target>)` for
-     least-privilege?".
-
-Input  : a `Recording` JSON document on stdin.
-Output : a JSON array of `{question, default}` objects on stdout. Empty array
-         when no triggers fire.
-
-Exit codes:
-  0 — clarifications array written to stdout (possibly empty)
-  2 — stdin was not valid JSON OR did not look like a Recording document
+input: Recording json on stdin. output: array of `{question, default}` on stdout.
+exit: 0 ok (possibly empty), 2 not a valid recording.
 """
 
 import json
@@ -94,7 +77,7 @@ def propose(rec: Dict[str, Any]) -> List[Dict[str, str]]:
 
     questions: List[Dict[str, str]] = []
 
-    # Trigger 1: single observed amount → cap vs total.
+    # trigger 1: single observed amount → cap vs total.
     amounts = _collect_i128_args(contracts)
     if len(amounts) == 1:
         questions.append({
@@ -106,7 +89,7 @@ def propose(rec: Dict[str, Any]) -> List[Dict[str, str]]:
             "default": "weekly_total",
         })
 
-    # Trigger 2: delegated signer present.
+    # trigger 2: delegated signer present.
     delegated = _delegated_signers(auth_tree)
     if delegated:
         first = _shorten_addr(delegated[0])
@@ -120,7 +103,7 @@ def propose(rec: Dict[str, Any]) -> List[Dict[str, str]]:
             "default": "generate_new_agent_key",
         })
 
-    # Trigger 3: Soroswap / swap router invocation.
+    # trigger 3: Soroswap / swap router invocation.
     swap = _has_swap_invocation(contracts)
     if swap is not None:
         addr = _shorten_addr(swap["address"])
@@ -132,7 +115,7 @@ def propose(rec: Dict[str, Any]) -> List[Dict[str, str]]:
             "default": "observed_plus_200bps",
         })
 
-    # Trigger 4: Default context rule (zero or >1 contract targets).
+    # trigger 4: Default context rule (zero or >1 contract targets).
     targets = _contract_targets(contracts)
     distinct = sorted(set(targets))
     if len(distinct) != 1:

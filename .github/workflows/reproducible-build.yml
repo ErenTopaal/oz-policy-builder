@@ -1,19 +1,6 @@
-# reproducible-build.yml — re-derive every committed walkthrough WASM inside
-# the pinned `ci/Dockerfile` image and verify byte-equality with the
-# `wasm_hash.txt` files committed alongside each spec.
-#
-# Triggers:
-#   * `release` event of type `published`  — runs on every tagged release and
-#     attaches the manifest as a release asset.
-#   * push of any `v*` tag                  — same surface as the release path,
-#     covers the case where a tag is created via `git push origin <tag>`
-#     before a Release object exists.
-#   * manual `workflow_dispatch`            — lets maintainers re-run the
-#     check against `main` or any branch without cutting a release.
-#
-# This workflow is the binary completion criterion for Phase 9 Stream C: the
-# `reproducible-build.sh end-to-end check passes from a fresh clone on a
-# second machine` (see plan.md § "Phase 9 — Security / Audit / Hardening").
+# re-derive walkthrough wasms inside the pinned docker image and verify
+# byte-equality with committed `wasm_hash.txt`. triggers: published release,
+# `v*` tag push, manual workflow_dispatch.
 
 name: Reproducible Build
 
@@ -32,10 +19,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false # do NOT cancel a release-tagged run on retry
+  cancel-in-progress: false # never cancel a release-tagged run.
 
 permissions:
-  contents: write # needed for the release-asset upload step on success
+  contents: write # for release-asset upload on success.
 
 env:
   CARGO_TERM_COLOR: always
@@ -48,22 +35,14 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # actions/checkout@v4 — pinned to the same commit SHA the rest of the
-      # workflows use (see .github/workflows/ci.yml comment). Drift between
-      # workflows is caught at a single pin location.
+      # actions/checkout@v4 sha-pinned (same as ci.yml).
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          # full history so the manifest's `git.commit` is the real release
-          # SHA, not a shallow synthetic commit.
+          # full history so manifest's git.commit is the real release sha.
           fetch-depth: 0
 
-      # Compute the release tag the manifest filename + release-asset upload
-      # should use. The order of preference:
-      #   1. `release.tag_name`              (release event)
-      #   2. `github.ref_name` if it starts with `v` (push of a `v*` tag)
-      #   3. workflow_dispatch input (when provided)
-      #   4. short git SHA (fallback for manual non-tag runs)
+      # resolve release tag: release.tag_name → ref_name (if v*) → input → short sha.
       - name: Resolve release tag
         id: resolve_tag
         shell: bash
@@ -81,11 +60,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Resolved release tag: $tag"
 
-      # Build the reproducible-build image. We tag it with both the release
-      # tag and `latest` so subsequent steps (and humans debugging a failed
-      # release) can re-attach. Build is local-only — we do NOT push to a
-      # registry, since the upstream stellar-cli tarball SHA + base-image
-      # digest already pin every input.
+      # build image local-only — base + tarball shas already pin every input.
       - name: Build reproducible-build image
         run: |
           docker build \
@@ -94,13 +69,7 @@ jobs:
             --file ci/Dockerfile \
             ci
 
-      # Run scripts/reproducible-build.sh inside the image with the worktree
-      # mounted read-write at /work. The script writes the manifest to the
-      # workspace root, which surfaces back to the host via the bind mount.
-      #
-      # We forward CARGO_HOME / a tmpfs-backed scratch dir so the in-container
-      # build does not have to round-trip cargo registry fetches through the
-      # mounted target/ (which would dirty the host worktree).
+      # run the script inside the pinned image; manifest lands on the bind mount.
       - name: Run reproducible-build script inside image
         id: rebuild
         run: |
@@ -113,38 +82,27 @@ jobs:
             "oz-policy-builder/reproducible:${{ steps.resolve_tag.outputs.tag }}" \
             -c "scripts/reproducible-build.sh '${{ steps.resolve_tag.outputs.tag }}'"
 
-      # Collect failure diagnostics: any divergent WASMs from /tmp + the
-      # workspace's `target/` build log + any stderr the script captured.
-      # On a hash mismatch the script exits non-zero; we still want the
-      # *re-derived* WASM bytes uploaded as an artifact so reviewers can
-      # `wasm-objdump` it locally without re-running the build.
+      # on failure, save divergent wasms + manifest + pinned hashes for review.
       - name: Collect failure diagnostics
         if: failure()
         shell: bash
         run: |
           set -e
           mkdir -p /tmp/repro-failure
-          # Save any partial manifest the script may have left behind.
+          # save any partial manifest + re-derived wasms (best effort).
           cp -v reproducible-build-manifest-*.json /tmp/repro-failure/ 2>/dev/null || true
-          # Save the build log surfaced by the script. The docker step's
-          # stdout/stderr already lives in the run log; we additionally
-          # archive every re-derived policy.wasm that the codegen step
-          # touched (the script writes them to a per-spec mktemp dir, but
-          # we run it inside Docker, so those are lost — best-effort copy
-          # of anything left in CARGO_TARGET_DIR).
           if [ -d ".docker-target/wasm32-unknown-unknown/release" ]; then
             cp -v .docker-target/wasm32-unknown-unknown/release/*.wasm \
                   /tmp/repro-failure/ 2>/dev/null || true
           fi
-          # Pinned wasm_hash.txt files for diffability:
+          # pinned wasm_hash.txt files for diffability:
           find walkthroughs -name 'wasm_hash.txt' \
             -exec cp --parents -v {} /tmp/repro-failure/ \;
           echo "Files staged for upload:"
           ls -la /tmp/repro-failure
 
       - name: Upload failure diagnostics
-        # actions/upload-artifact v4.6.0 — SHA verified against
-        # https://api.github.com/repos/actions/upload-artifact/tags 2026-05-15.
+        # actions/upload-artifact v4.6.0 sha-pinned.
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         if: failure()
         with:
@@ -153,11 +111,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      # Success path: upload the manifest as a workflow artifact (always)
-      # and, when the workflow is firing on a release/push-tag event, attach
-      # it to the release.
+      # upload manifest as workflow artifact + (on release event) attach to release.
       - name: Upload manifest as workflow artifact
-        # actions/upload-artifact v4.6.0 — same SHA as the failure path.
+        # actions/upload-artifact v4.6.0 sha-pinned.
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         if: success()
         with:
@@ -166,10 +122,7 @@ jobs:
           if-no-files-found: error
           retention-days: 365
 
-      # Attach the manifest to the GitHub Release. Only runs on the
-      # `release` event (where the release object already exists).
-      # softprops/action-gh-release pinned to v2.6.2 — SHA verified against
-      # https://api.github.com/repos/softprops/action-gh-release/tags 2026-05-15.
+      # softprops/action-gh-release v2.6.2 sha-pinned.
       - name: Attach manifest to GitHub Release
         if: success() && github.event_name == 'release'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65

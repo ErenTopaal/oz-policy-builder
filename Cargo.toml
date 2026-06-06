@@ -1,12 +1,8 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
-# Fuzz subcrates live under `crates/<crate>/fuzz/` and use a nightly-only
-# toolchain via cargo-fuzz. They are deliberately excluded from the workspace
-# so the stable 1.89.0 workspace build (and `cargo deny`) never tries to
-# resolve `libfuzzer-sys`, which requires nightly + an asm runtime. The
-# nightly job in `.github/workflows/fuzz-nightly.yml` builds them directly
-# via `cargo +nightly fuzz build`. See Phase 9 Stream A.
+# fuzz subcrates need nightly + libfuzzer-sys; excluded from stable workspace.
+# nightly ci builds them via `cargo +nightly fuzz build`.
 exclude = [
     "crates/oz-policy-codegen/fuzz",
     "crates/oz-policy-recorder/fuzz",
@@ -18,113 +14,60 @@ version = "0.0.0"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["OZ Policy Builder contributors"]
-# Org chosen 2026-05-16: `oz-policy-builder` (user-confirmed).
-# Repo name `oz-policy-builder` is a working default — rename here if the
-# published repo uses a different name (e.g., `oz-account-policy-builder`
-# to match the local project dir). Pinned at workspace level so every
-# member crate inherits via `repository.workspace = true`.
-# TODO(pre-v1.0.0): confirm both org and repo name match the actual
-# published GitHub location before the first crates.io publish runs.
+# todo: confirm org/repo name before first crates.io publish.
 repository = "https://github.com/oz-policy-builder/oz-policy-builder"
 homepage = "https://github.com/oz-policy-builder/oz-policy-builder"
 documentation = "https://docs.rs/oz-policy-core"
 readme = "README.md"
 
-# All dependency versions are pinned with `=` to enforce reproducible builds
-# (per plan.md Phase 9 reproducible-build requirement). Member crates consume
-# these via `<dep> = { workspace = true }`.
+# all deps pinned with `=` for reproducible builds.
 [workspace.dependencies]
-# --- Stellar / Soroban ecosystem (versions verified in P1-T1 plan.md Tech Stack table) ---
+# stellar / soroban ecosystem.
 soroban-sdk = "=25.3.0"
 soroban-env-host = "=25.0.1"
 stellar-accounts = "=0.7.1"
 stellar-rpc-client = "=25.1.0"
 stellar-xdr = "=25.0.0"
 
-# --- Codegen & MCP (versions verified in plan.md Tech Stack table) ---
+# codegen + mcp.
 askama = "=0.16.0"
 rmcp = "=1.7.0"
-# schemars: plan.md pins major `=1.0` to match rmcp 1.7.0's `schemars = "1.0"`
-# declaration; latest patch as of 2026-05 is 1.2.1 (Cargo's `=1.0` semantics
-# select the exact 1.0.x latest). Keep at the major track to satisfy rmcp.
+# pinned to `=1.0` to match rmcp's declaration.
 schemars = "=1.0"
 
-# --- Testing ---
+# testing.
 proptest = "=1.11.0"
-# arbitrary: structured-input generator for cargo-fuzz harnesses (Phase 9
-# Stream A). Used as an OPT-IN feature on `oz-policy-core` so the workspace
-# build (stable 1.89.0) never pulls it in. The fuzz subcrates under
-# `crates/<crate>/fuzz/` enable the feature explicitly. Version 1.4.2 is the
-# latest stable on crates.io as of 2026-05; the `derive` feature provides
-# the `#[derive(Arbitrary)]` proc-macro consumed by spec/recording types.
+# opt-in `arbitrary` for fuzz subcrates; never enabled in the workspace build.
 arbitrary = { version = "=1.4.2", features = ["derive"] }
-# libfuzzer-sys: cargo-fuzz's libFuzzer wrapper. Pinned to 0.4.12 (latest
-# stable on crates.io 2026-05). Consumed ONLY by fuzz subcrates that are
-# excluded from the workspace; declared here so all fuzz subcrates pin to
-# the same version.
+# libfuzzer wrapper — only fuzz subcrates depend on it.
 libfuzzer-sys = "=0.4.12"
 
-# --- General-purpose deps (verified latest stable on crates.io 2026-05-15) ---
-# serde 1.0.228 — latest stable (https://crates.io/crates/serde/1.0.228, MSRV 1.56)
+# general-purpose deps.
 serde = { version = "=1.0.228", features = ["derive"] }
-# serde_json 1.0.149 — latest stable (https://crates.io/crates/serde_json/1.0.149, MSRV 1.68)
 serde_json = "=1.0.149"
-# thiserror 1.0.69 — latest 1.x stable (https://crates.io/crates/thiserror/1.0.69, MSRV 1.68).
-# Sticking to 1.x to avoid the 2.x breaking changes for our Error enum scaffolding.
+# 1.x — avoid 2.x breaking changes for the Error enum.
 thiserror = "=1.0.69"
-# tokio 1.52.3 — latest stable on 1.x (https://crates.io/crates/tokio/1.52.3, MSRV 1.71)
 tokio = { version = "=1.52.3", features = ["macros", "rt-multi-thread"] }
-# clap 4.6.1 — latest stable 4.x (https://crates.io/crates/clap/4.6.1, MSRV 1.85).
-# `env` enables `#[arg(env = "VAR")]` on the MCP binary's --token flag so the
-# `OZ_POLICY_MCP_TOKEN` env var auto-populates without bespoke fallback code.
+# `env` lets `--token` auto-populate from OZ_POLICY_MCP_TOKEN.
 clap = { version = "=4.6.1", features = ["derive", "env"] }
-# tracing 0.1.44 — latest stable (https://crates.io/crates/tracing/0.1.44, MSRV 1.65)
 tracing = "=0.1.44"
-# tracing-subscriber 0.3.23 — latest stable (https://crates.io/crates/tracing-subscriber/0.3.23, MSRV 1.65)
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
-# dashmap 6.1.0 — latest stable on the 6.x line (https://crates.io/crates/dashmap/6.1.0).
-# The 7.0.0-rc* line is still pre-release; staying on 6.x avoids opting into a
-# breaking-API track. Used by `oz-policy-mcp::store::McpStore` to back the
-# in-memory resource cache.
+# dashmap backs `McpStore`'s resource cache.
 dashmap = "=6.1.0"
-# uuid 1.23.1 — latest stable (https://crates.io/crates/uuid/1.23.1).
-# `v4` enables `Uuid::new_v4()` (random IDs) for `McpStore::new_id`.
 uuid = { version = "=1.23.1", features = ["v4"] }
-# base64 0.22.1 — latest stable (https://crates.io/crates/base64/0.22.1).
-# Used by `oz-policy-mcp::store` to encode the WASM byte payload as a JSON
-# string inside `ArtifactBundle`, and by the resource reader to emit
-# `BlobResourceContents` per the MCP spec.
+# wasm base64 for `ArtifactBundle` + `BlobResourceContents`.
 base64 = "=0.22.1"
-# axum 0.8.9 — latest stable on the 0.8 line (https://crates.io/crates/axum/0.8.9).
-# Used by `oz-policy-mcp::main` to host the rmcp `StreamableHttpService` tower
-# service under `POST /mcp` and to expose a bearer-auth-free `GET /healthz`
-# probe endpoint for load balancers and k8s liveness checks. rmcp 1.7.0's own
-# `transport-streamable-http-server` integration tests use this same major+minor.
+# axum hosts rmcp StreamableHttpService + GET /healthz.
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
-# tower 0.5.2 — latest stable (https://crates.io/crates/tower/0.5.2).
-# We pull in only the `util` feature for the `ServiceBuilder` and `Layer`
-# helpers used by the bearer-auth middleware in `oz-policy-mcp::auth`. axum
-# already depends on `tower 0.5`, so this aligns the workspace on a single
-# major version.
+# tower `util` for bearer-auth ServiceBuilder + Layer.
 tower = { version = "=0.5.2", features = ["util"] }
-# tower-http 0.6.8 — latest stable (https://crates.io/crates/tower-http/0.6.8).
-# Provides `TraceLayer` for request logging on the HTTP transport; the
-# `trace` feature pulls in only what we need (no body decompression /
-# compression layers).
+# tower-http TraceLayer for request logging.
 tower-http = { version = "=0.6.8", features = ["trace"] }
-# http 1.4.0 — already present transitively via rmcp 1.7.0. Pinned here so
-# the bearer-auth middleware can construct `StatusCode::UNAUTHORIZED` /
-# `HeaderValue` literals without taking a churn-prone transitive dep.
 http = "=1.4.0"
-# reqwest 0.12.28 — used ONLY as a dev-dep by the HTTP smoke test
-# (`tests/http_smoke.rs`) to drive the bound server. `rustls-tls` keeps the
-# binary off the OpenSSL dependency chain; matches `stellar-rpc-client`'s
-# downstream rustls posture so cargo-deny does not pick up a second TLS
-# backend just for tests.
+# rustls-tls keeps us off openssl; matches stellar-rpc-client.
 reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls"] }
 
-# `overflow-checks = true` is LOAD-BEARING for safety per plan.md
-# Cross-Phase Invariants (Blend security guidance verbatim). Do not unset.
+# `overflow-checks = true` is load-bearing for i128 safety. do not unset.
 [profile.release]
 overflow-checks = true
 lto = "fat"

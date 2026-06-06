@@ -1,45 +1,10 @@
-# walkthroughs.yml — re-derives every Phase 8 walkthrough corpus on every PR
-# and asserts byte-equality against the frozen `expected-*.json` artifacts.
-#
-# Phase 8 binary criterion (see plan.md § "Phase 8 — Verification / Test /
-# Validation"):
-#   For each walkthrough <n>, `cargo run -p oz-policy-cli -- synthesize
-#   <recording> --mode auto > /tmp/spec.json && diff /tmp/spec.json
-#   walkthroughs/<n>/expected-spec-auto.json` returns no output, AND the
-#   workflow's `walkthroughs` job is green on the merge commit.
-#
-# What the workflow re-derives:
-#   1. **Synthesize** — `oz-policy-cli synthesize <recording> --mode auto`
-#      and diff against `expected-spec-auto.json` (and `expected-spec-track-a.json`
-#      with `--mode compose-only`, when the file exists). PURE in-process —
-#      no network — so this is the rock-solid CI signal.
-#   2. **Codegen** — when `wasm/slot_*/wasm_hash.txt` is present, run
-#      `oz-policy-cli codegen` and diff the resulting per-slot
-#      `wasm_hash.txt` against the frozen one. Only runs when the
-#      `wasm32-unknown-unknown` target + the `stellar` CLI are available
-#      (both are installed by this workflow).
-#   3. **Simulate** — when `expected-sim-report.json` is present, run
-#      `oz-policy-cli simulate` against the frozen WASMs and diff the
-#      canonicalised report against the frozen one (canonicaliser:
-#      `walkthroughs/canonicalize-sim-report.sh`).
-#
-# What we SKIP (and why):
-#   * Recording re-derivation (`oz-policy-cli record --hash …`) requires a
-#     live RPC roundtrip and pulls from testnet retention. Plan.md Phase 8
-#     calls this out as "skipped in CI due to flake risk". The recording
-#     is frozen at corpus-freeze time and append-only.
-#   * Install-envelope XDR re-derivation depends on dynamic resource fees
-#     returned by `simulateTransaction`. Per the task spec we instead do
-#     a structural-equivalence test that decodes the envelope's
-#     `InvokeHostFunctionOp.hostFunction` and asserts the args list
-#     matches. The frozen `expected-install-envelope.xdr`, when present,
-#     is hex-loaded and diffed at the host-function-args level only.
-#
-# This workflow is deliberately structured as a discovery loop: it iterates
-# over every directory under `walkthroughs/<n-something>/` that carries
-# an `expected-spec-auto.json` (Stream A's freeze marker). Walkthroughs
+# re-derives every walkthrough corpus on each pr and diffs against the frozen
+# `expected-*.json` artifacts. covers synthesize (pure, no network), codegen
+# (when wasm_hash.txt present), and simulate (when expected-sim-report.json present).
+# skips: record (testnet retention) + install-envelope xdr (dynamic resource fees).
+# discovery loop: iterates every walkthrough that carries `expected-spec-auto.json`.
 # that have not yet been frozen are skipped silently — they will start
-# being checked the moment Stream A drops their `expected-spec-auto.json`.
+# picked up automatically once `expected-spec-auto.json` lands.
 
 name: Walkthroughs
 
@@ -67,14 +32,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # actions/checkout@v4 — pinned to commit SHA 34e114876b0b11c390a56381ad16ebd13914f8d5
-      # (v4 tag, 2025-11-13). Same pin as .github/workflows/ci.yml so version
-      # drift between workflows is caught at a single pin location.
+      # actions/checkout@v4 sha-pinned (same as ci.yml).
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      # dtolnay/rust-toolchain — pinned to the same commit as ci.yml.
-      # Toolchain version is resolved from rust-toolchain.toml (channel = 1.89.0).
+      # dtolnay/rust-toolchain sha-pinned (channel comes from rust-toolchain.toml).
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
@@ -91,27 +53,21 @@ jobs:
             target
           key: ${{ runner.os }}-walkthroughs-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
 
-      # nextest is pinned to the same version as ci.yml. Required because
-      # the codegen step's WASM build is driven through cargo and we want
-      # a consistent toolchain surface across all CI jobs.
+      # nextest pinned to same version as ci.yml.
       - name: Install cargo-nextest (pinned)
         run: cargo install cargo-nextest --version =0.9.128 --locked
 
-      # jq is preinstalled on ubuntu-latest GitHub runners (jq 1.6+); the
-      # canonicaliser script requires it.
+      # jq is preinstalled on ubuntu-latest; canonicaliser script needs it.
       - name: Verify required CLI tools
         run: |
           jq --version
           which diff
 
-      # Build all CLI binaries upfront so the per-walkthrough loop only
-      # invokes precompiled artefacts (much faster than `cargo run` per dir).
+      # build cli upfront — much faster than `cargo run` per walkthrough.
       - name: Build oz-policy-cli
         run: cargo build -p oz-policy-cli
 
-      # Per-walkthrough re-derivation loop. Discovers walkthroughs by the
-      # presence of `expected-spec-auto.json` — that file is Stream A's
-      # corpus-freeze marker.
+      # per-walkthrough loop, discovered via `expected-spec-auto.json` marker.
       - name: Re-derive every frozen walkthrough corpus
         shell: bash
         run: |
@@ -131,9 +87,7 @@ jobs:
             echo "Re-deriving walkthrough: $name"
             echo "=================================================="
 
-            # Locate the recording file. Stream A uses either
-            # `expected-recording.json` (walkthrough 01) or `recording.json`
-            # (walkthrough 02). Prefer the former; fall back to the latter.
+            # prefer `expected-recording.json`, fall back to `recording.json`.
             recording=""
             if [ -f "$dir/expected-recording.json" ]; then
               recording="$dir/expected-recording.json"
@@ -145,8 +99,7 @@ jobs:
               continue
             fi
 
-            # Recover the rule name from the frozen spec so the synthesize
-            # CLI's `--rule-name` flag emits a byte-equal `context_rule.name`.
+            # recover rule name from frozen spec for byte-equal output.
             rule_name="$(jq -r '.context_rule.name' "$spec_auto")"
             if [ -z "$rule_name" ] || [ "$rule_name" = "null" ]; then
               echo "[fail] $name — expected-spec-auto.json has no context_rule.name"
@@ -154,12 +107,12 @@ jobs:
               continue
             fi
 
-            # Recover the lifetime (may be null/absent → don't pass the flag).
+            # recover lifetime; absent → don't pass the flag.
             lifetime="$(jq -r '.lifetime_ledgers // empty' "$spec_auto")"
 
             echo "[info] recording=$recording  rule_name=$rule_name  lifetime=${lifetime:-<none>}"
 
-            # ---- (1) Synthesize: auto mode → diff against expected-spec-auto ----
+            # (1) synthesize auto → diff against expected-spec-auto.
             tmp_spec_auto="$(mktemp)"
             args=("synthesize" "$recording" "--mode" "auto" "--tightness" "exact" "--rule-name" "$rule_name")
             if [ -n "$lifetime" ]; then
@@ -178,7 +131,7 @@ jobs:
             fi
             rm -f "$tmp_spec_auto"
 
-            # ---- (1b) Synthesize: compose-only mode (when expected file exists) ----
+            # (1b) synthesize compose-only when the expected file exists.
             spec_a="$dir/expected-spec-track-a.json"
             if [ -f "$spec_a" ]; then
               tmp_spec_a="$(mktemp)"
@@ -198,11 +151,8 @@ jobs:
               rm -f "$tmp_spec_a"
             fi
 
-            # ---- (2) Codegen: when wasm/slot_*/wasm_hash.txt is committed ----
-            # Re-runs codegen to a temp dir; diffs each slot's wasm_hash.txt.
-            # Requires the `stellar` CLI (Soroban contract builder) — install
-            # only when at least one walkthrough actually needs it, gated by
-            # the presence of a frozen wasm/ directory.
+            # (2) codegen → temp dir → diff each slot's wasm_hash.txt.
+            # requires `stellar` cli; installed only when a wasm/ dir exists.
             if compgen -G "$dir/wasm/slot_*/wasm_hash.txt" > /dev/null; then
               if [ -z "${STELLAR_INSTALLED:-}" ]; then
                 echo "[info] Installing stellar-cli for codegen verification"
@@ -232,17 +182,9 @@ jobs:
               rm -rf "$tmp_codegen"
             fi
 
-            # ---- (3) Simulate: when expected-sim-report.json is committed ----
-            # NOTE: `oz-policy-cli simulate` exits non-zero (E_SIM_DENY_PASSED
-            # = 17 etc.) when one or more deny vectors didn't behave as the
-            # spec required — that is the CLI's "would-block-on-CI" guard for
-            # local users. Frozen walkthrough corpora may legitimately pin
-            # such a state (the frozen `expected-sim-report.json` captures
-            # `deny_passed < deny_total` verbatim). For corpus byte-equality
-            # we therefore IGNORE the exit code and only diff the report
-            # file. If `simulate` fails to write the file at all, the diff
-            # below catches it (the comparison against the frozen file
-            # surfaces as a hard error).
+            # (3) simulate → diff against expected-sim-report.json.
+            # ignore exit code — frozen corpora may legitimately pin a
+            # deny-passed<deny-total state; report-file diff is the gate.
             sim_report="$dir/expected-sim-report.json"
             if [ -f "$sim_report" ] && [ -d "$dir/wasm" ]; then
               tmp_sim="$(mktemp)"
@@ -261,14 +203,9 @@ jobs:
               rm -f "$tmp_sim"
             fi
 
-            # ---- (4) Install-envelope: structural-equivalence only ---------
-            # We do NOT re-derive the envelope XDR in CI because the resource
-            # fee + footprint values change with every testnet ledger close.
-            # Instead, when an envelope is frozen, validate that the file
-            # round-trips through `stellar-xdr decode`. Full structural diff
-            # against a re-derived envelope is deferred to local-developer
-            # runs (the binary completion criterion targets the synthesize
-            # diff, which IS deterministic and IS gated above).
+            # (4) install-envelope: structural-equivalence only.
+            # resource fee + footprint change every ledger; we only roundtrip
+            # through `stellar-xdr decode`. full diff is a local-dev concern.
             for env_path in "$dir/expected-install-envelope.xdr"; do
               if [ -f "$env_path" ]; then
                 if ! head -c 32 "$env_path" > /dev/null; then

@@ -10,7 +10,7 @@ on:
       - main
       - "phase-*"
 
-# Cancel in-flight runs for the same branch when a new commit lands.
+# cancel in-flight runs for the same branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -25,15 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # actions/checkout@v4 — pinned to commit SHA 34e114876b0b11c390a56381ad16ebd13914f8d5
-      # (v4 tag, 2025-11-13, message "Cleanup actions/checkout@v6 auth style (#2305)").
+      # actions/checkout@v4 pinned by sha.
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      # dtolnay/rust-toolchain — pinned to commit SHA 3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
-      # (master HEAD as of 2026-03-27, message "Add 1.94.1 patch release"). The exact
-      # toolchain version is resolved from `rust-toolchain.toml` at the repo root,
-      # which pins channel = 1.89.0.
+      # dtolnay/rust-toolchain pinned by sha; channel comes from rust-toolchain.toml.
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
@@ -56,8 +52,7 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      # Install nextest at the exact pinned version. NEVER drop `--version` —
-      # nextest 0.9.129+ requires rustc >= 1.91 (see plan.md Tech Stack row).
+      # nextest 0.9.129+ requires rustc >= 1.91; never drop the version pin.
       - name: Install cargo-nextest (pinned)
         run: cargo install cargo-nextest --version =0.9.128 --locked
 

@@ -16,7 +16,7 @@ on:
       - "skills/**"
       - ".github/workflows/skills-lint.yml"
 
-# Cancel in-flight runs for the same branch.
+# cancel in-flight runs for the same branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # actions/checkout@v4 — pinned to the same commit SHA used by .github/workflows/ci.yml
+      # actions/checkout@v4 sha-pinned (same as ci.yml).
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -57,7 +57,7 @@ jobs:
                   print(f"{skill_md}: missing YAML frontmatter")
                   failed += 1
                   continue
-              # Frontmatter is between the first two '---' lines.
+              # frontmatter is between the first two '---' lines.
               parts = text.split("---", 2)
               if len(parts) < 3:
                   print(f"{skill_md}: malformed frontmatter delimiters")
