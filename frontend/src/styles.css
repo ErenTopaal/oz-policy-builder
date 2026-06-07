@@ -1,0 +1,77 @@
+/* base styles ported from the design's <helmet> block */
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: #dbdbde;
+  color: #1d1d1e;
+  font-family: 'Hanken Grotesk', -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: rgba(28, 28, 33, 0.2); color: #1d1d1e; }
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: rgba(28, 28, 33, 0.22); border-radius: 7px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(28, 28, 33, 0.4); }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer {
+  0%   { background-position:  200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes flowdown {
+  0%   { background-position: 0    0; }
+  100% { background-position: 0 -240%; }
+}
+@keyframes floaty {
+  0%, 100% { transform: translateY( 0); }
+  50%      { transform: translateY(-6px); }
+}
+@keyframes rowin {
+  0%   { opacity: 0; transform: translateY(7px); }
+  100% { opacity: 1; transform: none;            }
+}
+@keyframes riseIn {
+  0%   { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: none;             }
+}
+@keyframes fadeIn {
+  0%   { opacity: 0; transform: scale(.98) translateY(10px); }
+  100% { opacity: 1; transform: none;                       }
+}
+@keyframes pulseSoft {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.28); }
+  50%      { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0  ); }
+}
+
+/* generic helpers used across components */
+.mono { font-family: 'JetBrains Mono', monospace; }
+.display { font-family: 'Bricolage Grotesque', sans-serif; }
+
+/* hover rules for repeating patterns ported from design's style-hover attrs */
+.nav-link { transition: color .2s; }
+.nav-link:hover { color: #1d1d1e !important; }
+
+.btn-dark { transition: background .2s, transform .2s; }
+.btn-dark:hover { background: #34343b !important; transform: translateY(-1px); }
+
+.btn-light { transition: background .2s, transform .2s; }
+.btn-light:hover { background: #fff !important; transform: translateY(-1px); }
+
+.row-hover { transition: background .2s; }
+.row-hover:hover { background: #f4f4f5 !important; }
+
+.footer-link { transition: color .2s; }
+.footer-link:hover { color: #f5f5f6 !important; }
+
+.arch-card { transition: transform .25s, box-shadow .25s; }
+.arch-card:hover { transform: translateY(-3px); box-shadow: 0 16px 30px -16px rgba(28,28,33,0.4); }
+.arch-card-dark { transition: transform .25s; }
+.arch-card-dark:hover { transform: translateY(-3px); }
+
+.howstep { transition: transform .25s; }
+.howstep:hover { transform: translateX(3px); }
+
+.input-focus:focus { box-shadow: 0 0 0 3px rgba(28,28,33,0.25); }
