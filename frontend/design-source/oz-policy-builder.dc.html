@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=Bricolage+Grotesque:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:#dbdbde;color:#1d1d1e;font-family:'Hanken Grotesk',-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  ::selection{background:rgba(28,28,33,0.2);color:#1d1d1e}
+  ::-webkit-scrollbar{width:11px;height:11px}
+  ::-webkit-scrollbar-thumb{background:rgba(28,28,33,0.22);border-radius:7px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(28,28,33,0.4)}
+  ::-webkit-scrollbar-track{background:transparent}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  @keyframes flowdown{0%{background-position:0 0}100%{background-position:0 -240%}}
+  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+  @keyframes rowin{0%{opacity:0;transform:translateY(7px)}100%{opacity:1;transform:none}}
+  @keyframes riseIn{0%{opacity:0;transform:translateY(20px)}100%{opacity:1;transform:none}}
+  @keyframes fadeIn{0%{opacity:0;transform:scale(.98) translateY(10px)}100%{opacity:1;transform:none}}
+  @keyframes pulseSoft{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0.28)}50%{box-shadow:0 0 0 7px rgba(255,255,255,0)}}
+</style>
+</helmet>
+
+<nav style="position:sticky;top:0;z-index:50;backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px);background:rgba(223,224,226,0.84);box-shadow:0 1px 0 rgba(22,24,21,0.07)">
+  <div style="max-width:1180px;margin:0 auto;padding:15px 28px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <a href="#top" style="display:flex;align-items:center;gap:11px;text-decoration:none">
+      <span style="width:22px;height:22px;border-radius:7px;background:#1c1c20;display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;border-radius:50%;background:#dbdbde"></span></span>
+      <span style="font-family:'Bricolage Grotesque',sans-serif;font-size:16px;color:#1d1d1e;font-weight:600;letter-spacing:-0.01em">OZ Policy Builder</span>
+    </a>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#606066;background:rgba(28,28,33,0.09);padding:3px 8px;border-radius:6px">Apache-2.0</span>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap">
+      <a href="#how" style="text-decoration:none;color:#55555b;font-size:14.5px;font-weight:500" style-hover="color:#1d1d1e">How it works</a>
+      <a href="#synthesize" style="text-decoration:none;color:#55555b;font-size:14.5px;font-weight:500" style-hover="color:#1d1d1e">Synthesizer</a>
+      <a href="#quickstart" style="text-decoration:none;color:#55555b;font-size:14.5px;font-weight:500" style-hover="color:#1d1d1e">Quick start</a>
+      <a href="#architecture" style="text-decoration:none;color:#55555b;font-size:14.5px;font-weight:500" style-hover="color:#1d1d1e">Architecture</a>
+      <a href="#" style="text-decoration:none;color:#f4f4f5;font-size:13px;font-family:'JetBrains Mono',monospace;background:#1c1c20;padding:9px 16px;border-radius:9px" style-hover="background:#34343b">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<section id="top" style="position:relative;overflow:hidden;background:#dfdfe1">
+  <div style="position:relative;max-width:1180px;margin:0 auto;padding:clamp(50px,7vw,100px) 28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(335px,1fr));gap:clamp(40px,5vw,64px);align-items:center">
+    <div>
+      <span style="display:inline-flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:0.04em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:6px 13px;border-radius:30px">
+        <span style="width:6px;height:6px;border-radius:50%;background:#1c1c20"></span>stellar · soroban · smart accounts
+      </span>
+      <h1 style="font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(36px,5.2vw,64px);line-height:1.04;letter-spacing:-0.02em;margin:22px 0 0;font-weight:500;color:#1d1d1e">Record a transaction. Get the policy that permits <em style="font-style:italic;color:#1c1c20">exactly that</em><span style="color:#8c8c92">, nothing more.</span></h1>
+      <p style="margin:24px 0 0;font-size:clamp(15px,1.5vw,18.5px);line-height:1.62;color:#54545a;max-width:50ch">A developer tool that records a real Soroban transaction and synthesizes the minimum OpenZeppelin smart-account policy that would authorize it. Scoped, time-bounded authority for agents and dapps, without handing over your keys.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:11px;margin-top:32px">
+        <a href="#" style="display:inline-flex;align-items:center;gap:9px;text-decoration:none;background:#1c1c20;color:#f4f4f5;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:14px;padding:14px 23px;border-radius:11px;box-shadow:0 16px 30px -16px rgba(28,28,33,0.7)" style-hover="background:#34343b;transform:translateY(-1px)">View on GitHub ↗</a>
+        <a href="#synthesize" style="display:inline-flex;align-items:center;gap:9px;text-decoration:none;background:#fbfbfb;color:#1c1c20;font-family:'JetBrains Mono',monospace;font-size:14px;padding:14px 23px;border-radius:11px;box-shadow:0 2px 8px -3px rgba(22,24,21,0.18)" style-hover="background:#fff;transform:translateY(-1px)">Try the synthesizer ↓</a>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:36px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#55555b;background:rgba(28,28,33,0.07);padding:6px 12px;border-radius:8px">Rust CLI</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#55555b;background:rgba(28,28,33,0.07);padding:6px 12px;border-radius:8px">MCP server</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#55555b;background:rgba(28,28,33,0.07);padding:6px 12px;border-radius:8px">TS wallet adapter</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#55555b;background:rgba(28,28,33,0.07);padding:6px 12px;border-radius:8px">deterministic output</span>
+      </div>
+    </div>
+    <div>{{ heroVisual }}</div>
+  </div>
+</section>
+
+<section style="background-color:#1c1c20;background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:42px 42px;color:#ebebec">
+  <div data-reveal="" style="max-width:1180px;margin:0 auto;padding:clamp(60px,8vw,100px) 28px">
+    <div style="display:flex;flex-direction:column;gap:13px;margin-bottom:44px;max-width:66ch">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#a0a0a8">why scoped, not keys</span>
+      <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(30px,4.2vw,54px);font-weight:500;letter-spacing:-0.025em;color:#fbfbfb">An agent should hold a permission, not your account</h2>
+      <p style="margin:0;color:#b6b6bd;font-size:16.5px;line-height:1.6">Hand an agent your keys and it inherits everything you can do. Hand it a synthesized policy and it inherits exactly one flow, the one you recorded, under tight bounds.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px">
+      <div style="background:#26262b;border-radius:16px;padding:26px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#a0a0a8;text-transform:uppercase;letter-spacing:0.05em">full key access</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e08a72;border:1px solid rgba(224,138,114,0.4);padding:2px 8px;border-radius:20px">unbounded</span>
+        </div>
+        <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:23px;color:#fbfbfb;font-weight:500;margin-bottom:18px">The agent can do anything</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">transfer</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">approve</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">swap</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">claim</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">withdraw</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">burn</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">mint</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">set_admin</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#e8e8ee;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);padding:6px 11px;border-radius:8px">upgrade</span>
+        </div>
+        <div style="margin-top:18px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#8a8a92;line-height:1.5">your entire account surface is reachable</div>
+      </div>
+      <div style="background:#26262b;border-radius:16px;padding:26px;position:relative">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#a0a0a8;text-transform:uppercase;letter-spacing:0.05em">scoped policy</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#1c1c20;background:#e8e8ee;padding:2px 9px;border-radius:20px;font-weight:600">function_allowlist[claim]</span>
+        </div>
+        <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:23px;color:#fbfbfb;font-weight:500;margin-bottom:18px">The agent can do one thing</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">transfer</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">approve</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">swap</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#1c1c20;background:#f3f3f8;border:1px solid #f3f3f8;padding:6px 11px;border-radius:8px;font-weight:600;animation:pulseSoft 2.4s ease-in-out infinite">claim</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">withdraw</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">burn</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">mint</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">set_admin</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#5c5c63;border:1px solid rgba(255,255,255,0.07);padding:6px 11px;border-radius:8px;text-decoration:line-through">upgrade</span>
+        </div>
+        <div style="margin-top:18px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#8a8a92;line-height:1.5">every other call is denied at enforce-time</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" style="background-color:#fbfbfb;background-image:linear-gradient(rgba(28,28,33,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(28,28,33,0.025) 1px,transparent 1px);background-size:46px 46px">
+  <div style="max-width:1180px;margin:0 auto;padding:clamp(60px,8vw,100px) 28px">
+    <div style="display:flex;flex-direction:column;gap:13px;margin-bottom:52px" data-reveal="">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1c1c20">how it works</span>
+      <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(28px,3.5vw,46px);font-weight:500;letter-spacing:-0.02em;color:#1d1d1e">From a transaction to an installed policy</h2>
+      <p style="margin:0;max-width:64ch;color:#54545a;font-size:16.5px;line-height:1.6">Six deterministic stages. Each has a public command and a typed JSON output, nothing happens on-chain until the final, explicit install step.</p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:clamp(32px,5vw,60px);align-items:flex-start">
+      <div style="position:relative;flex:1 1 440px;min-width:300px">
+      <div style="position:absolute;left:23px;top:30px;bottom:30px;width:2px;background:rgba(28,28,33,0.13);border-radius:2px"></div><div data-fill="" style="position:absolute;left:23px;top:30px;width:2px;height:0;background:#1c1c20;border-radius:2px"></div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start;padding:16px 0" style-hover="transform:translateX(3px)" data-step="">
+          <div style="position:relative;z-index:1;width:48px;height:48px;border-radius:50%;background:#e9eaf0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:#a0a0a8;font-weight:600;transition:background .45s,color .45s,box-shadow .45s" data-node="">01</div>
+          <div style="padding-top:4px"><div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#1d1d1e;font-weight:600">record</div><div style="margin-top:5px;color:#54545a;font-size:14.5px;line-height:1.55;max-width:58ch">Pull a transaction by hash, or simulate one, and decode every contract call, argument, asset movement and state change into a typed Recording.</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start;padding:16px 0" style-hover="transform:translateX(3px)" data-step="">
+          <div style="position:relative;z-index:1;width:48px;height:48px;border-radius:50%;background:#e9eaf0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:#a0a0a8;font-weight:600;transition:background .45s,color .45s,box-shadow .45s" data-node="">02</div>
+          <div style="padding-top:4px"><div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#1d1d1e;font-weight:600">synthesize</div><div style="margin-top:5px;color:#54545a;font-size:14.5px;line-height:1.55;max-width:58ch">Derive the tightest context rule plus the minimum set of policies that permit exactly that flow. Bias toward least privilege, never a function or asset that wasn't observed.</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start;padding:16px 0" style-hover="transform:translateX(3px)" data-step="">
+          <div style="position:relative;z-index:1;width:48px;height:48px;border-radius:50%;background:#e9eaf0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:#a0a0a8;font-weight:600;transition:background .45s,color .45s,box-shadow .45s" data-node="">03</div>
+          <div style="padding-top:4px"><div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#1d1d1e;font-weight:600">codegen</div><div style="margin-top:5px;color:#54545a;font-size:14.5px;line-height:1.55;max-width:58ch">Compose existing OZ primitives first; emit real, compilable Soroban policy contracts from audit-gated templates only where a primitive can't express the constraint.</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start;padding:16px 0" style-hover="transform:translateX(3px)" data-step="">
+          <div style="position:relative;z-index:1;width:48px;height:48px;border-radius:50%;background:#e9eaf0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:#a0a0a8;font-weight:600;transition:background .45s,color .45s,box-shadow .45s" data-node="">04</div>
+          <div style="padding-top:4px"><div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#1d1d1e;font-weight:600">simulate</div><div style="margin-top:5px;color:#54545a;font-size:14.5px;line-height:1.55;max-width:58ch">Replay the recording as a permit case, then generate deny vectors, wrong function, wrong asset, over-limit amount, out-of-window timing, that the policy must reject.</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start;padding:16px 0" style-hover="transform:translateX(3px)" data-step="">
+          <div style="position:relative;z-index:1;width:48px;height:48px;border-radius:50%;background:#e9eaf0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:#a0a0a8;font-weight:600;transition:background .45s,color .45s,box-shadow .45s" data-node="">05</div>
+          <div style="padding-top:4px"><div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#1d1d1e;font-weight:600">export</div><div style="margin-top:5px;color:#54545a;font-size:14.5px;line-height:1.55;max-width:58ch">Produce a wallet-signable install envelope as XDR. The tool builds and preflights it, it never submits anything on your behalf.</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:48px 1fr;gap:24px;align-items:start;padding:16px 0" style-hover="transform:translateX(3px)" data-step="">
+          <div style="position:relative;z-index:1;width:48px;height:48px;border-radius:50%;background:#e9eaf0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:#a0a0a8;font-weight:600;transition:background .45s,color .45s,box-shadow .45s" data-node="">06</div>
+          <div style="padding-top:4px"><div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#1d1d1e;font-weight:600">install</div><div style="margin-top:5px;color:#54545a;font-size:14.5px;line-height:1.55;max-width:58ch">Sign with your wallet, install the context rule on your smart account, then read it back from chain and verify it matches what you reviewed.</div></div>
+        </div>
+      </div>
+    </div>
+      <div style="flex:1 1 320px;min-width:280px;align-self:stretch">
+        <div style="position:sticky;top:96px;background:#1c1c20;border-radius:18px;padding:32px 28px;box-shadow:0 16px 40px -22px rgba(28,28,33,0.6)">
+          <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(28px,3vw,36px);line-height:1.05;color:#f3f3f8;font-weight:600;letter-spacing:-0.025em">No black box.</div>
+          <div style="margin-top:14px;color:#b2b2b8;font-size:15px;line-height:1.55">Every stage prints typed JSON you can read and verify.</div>
+          <div style="margin-top:30px;display:flex;flex-direction:column;gap:22px">
+            <div style="display:flex;align-items:baseline;gap:16px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6e6e76;font-weight:600;width:80px;flex-shrink:0;text-transform:uppercase;letter-spacing:0.05em">record</span>
+              <span style="color:#f3f3f8;font-size:19px;line-height:1.25;font-weight:500">what happened</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:16px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6e6e76;font-weight:600;width:80px;flex-shrink:0;text-transform:uppercase;letter-spacing:0.05em">synthesize</span>
+              <span style="color:#f3f3f8;font-size:19px;line-height:1.25;font-weight:500">the policy</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:16px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6e6e76;font-weight:600;width:80px;flex-shrink:0;text-transform:uppercase;letter-spacing:0.05em">simulate</span>
+              <span style="color:#f3f3f8;font-size:19px;line-height:1.25;font-weight:500">the proof</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+
+<section style="background-color:#1c1c20;color:#ebebec;background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:42px 42px">
+  <div data-reveal="" style="max-width:1180px;margin:0 auto;padding:clamp(60px,8vw,94px) 28px">
+    <div style="display:flex;flex-direction:column;gap:13px;margin-bottom:38px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#ccccd3">on-chain proof</span>
+      <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(28px,3.5vw,46px);font-weight:500;letter-spacing:-0.02em;color:#f5f5f6">The full pipeline, closed on testnet</h2>
+      <p style="margin:0;max-width:64ch;color:#c9c9cd;font-size:16.5px;line-height:1.6">A real record → generate → simulate → sign → install → verify roundtrip. Not a screenshot, a live context rule you can inspect in the explorer.</p>
+    </div>
+    <div style="border-radius:18px;background:#fbfbfb;overflow:hidden;box-shadow:0 16px 44px -24px rgba(22,24,21,0.4)">
+      <div style="padding:28px;display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:18px">
+          <div style="width:48px;height:48px;border-radius:50%;background:#1c1c20;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:21px;color:#f4f4f5">✓</div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:clamp(18px,2.3vw,23px);color:#1d1d1e;font-weight:600;letter-spacing:-0.01em">verifyInstall · matches = true</div>
+            <div style="margin-top:6px;color:#54545a;font-size:14px;line-height:1.5;max-width:52ch">The context rule installed on chain is byte-for-byte the policy you reviewed.</div>
+          </div>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#54545a;background:#e9e9eb;padding:8px 14px;border-radius:22px;white-space:nowrap">stellar testnet</span>
+      </div>
+      <a href="https://stellar.expert/explorer/testnet/tx/038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb" target="_blank" style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:17px 28px;border-top:1px solid rgba(22,24,21,0.08);text-decoration:none" style-hover="background:#f4f4f5">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;color:#3f3f45;font-weight:600">install transaction</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#1c1c20;font-weight:500">038583fa…ce90bb ↗</span>
+      </a>
+      <a href="https://stellar.expert/explorer/testnet/contract/CAQGYWVEZIE6ZZBVDIVUYTH4BBC5UVQMUOPAKYKDU2POXISSNFKCBN3A" target="_blank" style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:17px 28px;border-top:1px solid rgba(22,24,21,0.08);text-decoration:none" style-hover="background:#f4f4f5">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;color:#3f3f45;font-weight:600">smart account · c-addr</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#1c1c20;font-weight:500">CAQGYWVE…SNFKCBN3A ↗</span>
+      </a>
+      <a href="https://stellar.expert/explorer/testnet/contract/CDBE67MNNVIOAD5RSKO6IECOGIVK45L3NRP4PS2DMCI3GPDYOLY7CWAR" target="_blank" style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:17px 28px;border-top:1px solid rgba(22,24,21,0.08);text-decoration:none" style-hover="background:#f4f4f5">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;color:#3f3f45;font-weight:600">policy contract · c-addr</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#1c1c20;font-weight:500">CDBE67MN…OLY7CWAR ↗</span>
+      </a>
+      <div style="padding:17px 28px;border-top:1px solid rgba(22,24,21,0.08);background:#f4f4f5;display:flex;flex-wrap:wrap;gap:8px 16px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#54545a;align-items:center">
+        <span>ledger 2617998</span><span style="color:#cfcfd2">·</span><span>context_rule_id 4</span><span style="color:#cfcfd2">·</span><span>Blend yield-claim</span><span style="color:#cfcfd2">·</span><span style="color:#1c1c20;font-weight:600">function_allowlist[claim]</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="synthesize" style="background-color:#dfdfe1;background-image:radial-gradient(rgba(28,28,33,0.06) 1px,transparent 1px);background-size:24px 24px">
+  <div data-reveal="" style="max-width:1180px;margin:0 auto;padding:clamp(60px,8vw,100px) 28px">
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between;margin-bottom:38px">
+      <div style="display:flex;flex-direction:column;gap:13px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1c1c20">interactive</span>
+        <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(28px,3.5vw,46px);font-weight:500;letter-spacing:-0.02em;color:#1d1d1e">Synthesize a policy from a transaction</h2>
+        <p style="margin:0;max-width:60ch;color:#54545a;font-size:16.5px;line-height:1.6">Enter a transaction hash and synthesize. You'll get the recorded transaction, the proposed policy, and a simulation report with permit and deny vectors.</p>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+      <div style="flex:1.05 1 420px;min-width:360px;align-self:flex-start;position:sticky;top:90px;background:#fbfbfb;border-radius:16px;padding:26px;display:flex;flex-direction:column;gap:18px;box-shadow:0 12px 34px -20px rgba(22,24,21,0.35)">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;color:#797980;text-transform:uppercase">transaction hash</span>
+            <button onClick="{{ loadExample }}" disabled="{{ formDisabled }}" style="background:rgba(28,28,33,0.06);border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#1c1c20;padding:5px 9px;border-radius:7px;display:inline-flex;align-items:center;gap:5px" style-hover="background:rgba(28,28,33,0.12)">↺ try a sample</button>
+          </div>
+          <input value="{{ txHash }}" onChange="{{ onHash }}" disabled="{{ formDisabled }}" placeholder="64-char hex transaction hash" style="background:#ebebec;border:none;border-radius:11px;padding:14px;color:#1d1d1e;font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;width:100%;text-overflow:ellipsis" style-focus="box-shadow:0 0 0 3px rgba(28,28,33,0.25)">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;color:#797980;text-transform:uppercase">network</span>
+          {{ networkControl }}
+        </div>
+        <div style="height:1px;background:rgba(28,28,33,0.08)"></div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;color:#797980;text-transform:uppercase">tightness<span style="color:#a0a0a6;text-transform:none;letter-spacing:0"> · how tightly to bound</span></span>
+          {{ tightnessControl }}
+          <span style="font-size:11.5px;color:#797980;line-height:1.45;font-family:'JetBrains Mono',monospace">{{ tightnessHelp }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;color:#797980;text-transform:uppercase">synthesis mode</span>
+          {{ modeControl }}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <label style="display:flex;flex-direction:column;gap:7px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;color:#797980;text-transform:uppercase">lifetime · ledgers</span>
+            <input type="number" value="{{ lifetime }}" onChange="{{ onLifetime }}" disabled="{{ formDisabled }}" style="background:#ebebec;border:none;border-radius:10px;padding:11px 12px;color:#1d1d1e;font-family:'JetBrains Mono',monospace;font-size:12.5px;outline:none;width:100%" style-focus="box-shadow:0 0 0 3px rgba(28,28,33,0.25)">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:7px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.05em;color:#797980;text-transform:uppercase">rule name<span style="color:#99999e;text-transform:none"> · opt</span></span>
+            <input value="{{ ruleName }}" onChange="{{ onRule }}" disabled="{{ formDisabled }}" placeholder="auto" style="background:#ebebec;border:none;border-radius:10px;padding:11px 12px;color:#1d1d1e;font-family:'JetBrains Mono',monospace;font-size:12.5px;outline:none;width:100%" style-focus="box-shadow:0 0 0 3px rgba(28,28,33,0.25)">
+          </label>
+        </div>
+        <button onClick="{{ doSynth }}" disabled="{{ submitDisabled }}" style="margin-top:2px;width:100%;background:#1c1c20;color:#f4f4f5;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:14px;border:none;border-radius:11px;padding:15px;cursor:pointer;letter-spacing:0.02em" style-hover="background:#34343b">{{ synthLabel }}</button>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#99999e;line-height:1.5;text-align:center">code-first · deployment is always a separate, explicit step you take</div>
+      </div>
+      <div style="flex:1.15 1 440px;min-width:340px">{{ outputArea }}</div>
+    </div>
+  </div>
+</section>
+
+
+
+<section id="primitives" style="background-color:#fbfbfb;background-image:linear-gradient(rgba(28,28,33,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(28,28,33,0.025) 1px,transparent 1px);background-size:46px 46px">
+  <div data-reveal="" style="max-width:1180px;margin:0 auto;padding:clamp(60px,8vw,100px) 28px">
+    <div style="display:flex;flex-direction:column;gap:13px;margin-bottom:34px;max-width:66ch">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1c1c20">constraint primitives</span>
+      <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(28px,3.5vw,46px);font-weight:500;letter-spacing:-0.02em;color:#1d1d1e">Seven ways to bound a call</h2>
+      <p style="margin:0;color:#54545a;font-size:16.5px;line-height:1.6">When a standard OZ primitive can't express the constraint, the synthesizer emits one of these audit-gated templates, composing them to permit exactly the observed flow. Tap any to see what it pins down.</p>
+    </div>
+    {{ primitives }}
+  </div>
+</section>
+
+<section style="background-color:#1c1c20;background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:42px 42px;color:#ebebec">
+  <div data-reveal="" style="max-width:1180px;margin:0 auto;padding:clamp(50px,6vw,78px) 28px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:26px">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span data-count="7" style="font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(40px,5vw,58px);font-weight:600;color:#fbfbfb;line-height:1">0</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#a0a0a8;letter-spacing:0.02em">Rust crates</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span data-count="363" style="font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(40px,5vw,58px);font-weight:600;color:#fbfbfb;line-height:1">0</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#a0a0a8;letter-spacing:0.02em">tests passing</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span data-count="5" style="font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(40px,5vw,58px);font-weight:600;color:#fbfbfb;line-height:1">0</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#a0a0a8;letter-spacing:0.02em">MCP tools</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span data-count="7" style="font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(40px,5vw,58px);font-weight:600;color:#fbfbfb;line-height:1">0</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#a0a0a8;letter-spacing:0.02em">constraint templates</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart" style="background-color:#fbfbfb;background-image:linear-gradient(rgba(28,28,33,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(28,28,33,0.025) 1px,transparent 1px);background-size:46px 46px">
+  <div data-reveal="" style="max-width:1180px;margin:0 auto;padding:clamp(60px,8vw,100px) 28px">
+    <div style="display:flex;flex-direction:column;gap:13px;margin-bottom:36px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1c1c20">quick start</span>
+      <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(23px,2.8vw,34px);font-weight:500;letter-spacing:-0.02em;color:#1d1d1e">Run it three ways</h2>
+      <p style="margin:0;max-width:64ch;color:#54545a;font-size:16.5px;line-height:1.6">Terminal, MCP client, or programmatically from a wallet. Same Rust core under all three.</p>
+    </div>
+    {{ quickStart }}
+  </div>
+</section>
+
+<section id="architecture" style="background-color:#dbdbde;background-image:radial-gradient(rgba(28,28,33,0.06) 1px,transparent 1px);background-size:24px 24px">
+  <div data-reveal="" style="max-width:1180px;margin:0 auto;padding:clamp(60px,8vw,100px) 28px">
+    <div style="display:flex;flex-direction:column;gap:13px;margin-bottom:36px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1c1c20">architecture</span>
+      <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(23px,2.8vw,34px);font-weight:500;letter-spacing:-0.02em;color:#1d1d1e">Seven Rust crates, one TypeScript package</h2>
+      <p style="margin:0;max-width:64ch;color:#54545a;font-size:16.5px;line-height:1.6">A virtual workspace over one core IR, with four interfaces, CLI, MCP server, agent skill, and wallet adapter.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px">
+      <div style="border-radius:14px;background:#fbfbfb;padding:20px;box-shadow:0 3px 12px -7px rgba(22,24,21,0.22)" style-hover="transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(28,28,33,0.4)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:3px 8px;border-radius:6px">rust</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#1d1d1e;font-weight:600;margin-top:14px">oz-policy-core</div>
+        <div style="margin-top:6px;color:#54545a;font-size:13.5px;line-height:1.5">PolicySpec IR, decision tree, SEP-41 detection, Recording types.</div>
+      </div>
+      <div style="border-radius:14px;background:#fbfbfb;padding:20px;box-shadow:0 3px 12px -7px rgba(22,24,21,0.22)" style-hover="transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(28,28,33,0.4)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:3px 8px;border-radius:6px">rust</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#1d1d1e;font-weight:600;margin-top:14px">oz-policy-recorder</div>
+        <div style="margin-top:6px;color:#54545a;font-size:13.5px;line-height:1.5">Soroban RPC client plus XDR decoder, hash or simulation to Recording.</div>
+      </div>
+      <div style="border-radius:14px;background:#fbfbfb;padding:20px;box-shadow:0 3px 12px -7px rgba(22,24,21,0.22)" style-hover="transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(28,28,33,0.4)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:3px 8px;border-radius:6px">rust</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#1d1d1e;font-weight:600;margin-top:14px">oz-policy-codegen</div>
+        <div style="margin-top:6px;color:#54545a;font-size:13.5px;line-height:1.5">Askama templates, sandboxed compile, and five audit lint rules.</div>
+      </div>
+      <div style="border-radius:14px;background:#fbfbfb;padding:20px;box-shadow:0 3px 12px -7px rgba(22,24,21,0.22)" style-hover="transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(28,28,33,0.4)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:3px 8px;border-radius:6px">rust</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#1d1d1e;font-weight:600;margin-top:14px">oz-policy-simhost</div>
+        <div style="margin-top:6px;color:#54545a;font-size:13.5px;line-height:1.5">In-process soroban-env-host harness with a proptest deny generator.</div>
+      </div>
+      <div style="border-radius:14px;background:#fbfbfb;padding:20px;box-shadow:0 3px 12px -7px rgba(22,24,21,0.22)" style-hover="transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(28,28,33,0.4)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:3px 8px;border-radius:6px">rust</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#1d1d1e;font-weight:600;margin-top:14px">oz-policy-installer</div>
+        <div style="margin-top:6px;color:#54545a;font-size:13.5px;line-height:1.5">Install envelope builder with preflight and address registry, no submit.</div>
+      </div>
+      <div style="border-radius:14px;background:#fbfbfb;padding:20px;box-shadow:0 3px 12px -7px rgba(22,24,21,0.22)" style-hover="transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(28,28,33,0.4)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:3px 8px;border-radius:6px">rust</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#1d1d1e;font-weight:600;margin-top:14px">oz-policy-mcp</div>
+        <div style="margin-top:6px;color:#54545a;font-size:13.5px;line-height:1.5">rmcp server, 5 tools, STDIO + HTTP, real on-chain readback.</div>
+      </div>
+      <div style="border-radius:14px;background:#fbfbfb;padding:20px;box-shadow:0 3px 12px -7px rgba(22,24,21,0.22)" style-hover="transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(28,28,33,0.4)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#1c1c20;background:rgba(28,28,33,0.1);padding:3px 8px;border-radius:6px">rust</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#1d1d1e;font-weight:600;margin-top:14px">oz-policy-cli</div>
+        <div style="margin-top:6px;color:#54545a;font-size:13.5px;line-height:1.5">Thin CLI over every crate: record / synthesize / codegen / simulate.</div>
+      </div>
+      <div style="border-radius:14px;background:#1c1c20;padding:20px;box-shadow:0 12px 26px -14px rgba(28,28,33,0.6)" style-hover="transform:translateY(-3px)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:#d5d5d8;background:rgba(255,255,255,0.12);padding:3px 8px;border-radius:6px">typescript</span>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:13.5px;color:#f5f5f6;font-weight:600;margin-top:14px">@oz-policy-builder/wallet-adapter</div>
+        <div style="margin-top:6px;color:#cfcfd1;font-size:13.5px;line-height:1.5">SEP-43 types, Freighter + passkey adapters, installPolicy + verifyInstall.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="background-color:#fbfbfb;background-image:linear-gradient(rgba(28,28,33,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(28,28,33,0.025) 1px,transparent 1px);background-size:46px 46px">
+  <div data-reveal="" style="max-width:880px;margin:0 auto;padding:clamp(60px,8vw,100px) 28px">
+    <div style="display:flex;flex-direction:column;gap:13px;margin-bottom:34px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1c1c20">questions</span>
+      <h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(23px,2.8vw,34px);font-weight:500;letter-spacing:-0.02em;color:#1d1d1e">What it does, and doesn't, do</h2>
+    </div>
+    {{ faq }}
+  </div>
+</section>
+
+<footer style="background-color:#1c1c20; color: #c9c9cd; padding: 50px 28px 56px;background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:42px 42px">
+  <div style="max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;gap:28px;justify-content:space-between;align-items:flex-start">
+    <div style="max-width:42ch">
+      <div style="display:flex;align-items:center;gap:11px">
+        <span style="width:21px;height:21px;border-radius:6px;background:#ccccd3;display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;border-radius:50%;background:#1c1c20"></span></span>
+        <span style="font-family:'Bricolage Grotesque',sans-serif;font-size:16px;color:#f5f5f6;font-weight:600">OZ Policy Builder</span>
+      </div>
+      <p style="margin:14px 0 0;color:#b2b2b7;font-size:13.5px;line-height:1.6">Records a Stellar transaction and synthesizes the smallest OpenZeppelin smart-account policy that would permit exactly that transaction, and nothing more. Open source, Apache-2.0.</p>
+    </div>
+    <div style="display:flex;gap:52px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717177">project</span>
+        <a href="#" style="text-decoration:none;color:#cfcfd1;font-size:13.5px" style-hover="color:#f5f5f6">GitHub ↗</a>
+        <a href="#" style="text-decoration:none;color:#cfcfd1;font-size:13.5px" style-hover="color:#f5f5f6">Documentation ↗</a>
+        <a href="#" style="text-decoration:none;color:#cfcfd1;font-size:13.5px" style-hover="color:#f5f5f6">License · Apache-2.0</a>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717177">built on</span>
+        <a href="#" style="text-decoration:none;color:#cfcfd1;font-size:13.5px" style-hover="color:#f5f5f6">Stellar ↗</a>
+        <a href="#" style="text-decoration:none;color:#cfcfd1;font-size:13.5px" style-hover="color:#f5f5f6">Soroban ↗</a>
+        <a href="#" style="text-decoration:none;color:#cfcfd1;font-size:13.5px" style-hover="color:#f5f5f6">OpenZeppelin smart accounts ↗</a>
+      </div>
+    </div>
+  </div>
+  
+</footer>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    heroStep: 0,
+    txHash: '5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e',
+    network: 'testnet',
+    tightness: 'exact',
+    mode: 'auto',
+    lifetime: 432000,
+    ruleName: 'blend-claim',
+    phase: 'idle',
+    loadingStep: 0,
+    panels: { rec: true, pol: true, sim: true },
+    copied: '',
+    tab: 'cli',
+    openPrimitive: -1,
+    openFaq: -1,
+  };
+
+  timers = [];
+  C = {
+    ink: '#1d1d1e', ink2: '#54545a', faint: '#797980', stone: '#ebebec',
+    green: '#1c1c20', greenMid: '#34343b', greenSoft: '#e6e6e7',
+    codeBg: '#161619', codeInk: '#f6f6f8', codeFaint: '#b2b2b8',
+    kGreen: '#f3f3f8', kStr: '#d6d6de', kNum: '#e4e4ec', kBool: '#c6c6d0', kPunc: '#8e8e96',
+    green2: '#ccccd3', red: '#e08a72',
+    mono: "'JetBrains Mono',monospace",
+  };
+
+  componentDidMount() {
+    this.heroTimer = setInterval(() => {
+      this.setState(s => { let n = s.heroStep + 1; if (n > 11) n = 0; return { heroStep: n }; });
+    }, 600);
+    this.setupScroll();
+  }
+  componentWillUnmount() {
+    this.timers.forEach(clearTimeout);
+    if (this.heroTimer) clearInterval(this.heroTimer);
+    if (this.revObs) this.revObs.disconnect();
+    if (this.stepObs) this.stepObs.disconnect();
+    if (this.countObs) this.countObs.disconnect();
+    if (this._onPipeScroll) window.removeEventListener('scroll', this._onPipeScroll);
+    if (this._heroRaf) cancelAnimationFrame(this._heroRaf);
+    if (this._scrollRaf) cancelAnimationFrame(this._scrollRaf);
+    if (this._onHeroResize) window.removeEventListener('resize', this._onHeroResize);
+  }
+  setupSteps() {
+    const steps = Array.from(document.querySelectorAll('#how [data-step]'));
+    if (!steps.length) return;
+    steps.forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(14px)';
+      el.style.transition = 'opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1)';
+    });
+    this.stepObs = new IntersectionObserver((ents) => {
+      ents.forEach(e => {
+        if (e.isIntersecting) {
+          const i = steps.indexOf(e.target);
+          e.target.style.transitionDelay = (i * 75) + 'ms';
+          e.target.style.opacity = '1';
+          e.target.style.transform = 'none';
+          this.stepObs.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.25 });
+    steps.forEach(el => this.stepObs.observe(el));
+  }
+  setupScroll() {
+    const reveals = Array.from(document.querySelectorAll('[data-reveal]')).map(el => ({ el, done: false }));
+    reveals.forEach(o => { o.el.style.opacity = '0'; o.el.style.transform = 'translateY(24px)'; o.el.style.transition = 'opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1)'; });
+    const steps = Array.from(document.querySelectorAll('#how [data-step]')).map((el, i) => ({ el, i, done: false }));
+    steps.forEach(o => { o.el.style.opacity = '0'; o.el.style.transform = 'translateY(14px)'; o.el.style.transition = 'opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1)'; });
+    const counts = Array.from(document.querySelectorAll('[data-count]')).map(el => ({ el, done: false, target: parseInt(el.getAttribute('data-count'), 10) || 0 }));
+    const fill = document.querySelector('#how [data-fill]');
+    const pc = fill ? fill.parentElement : null;
+    const pnodes = pc ? Array.from(pc.querySelectorAll('[data-node]')) : [];
+    const animateCount = (o) => { const dur = 1200, t0 = performance.now(); const tick = (t) => { const p = Math.min(1, (t - t0) / dur); const e = 1 - Math.pow(1 - p, 3); o.el.textContent = Math.round(e * o.target); if (p < 1) requestAnimationFrame(tick); else o.el.textContent = String(o.target); }; requestAnimationFrame(tick); };
+    const loop = () => {
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      reveals.forEach(o => { if (o.done) return; const r = o.el.getBoundingClientRect(); if (r.top < vh * 0.9 && r.bottom > 0) { o.done = true; o.el.style.opacity = '1'; o.el.style.transform = 'none'; } });
+      steps.forEach(o => { if (o.done) return; const r = o.el.getBoundingClientRect(); if (r.top < vh * 0.85 && r.bottom > 0) { o.done = true; o.el.style.transitionDelay = (o.i * 75) + 'ms'; o.el.style.opacity = '1'; o.el.style.transform = 'none'; } });
+      counts.forEach(o => { if (o.done) return; const r = o.el.getBoundingClientRect(); if (r.top < vh * 0.85 && r.bottom > 0) { o.done = true; animateCount(o); } });
+      if (fill && pc && pnodes.length) {
+        const r = pc.getBoundingClientRect();
+        let prog = (vh * 0.6 - r.top) / (r.height || 1); prog = Math.max(0, Math.min(1, prog));
+        const h = prog * Math.max(0, r.height - 60); fill.style.height = h + 'px';
+        const fb = r.top + 30 + h;
+        pnodes.forEach(n => { const nr = n.getBoundingClientRect(); const on = (nr.top + nr.height / 2) <= fb + 4; if (on) { n.style.background = '#1c1c20'; n.style.color = '#f4f4f5'; n.style.boxShadow = '0 6px 16px -8px rgba(28,28,33,0.8)'; } else { n.style.background = '#e9eaf0'; n.style.color = '#a0a0a8'; n.style.boxShadow = 'none'; } });
+      }
+      this._scrollRaf = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+  setupCounters() {
+    const els = Array.from(document.querySelectorAll('[data-count]'));
+    if (!els.length) return;
+    this.countObs = new IntersectionObserver((ents) => {
+      ents.forEach(e => {
+        if (!e.isIntersecting) return;
+        const el = e.target;
+        const target = parseInt(el.getAttribute('data-count'), 10) || 0;
+        const dur = 1200, t0 = performance.now();
+        const tick = (t) => {
+          const p = Math.min(1, (t - t0) / dur);
+          const eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = Math.round(eased * target);
+          if (p < 1) requestAnimationFrame(tick); else el.textContent = String(target);
+        };
+        requestAnimationFrame(tick);
+        this.countObs.unobserve(el);
+      });
+    }, { threshold: 0.6 });
+    els.forEach(el => this.countObs.observe(el));
+  }
+  setupPipeline() {
+    const fill = document.querySelector('#how [data-fill]');
+    if (!fill) return;
+    const container = fill.parentElement;
+    const nodes = Array.from(container.querySelectorAll('[data-node]'));
+    if (!nodes.length) return;
+    const update = () => {
+      const r = container.getBoundingClientRect();
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      let prog = (vh * 0.6 - r.top) / (r.height || 1);
+      prog = Math.max(0, Math.min(1, prog));
+      const maxH = Math.max(0, r.height - 60);
+      const h = prog * maxH;
+      fill.style.height = h + 'px';
+      const fillBottom = r.top + 30 + h;
+      nodes.forEach(n => {
+        const nr = n.getBoundingClientRect();
+        const on = (nr.top + nr.height / 2) <= fillBottom + 4;
+        if (on) { n.style.background = '#1c1c20'; n.style.color = '#f4f4f5'; n.style.boxShadow = '0 6px 16px -8px rgba(28,28,33,0.8)'; }
+        else { n.style.background = '#e9eaf0'; n.style.color = '#a0a0a8'; n.style.boxShadow = 'none'; }
+      });
+    };
+    this._onPipeScroll = () => { if (!this._pipeRaf) this._pipeRaf = requestAnimationFrame(() => { this._pipeRaf = null; update(); }); };
+    window.addEventListener('scroll', this._onPipeScroll, { passive: true });
+    update();
+  }
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  setupHeroField() {
+    const cv = document.querySelector('[data-herofield]');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    let W = 0, H = 0; let pts = []; let streams = [];
+    const ink = (a) => 'rgba(28,28,33,' + a + ')';
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const resize = () => {
+      const rect = cv.getBoundingClientRect();
+      W = rect.width || cv.offsetWidth; H = rect.height || cv.offsetHeight;
+      cv.width = Math.max(1, W * dpr); cv.height = Math.max(1, H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const n = Math.round(Math.max(26, Math.min(46, W * H / 15000)));
+      pts = [];
+      for (let i = 0; i < n; i++) pts.push({ x: Math.random() * W, y: Math.random() * H, vx: rnd(-0.16, 0.16), vy: rnd(-0.12, 0.12), r: rnd(1.1, 2.1) });
+    };
+    resize();
+    this._onHeroResize = () => resize();
+    window.addEventListener('resize', this._onHeroResize);
+    let scope = null, scopeT = 0;
+    const pickScope = () => {
+      const cx = W * rnd(0.46, 0.64), cy = H * rnd(0.42, 0.6);
+      scope = { x: cx, y: cy, w: rnd(180, 250), h: rnd(124, 170) };
+      scopeT = 0; streams = [];
+      for (let i = 0; i < 3; i++) streams.push({ x: -30 - i * 46, y: cy + rnd(-46, 46), spd: rnd(78, 116), tx: cx + rnd(-40, 40), ty: cy + rnd(-30, 30), trail: [] });
+    };
+    pickScope();
+    let last = performance.now();
+    const draw = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      ctx.clearRect(0, 0, W, H);
+      const g = ctx.createRadialGradient(W * 0.6, H * 0.42, 30, W * 0.6, H * 0.42, Math.max(W, H) * 0.72);
+      g.addColorStop(0, 'rgba(28,28,33,0)'); g.addColorStop(1, 'rgba(28,28,33,0.055)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      for (const p of pts) { p.x += p.vx; p.y += p.vy; if (p.x < -6) p.x = W + 6; if (p.x > W + 6) p.x = -6; if (p.y < -6) p.y = H + 6; if (p.y > H + 6) p.y = -6; }
+      ctx.lineWidth = 1;
+      for (let a = 0; a < pts.length; a++) for (let b = a + 1; b < pts.length; b++) {
+        const dx = pts[a].x - pts[b].x, dy = pts[a].y - pts[b].y, d2 = dx * dx + dy * dy;
+        if (d2 < 13456) { ctx.strokeStyle = ink((0.06 * (1 - Math.sqrt(d2) / 116)).toFixed(3)); ctx.beginPath(); ctx.moveTo(pts[a].x, pts[a].y); ctx.lineTo(pts[b].x, pts[b].y); ctx.stroke(); }
+      }
+      for (const p of pts) { ctx.fillStyle = ink(0.13); ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.2832); ctx.fill(); }
+      scopeT += dt; const ph = scopeT / 7;
+      let alpha = 0;
+      if (ph < 0.28) alpha = ph / 0.28; else if (ph < 0.82) alpha = 1; else if (ph < 1) alpha = 1 - (ph - 0.82) / 0.18; else { pickScope(); }
+      for (const s of streams) {
+        const reached = Math.hypot(s.tx - s.x, s.ty - s.y) < 6;
+        if (!reached) { const ang = Math.atan2(s.ty - s.y, s.tx - s.x); s.x += Math.cos(ang) * s.spd * dt; s.y += Math.sin(ang) * s.spd * dt; }
+        s.trail.push({ x: s.x, y: s.y }); if (s.trail.length > 16) s.trail.shift();
+        for (let i = 1; i < s.trail.length; i++) { ctx.strokeStyle = ink((0.36 * (i / s.trail.length) * alpha).toFixed(3)); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(s.trail[i - 1].x, s.trail[i - 1].y); ctx.lineTo(s.trail[i].x, s.trail[i].y); ctx.stroke(); }
+        if (!reached) { ctx.fillStyle = ink((0.72 * alpha).toFixed(3)); ctx.beginPath(); ctx.arc(s.x, s.y, 2.2, 0, 6.2832); ctx.fill(); }
+      }
+      if (scope && alpha > 0) {
+        const prog = Math.min(1, ph / 0.28);
+        ctx.strokeStyle = ink((0.5 * alpha).toFixed(3)); ctx.lineWidth = 1.5;
+        this._roundRect(ctx, scope.x - scope.w / 2, scope.y - scope.h / 2, scope.w, scope.h, 16);
+        const per = 2 * (scope.w + scope.h);
+        ctx.setLineDash([per * prog, per]); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = ink((0.55 * alpha).toFixed(3));
+        const cs = [[scope.x - scope.w / 2, scope.y - scope.h / 2], [scope.x + scope.w / 2, scope.y - scope.h / 2], [scope.x - scope.w / 2, scope.y + scope.h / 2], [scope.x + scope.w / 2, scope.y + scope.h / 2]];
+        for (const c of cs) { ctx.beginPath(); ctx.arc(c[0], c[1], 2.3, 0, 6.2832); ctx.fill(); }
+        ctx.font = '600 10px "JetBrains Mono", monospace'; ctx.fillStyle = ink((0.5 * alpha).toFixed(3));
+        ctx.fillText('scope', scope.x - scope.w / 2 + 1, scope.y - scope.h / 2 - 7);
+      }
+      this._heroRaf = requestAnimationFrame(draw);
+    };
+    this._heroRaf = requestAnimationFrame(draw);
+  }
+  buildPrimitives() {
+    const C = this.C, e = React.createElement;
+    const items = [
+      ['function_allowlist', 'Restrict to a named set of functions.', 'functions: ["claim"]'],
+      ['argument_pattern', 'Pin specific argument slots to exact typed values.', 'slot[0] == Address(GATJIJRQ…)'],
+      ['amount_range', 'Clamp an i128 amount to an observed range.', '0 ≤ amount ≤ 50_000000'],
+      ['asset_allowlist', 'Whitelist the contract addresses that may be touched.', 'asset ∈ { USDC }'],
+      ['time_window', 'Permit only within a ledger-sequence window.', 'ledger ∈ [2572326, 3004326]'],
+      ['call_frequency', 'Stateful rate limit, N calls per window.', '≤ 1 call / 17280 ledgers'],
+      ['sequence_ordering', 'Enforce a phased order of operations.', 'claim → swap → transfer'],
+    ];
+    const open = this.state.openPrimitive;
+    const cards = items.map((it, i) => {
+      const isOpen = open === i;
+      return e('div', { key: i, onClick: () => this.setState({ openPrimitive: isOpen ? -1 : i }),
+        style: { background: '#eceef1', borderRadius: '14px', padding: '18px', cursor: 'pointer', boxShadow: isOpen ? '0 14px 30px -16px rgba(28,28,33,0.4)' : '0 3px 12px -7px rgba(22,24,21,0.22)', transition: 'box-shadow .25s, transform .25s', transform: isOpen ? 'translateY(-2px)' : 'none' } },
+        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' } },
+          e('span', { style: { fontFamily: C.mono, fontSize: '13.5px', color: C.ink, fontWeight: 600 } }, it[0]),
+          e('span', { style: { fontFamily: C.mono, fontSize: '15px', color: C.faint, transition: 'transform .25s', transform: isOpen ? 'rotate(45deg)' : 'none' } }, '+')),
+        e('div', { style: { marginTop: '7px', color: C.ink2, fontSize: '13.5px', lineHeight: '1.5' } }, it[1]),
+        e('div', { style: { maxHeight: isOpen ? '70px' : '0', opacity: isOpen ? 1 : 0, overflow: 'hidden', transition: 'max-height .35s ease, opacity .3s, margin-top .35s', marginTop: isOpen ? '12px' : '0' } },
+          e('div', { style: { background: C.codeBg, color: C.codeInk, borderRadius: '9px', padding: '10px 12px', fontFamily: C.mono, fontSize: '12px' } }, it[2])));
+    });
+    return e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: '14px' } }, ...cards);
+  }
+  buildFaq() {
+    const C = this.C, e = React.createElement;
+    const qs = [
+      ['Does this deploy policies for me?', 'No. It produces reviewable policy code; deployment is always a separate, explicit step you (or an agent acting under existing permissions) take.'],
+      ['Is the generated code real Soroban?', 'Yes, compilable Rust implementing the Policy trait, gated by five audit lints and compiled in a sandbox before you ever see a WASM hash.'],
+      ['Does it reuse existing OZ primitives?', 'It composes simple_threshold, weighted_threshold and spending_limit first, and only generates a fresh policy contract when a constraint can\u2019t be expressed by composition.'],
+      ['What if the synthesized policy is wrong?', 'The dry-run harness replays the original transaction as a permit case and generates deny vectors, wrong function, asset, amount, timing, so you see pass/fail before installing.'],
+      ['Which wallets are supported?', 'SEP-43 wallets through the TypeScript adapter, Freighter and passkey-kit today, with installPolicy + verifyInstall orchestration.'],
+      ['Is it open source?', 'Yes, Apache-2.0 across the Rust workspace, MCP server, agent skill and wallet adapter.'],
+    ];
+    const open = this.state.openFaq;
+    const rows = qs.map((q, i) => {
+      const isOpen = open === i;
+      return e('div', { key: i, style: { borderBottom: '1px solid rgba(28,28,33,0.1)' } },
+        e('button', { onClick: () => this.setState({ openFaq: isOpen ? -1 : i }),
+          style: { width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', padding: '20px 4px', textAlign: 'left' } },
+          e('span', { style: { fontFamily: "'Bricolage Grotesque',sans-serif", fontSize: '17px', color: C.ink, fontWeight: 500 } }, q[0]),
+          e('span', { style: { fontFamily: C.mono, fontSize: '18px', color: C.faint, transition: 'transform .25s', transform: isOpen ? 'rotate(45deg)' : 'none', flexShrink: 0 } }, '+')),
+        e('div', { style: { maxHeight: isOpen ? '200px' : '0', opacity: isOpen ? 1 : 0, overflow: 'hidden', transition: 'max-height .4s ease, opacity .3s, padding .4s', padding: isOpen ? '0 4px 22px' : '0 4px' } },
+          e('div', { style: { color: C.ink2, fontSize: '15px', lineHeight: '1.6', maxWidth: '70ch' } }, q[1])));
+    });
+    return e('div', {}, ...rows);
+  }
+  setupReveal() {
+    const els = Array.from(document.querySelectorAll('[data-reveal]'));
+    els.forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(26px)';
+      el.style.transition = 'opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1)';
+    });
+    this.revObs = new IntersectionObserver((ents) => {
+      ents.forEach(e => { if (e.isIntersecting) { e.target.style.opacity = '1'; e.target.style.transform = 'none'; this.revObs.unobserve(e.target); } });
+    }, { threshold: 0.08 });
+    els.forEach(el => this.revObs.observe(el));
+  }
+
+  clearTimers() { this.timers.forEach(clearTimeout); this.timers = []; }
+  synthesize() {
+    if (this.state.phase === 'disabled') return;
+    this.clearTimers();
+    this.setState({ phase: 'loading', loadingStep: 0 });
+    this.timers.push(setTimeout(() => this.setState({ loadingStep: 1 }), 2000));
+    this.timers.push(setTimeout(() => this.setState({ loadingStep: 2 }), 3000));
+    this.timers.push(setTimeout(() => this.setState({ phase: 'success' }), 6000));
+  }
+  cancel() { this.clearTimers(); this.setState({ phase: 'idle' }); }
+  copy(id, text) {
+    try { navigator.clipboard.writeText(text); } catch (e) {}
+    this.setState({ copied: id });
+    setTimeout(() => this.setState(s => (s.copied === id ? { copied: '' } : null)), 1400);
+  }
+  togglePanel(k) { this.setState(s => ({ panels: Object.assign({}, s.panels, { [k]: !s.panels[k] }) })); }
+
+  recData() {
+    return {
+      schema: 'oz-policy-builder/recording/v1',
+      network_passphrase: 'Test SDF Network ; September 2015',
+      ingest: { kind: 'hash', hash: '5a0ccffe…a42db4e' },
+      ledger: 2572326,
+      contracts: [{
+        address: 'CCEBVDYM…44HGF', function: 'claim',
+        args: [
+          { kind: 'address', value: 'GATJIJRQ…' },
+          { kind: 'vec', value: [{ kind: 'u32', value: 0 }, { kind: 'u32', value: 1 }] },
+          { kind: 'address', value: 'GATJIJRQ…' },
+        ],
+      }],
+      state_changes: 4, events: 2,
+    };
+  }
+  polData() {
+    return {
+      schema: 'oz-policy-builder/v1', synthesis_mode: 'auto',
+      context_rule: { name: 'blend-claim', context_type: { kind: 'call_contract', address: 'CCEBVDYM…44HGF' }, valid_until: null },
+      signers: [],
+      policies: [{ kind: 'generated', template_family: 'function_allowlist', constraints: [{ kind: 'function_allowlist', functions: ['claim'] }] }],
+      lifetime_ledgers: 432000,
+      recording_ref: { hash: '5a0ccffe…', schema: 'oz-policy-builder/recording/v1' },
+    };
+  }
+  denyList() {
+    return [
+      { label: 'rejects a wrong function name', code: 1010 },
+      { label: 'rejects a call to a different contract', code: 1010 },
+      { label: 'rejects an unexpected extra argument', code: 1020 },
+      { label: 'rejects a call past the lifetime window', code: 1050 },
+      { label: 'rejects a different asset', code: 1030 },
+      { label: 'rejects an over-limit amount', code: 1040 },
+    ];
+  }
+  simData() {
+    return {
+      spec_id: 'spec_abc123', permit: { passed: true, error: null },
+      deny_results: this.denyList().map((d, i) => ({ name: 'vector_' + i, passed: true, expected_error_code: d.code, actual_error_code: d.code })),
+      total_vectors: 6, passed: 6, timestamp_ledger: 2572326,
+    };
+  }
+
+  hl(obj) {
+    const C = this.C;
+    const s = JSON.stringify(obj, null, 2);
+    const re = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?)/g;
+    const out = []; let last = 0, m, k = 0;
+    while ((m = re.exec(s)) !== null) {
+      if (m.index > last) out.push(React.createElement('span', { key: k++, style: { color: C.kPunc } }, s.slice(last, m.index)));
+      if (m[1] !== undefined) {
+        out.push(React.createElement('span', { key: k++, style: { color: m[2] ? C.kGreen : C.kStr } }, m[1]));
+        if (m[2]) out.push(React.createElement('span', { key: k++, style: { color: C.kPunc } }, m[2]));
+      } else if (m[3] !== undefined) {
+        out.push(React.createElement('span', { key: k++, style: { color: C.kBool } }, m[3]));
+      } else if (m[4] !== undefined) {
+        out.push(React.createElement('span', { key: k++, style: { color: C.kNum } }, m[4]));
+      }
+      last = re.lastIndex;
+    }
+    if (last < s.length) out.push(React.createElement('span', { key: k++, style: { color: C.kPunc } }, s.slice(last)));
+    return out;
+  }
+
+  buildHero() {
+    const C = this.C, e = React.createElement;
+    const rows = [
+      ['schema', 'oz-policy-builder/v1'],
+      ['rule', 'blend-claim'],
+      ['context', 'call_contract → CCEBVDYM…44HGF'],
+      ['policy[0]', 'generated · function_allowlist'],
+      ['constraint', 'functions ["claim"]'],
+      ['lifetime', '432000 ledgers'],
+      ['signers', 'none'],
+    ];
+    const step = this.state.heroStep;
+    const rowEls = rows.map((r, i) => {
+      const visible = step >= i + 1;
+      return e('div', { key: i, style: { display: visible ? 'flex' : 'none', gap: '10px', padding: '7px 0', alignItems: 'baseline', animation: 'rowin .45s ease both' } },
+        e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: C.kGreen, minWidth: '92px' } }, r[0]),
+        e('span', { style: { fontFamily: C.mono, fontSize: '12px', color: '#dedee0' } }, r[1]));
+    });
+    const simVisible = step >= 9;
+    const matchVisible = step >= 11;
+    return e('div', { style: { background: C.codeBg, borderRadius: '16px', padding: '22px', boxShadow: '0 30px 60px -28px rgba(18,22,26,0.6)', animation: 'floaty 7s ease-in-out infinite', minHeight: '372px' } },
+      e('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '14px', marginBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)' } },
+        e('span', { style: { width: '8px', height: '8px', borderRadius: '50%', background: C.green2 } }),
+        e('span', { style: { fontFamily: C.mono, fontSize: '12px', color: '#b2b2b7', fontWeight: 600 } }, 'PolicySpec'),
+        e('span', { style: { fontFamily: C.mono, fontSize: '11px', color: '#8c8c93', marginLeft: 'auto' } }, 'synthesized · deterministic')),
+      e('div', {}, rowEls),
+      e('div', { style: { display: simVisible ? 'block' : 'none', marginTop: '10px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)', animation: 'rowin .45s ease both' } },
+        e('div', { style: { fontFamily: C.mono, fontSize: '11px', color: '#8c8c93', marginBottom: '8px' } }, '── simulate ──'),
+        e('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+          e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: '#1c1c20', background: C.green2, padding: '4px 10px', borderRadius: '6px', fontWeight: 600 } }, 'permit ✓'),
+          e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: '#1c1c20', background: C.green2, padding: '4px 10px', borderRadius: '6px', fontWeight: 600 } }, 'deny 6/6 ✓'),
+          matchVisible ? e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: C.kGreen, padding: '4px 10px', animation: 'rowin .4s ease both' } }, 'matches = true') : null)));
+  }
+
+  ghostBox(h) {
+    const e = React.createElement;
+    return e('div', { style: { borderRadius: '12px', background: '#ebebec', height: h + 'px', position: 'relative', overflow: 'hidden' } },
+      e('div', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(90deg,transparent,rgba(28,28,33,0.07),transparent)', backgroundSize: '200% 100%', animation: 'shimmer 2.4s linear infinite' } }));
+  }
+  idleBox() {
+    const C = this.C, e = React.createElement;
+    return e('div', { style: { borderRadius: '16px', background: '#fbfbfb', padding: '44px 28px', textAlign: 'center', boxShadow: '0 3px 12px -7px rgba(22,24,21,0.22)' } },
+      e('div', { style: { fontFamily: "'Bricolage Grotesque',sans-serif", fontSize: '17px', color: C.ink, fontWeight: 500 } }, 'Enter a transaction hash and synthesize'),
+      e('div', { style: { marginTop: '7px', fontFamily: C.mono, fontSize: '12px', color: C.faint, lineHeight: '1.55', maxWidth: '40ch', margin: '7px auto 0' } }, 'The recorded transaction, the proposed policy, and a permit + deny simulation report appear here.'));
+  }
+  loadingBox(live) {
+    const C = this.C, e = React.createElement;
+    const steps = ['recording transaction', 'synthesizing policy', 'simulating permit + deny vectors'];
+    const cur = this.state.loadingStep;
+    const rows = steps.map((label, i) => {
+      const status = i < cur ? 'done' : (i === cur ? 'active' : 'pending');
+      let icon;
+      if (status === 'done') icon = e('span', { style: { color: C.green, fontSize: '15px' } }, '✓');
+      else if (status === 'active') icon = e('span', { style: { display: 'inline-block', width: '15px', height: '15px', borderRadius: '50%', border: '2px solid rgba(28,28,33,0.25)', borderTopColor: C.green, animation: 'spin .7s linear infinite' } });
+      else icon = e('span', { style: { display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#c3c3c6' } });
+      const col = status === 'pending' ? '#99999e' : (status === 'done' ? C.ink2 : C.ink);
+      return e('div', { key: i, style: { display: 'flex', alignItems: 'center', gap: '14px', padding: '15px 17px', borderRadius: '12px', background: status === 'active' ? C.greenSoft : '#fbfbfb', boxShadow: status === 'active' ? 'inset 0 0 0 1.5px rgba(28,28,33,0.3)' : '0 2px 8px -5px rgba(22,24,21,0.2)', transition: 'all .3s' } },
+        e('span', { style: { width: '20px', display: 'flex', justifyContent: 'center' } }, icon),
+        e('span', { style: { fontFamily: C.mono, fontSize: '13.5px', color: col, flex: 1 } }, label + (status !== 'pending' ? '…' : '')),
+        status === 'done' ? e('span', { style: { fontFamily: C.mono, fontSize: '11px', color: C.green } }, 'ok') : null);
+    });
+    return e('div', { style: { display: 'flex', flexDirection: 'column', gap: '11px' } },
+      ...rows,
+      e('button', { onClick: () => this.cancel(), style: { marginTop: '4px', alignSelf: 'flex-start', background: 'transparent', border: 'none', color: C.ink2, fontFamily: C.mono, fontSize: '12.5px', padding: '9px 16px', borderRadius: '9px', cursor: 'pointer', boxShadow: 'inset 0 0 0 1.5px rgba(22,24,21,0.16)' } }, '✕ cancel'));
+  }
+
+  panel(key, title, summary, body) {
+    const C = this.C, e = React.createElement;
+    const open = this.state.panels[key];
+    const copiedHere = this.state.copied === key;
+    return e('div', { style: { borderRadius: '14px', background: '#fbfbfb', overflow: 'hidden', boxShadow: '0 4px 16px -9px rgba(22,24,21,0.3)' } },
+      e('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', padding: '15px 17px', cursor: 'pointer' }, onClick: () => this.togglePanel(key) },
+        e('span', { style: { fontFamily: C.mono, fontSize: '11px', color: C.faint, transition: 'transform .25s', transform: open ? 'rotate(90deg)' : 'none' } }, '▸'),
+        e('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 } },
+          e('span', { style: { fontFamily: C.mono, fontSize: '13px', color: C.ink, fontWeight: 600 } }, title),
+          e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: C.ink2 } }, summary)),
+        e('button', { onClick: (ev) => { ev.stopPropagation(); this.copy(key, body); }, style: { background: copiedHere ? C.green : C.greenSoft, color: copiedHere ? '#f4f4f5' : C.green, border: 'none', fontFamily: C.mono, fontSize: '11px', padding: '6px 11px', borderRadius: '8px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .2s' } }, copiedHere ? 'copied ✓' : 'copy')),
+      open ? e('pre', { style: { margin: 0, background: C.codeBg, color: C.codeInk, padding: '16px 18px', fontFamily: C.mono, fontSize: '12.5px', lineHeight: '1.72', overflowX: 'auto', overflowY: 'auto', maxHeight: '300px', whiteSpace: 'pre' } }, this.hl(JSON.parse(body))) : null);
+  }
+
+  successBox() {
+    const C = this.C, e = React.createElement;
+    const rec = this.recData(), pol = this.polData(), sim = this.simData();
+    const deny = this.denyList();
+    const denyRows = sim.deny_results.map((d, i) => e('div', { key: i, style: { display: 'flex', alignItems: 'center', gap: '11px', padding: '9px 12px', borderRadius: '9px', background: '#ececee' } },
+      e('span', { style: { width: '16px', height: '16px', borderRadius: '5px', background: C.green, color: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', flexShrink: 0 } }, '✓'),
+      e('span', { style: { fontFamily: C.mono, fontSize: '12.5px', color: C.ink, flex: 1 } }, deny[i].label),
+      e('span', { style: { fontFamily: C.mono, fontSize: '11px', color: C.faint } }, 'code ' + d.expected_error_code)));
+    return e('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },
+      e('div', { style: { borderRadius: '14px', background: '#1c1c20', padding: '18px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px', justifyContent: 'space-between', boxShadow: '0 16px 40px -24px rgba(28,28,33,0.6)' } },
+        e('div', {},
+          e('div', { style: { fontFamily: C.mono, fontSize: '12.5px', color: '#f3f3f8', fontWeight: 600 } }, 'Permits 1 function on 1 contract'),
+          e('div', { style: { fontFamily: C.mono, fontSize: '11.5px', color: '#b2b2b8', marginTop: '5px' } }, 'claim · 432000 ledgers · every other call denied')),
+        e('div', { style: { display: 'flex', gap: '8px' } },
+          e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: '#1c1c20', background: '#d2d8d2', padding: '6px 11px', borderRadius: '20px', fontWeight: 600 } }, 'permit ✓'),
+          e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: '#1c1c20', background: '#d2d8d2', padding: '6px 11px', borderRadius: '20px', fontWeight: 600 } }, 'deny 6/6 ✓'))),
+      this.panel('rec', 'Recording', '1 contract · 1 function `claim` · 4 state changes · 2 events', JSON.stringify(rec, null, 2)),
+      this.panel('pol', 'PolicySpec', '1 generated policy · function_allowlist[claim] · 0 signers', JSON.stringify(pol, null, 2)),
+      e('div', { style: { borderRadius: '14px', background: '#fbfbfb', overflow: 'hidden', boxShadow: '0 4px 16px -9px rgba(22,24,21,0.3)' } },
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', padding: '15px 17px' } },
+          e('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', flex: 1 } },
+            e('span', { style: { fontFamily: C.mono, fontSize: '13px', color: C.ink, fontWeight: 600 } }, 'SimReport'),
+            e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: C.ink2 } }, '7 vectors · permit + 6 deny · all pass')),
+          e('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '7px', fontFamily: C.mono, fontSize: '11.5px', color: '#1c1c20', background: C.green2, padding: '6px 12px', borderRadius: '20px', fontWeight: 600 } }, 'permit ✓')),
+        e('div', { style: { padding: '4px 17px 17px', display: 'flex', flexDirection: 'column', gap: '7px' } },
+          e('div', { style: { fontFamily: C.mono, fontSize: '10.5px', color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 2px' } }, 'deny vectors, must reject'),
+          ...denyRows)));
+  }
+
+  errorBox() {
+    const C = this.C, e = React.createElement;
+    return e('div', { style: { borderRadius: '16px', background: '#fbfbfb', overflow: 'hidden', boxShadow: '0 4px 16px -9px rgba(22,24,21,0.3)' } },
+      e('div', { style: { height: '4px', background: C.red } }),
+      e('div', { style: { padding: '24px' } },
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: '11px', flexWrap: 'wrap' } },
+          e('span', { style: { fontFamily: C.mono, fontSize: '12px', color: '#7a2e1c', background: 'rgba(224,138,114,0.2)', padding: '5px 11px', borderRadius: '7px', fontWeight: 600 } }, 'E_RECORDER_HASH_NOT_FOUND'),
+          e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: C.faint } }, 'recorder · stage 1')),
+        e('div', { style: { marginTop: '14px', fontSize: '15.5px', color: C.ink, fontWeight: 600 } }, 'Transaction not found on this network'),
+        e('div', { style: { marginTop: '7px', fontSize: '14px', color: C.ink2, lineHeight: '1.55', maxWidth: '52ch' } }, 'The hash didn\u2019t resolve on testnet \u2014 it may be mistyped, from a different network, or past the RPC retention window. Check the hash and the selected network, then try again.'),
+        e('div', { style: { display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' } },
+          e('button', { onClick: () => this.synthesize(), style: { background: C.green, color: '#f4f4f5', border: 'none', fontFamily: C.mono, fontSize: '13px', padding: '11px 18px', borderRadius: '10px', cursor: 'pointer' } }, '↻ retry'),
+          e('a', { href: '#', style: { background: C.greenSoft, color: C.green, textDecoration: 'none', fontFamily: C.mono, fontSize: '13px', padding: '11px 18px', borderRadius: '10px' } }, 'docs / issues ↗'))));
+  }
+
+  disabledBox() {
+    const C = this.C, e = React.createElement;
+    return e('div', { style: { borderRadius: '16px', background: '#ebebec', padding: '40px 28px', textAlign: 'center', boxShadow: 'inset 0 0 0 1.5px rgba(22,24,21,0.08)' } },
+      e('div', { style: { width: '42px', height: '42px', borderRadius: '50%', background: '#dcdcde', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.mono, color: C.faint, fontSize: '18px' } }, '∅'),
+      e('div', { style: { marginTop: '16px', fontSize: '15.5px', color: C.ink, fontWeight: 600 } }, 'Live synthesizer not available right now'),
+      e('div', { style: { marginTop: '7px', fontSize: '13.5px', color: C.ink2, lineHeight: '1.55', maxWidth: '46ch', margin: '7px auto 0', fontFamily: C.mono } }, 'The backend isn\u2019t reachable, so the form is disabled. No sample or fallback data is shown \u2014 every result here comes from a real recording.'));
+  }
+
+  outputArea() {
+    const p = this.state.phase;
+    if (p === 'loading') return this.loadingBox();
+    if (p === 'success') return this.successBox();
+    if (p === 'error') return this.errorBox();
+    if (p === 'disabled') return this.disabledBox();
+    return this.idleBox();
+  }
+
+  buildQuickStart() {
+    const C = this.C, e = React.createElement;
+    const tab = this.state.tab;
+    const tabs = [['cli', 'CLI'], ['mcp', 'MCP server'], ['ts', 'TS wallet adapter']];
+    const snippets = {
+      cli: '$ oz-policy record 5a0ccffe…a42db4e --network testnet > rec.json\n$ oz-policy synthesize rec.json --mode auto --tightness exact \\\n    --lifetime 432000 --rule-name "blend-claim" > spec.json\n$ oz-policy codegen spec.json --out ./out\n$ oz-policy simulate spec.json rec.json --wasm-dir ./out > sim.json',
+      mcp: '$ cargo build --release -p oz-policy-mcp\n\n# claude_desktop_config.json / cursor / cline / continue\n{\n  "mcpServers": {\n    "oz-policy-builder": {\n      "command": "./target/release/oz-policy-mcp",\n      "args": ["--stdio"]\n    }\n  }\n}',
+      ts: 'import { installPolicy, verifyInstall } from "@oz-policy-builder/wallet-adapter";\n\nconst { contextRuleId } = await installPolicy(adapter, {\n  smartAccount, spec, wasmDir: "./out",\n});\n\nconst result = await verifyInstall(smartAccount, contextRuleId);\nconsole.log(result.matches); // true',
+    };
+    const copiedHere = this.state.copied === 'qs_' + tab;
+    const renderCode = (code) => {
+      const lines = code.split('\n');
+      return lines.map((ln, i) => {
+        let node;
+        if (ln.trimStart().indexOf('$') === 0) {
+          const idx = ln.indexOf('$');
+          node = [e('span', { key: 'p', style: { color: C.kGreen, fontWeight: 600 } }, '$'), e('span', { key: 'r', style: { color: C.codeInk } }, ln.slice(idx + 1))];
+        } else if (ln.trimStart().indexOf('#') === 0) {
+          node = e('span', { style: { color: C.codeFaint } }, ln);
+        } else {
+          node = e('span', { style: { color: C.codeInk } }, ln || '\u00a0');
+        }
+        return e('div', { key: i, style: { minHeight: '1.7em' } }, node);
+      });
+    };
+    const tabBtns = tabs.map(t => {
+      const active = tab === t[0];
+      return e('button', { key: t[0], onClick: () => this.setState({ tab: t[0] }), style: { background: active ? C.green : 'transparent', color: active ? '#f4f4f5' : C.ink, border: 'none', fontFamily: C.mono, fontSize: '13px', padding: '10px 17px', borderRadius: '9px', cursor: 'pointer', fontWeight: active ? 600 : 500, transition: 'all .2s' } }, t[1]);
+    });
+    return e('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } },
+      e('div', { style: { display: 'inline-flex', gap: '4px', background: '#dbdbde', padding: '5px', borderRadius: '12px', alignSelf: 'flex-start', flexWrap: 'wrap' } }, ...tabBtns),
+      e('div', { style: { borderRadius: '16px', background: C.codeBg, overflow: 'hidden', boxShadow: '0 16px 38px -22px rgba(18,22,26,0.6)' } },
+        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 18px', background: 'rgba(255,255,255,0.04)' } },
+          e('span', { style: { fontFamily: C.mono, fontSize: '11.5px', color: '#b2b2b7' } }, tabs.find(t => t[0] === tab)[1].toLowerCase()),
+          e('button', { onClick: () => this.copy('qs_' + tab, snippets[tab]), style: { background: copiedHere ? C.green2 : 'rgba(255,255,255,0.1)', color: copiedHere ? '#1c1c20' : '#d8d8db', border: 'none', fontFamily: C.mono, fontSize: '11px', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontWeight: copiedHere ? 600 : 400 } }, copiedHere ? 'copied ✓' : 'copy')),
+        e('pre', { style: { margin: 0, padding: '20px 20px 22px', fontFamily: C.mono, fontSize: '13px', lineHeight: '1.75', overflowX: 'auto', whiteSpace: 'pre' } }, renderCode(snippets[tab]))));
+  }
+
+  seg(current, opts, onPick, disabled) {
+    const C = this.C, e = React.createElement;
+    return e('div', { style: { display: 'flex', gap: '4px', background: '#ebebec', borderRadius: '11px', padding: '4px' } },
+      opts.map(o => {
+        const active = current === o.v;
+        return e('button', { key: o.v, disabled: !!disabled, onClick: () => onPick(o.v),
+          style: { flex: 1, background: active ? '#1c1c20' : 'transparent', color: active ? '#f4f4f5' : '#54545a', border: 'none', borderRadius: '8px', padding: '10px 6px', cursor: disabled ? 'default' : 'pointer', fontFamily: C.mono, fontSize: '12px', fontWeight: active ? 600 : 500, transition: 'background .2s, color .2s', whiteSpace: 'nowrap' } }, o.l);
+      }));
+  }
+  renderVals() {
+    const tHelp = { 'exact': 'permit only the exact values observed', 'small margin': 'allow modest headroom above observed amounts', 'loose': 'permit the function family with relaxed bounds' };
+    const formDisabled = this.state.phase === 'disabled';
+    return {
+      heroVisual: this.buildHero(),
+      outputArea: this.outputArea(),
+      quickStart: this.buildQuickStart(),
+      primitives: this.buildPrimitives(),
+      faq: this.buildFaq(),
+      txHash: this.state.txHash,
+      network: this.state.network,
+      tightness: this.state.tightness,
+      mode: this.state.mode,
+      lifetime: this.state.lifetime,
+      ruleName: this.state.ruleName,
+      tightnessHelp: tHelp[this.state.tightness] || '',
+      networkControl: this.seg(this.state.network, [{ v: 'testnet', l: 'testnet' }, { v: 'mainnet', l: 'mainnet' }], (v) => this.setState({ network: v }), formDisabled),
+      tightnessControl: this.seg(this.state.tightness, [{ v: 'exact', l: 'exact' }, { v: 'small margin', l: 'margin' }, { v: 'loose', l: 'loose' }], (v) => this.setState({ tightness: v }), formDisabled),
+      modeControl: this.seg(this.state.mode, [{ v: 'auto', l: 'auto' }, { v: 'compose-only', l: 'compose' }, { v: 'codegen-only', l: 'codegen' }], (v) => this.setState({ mode: v }), formDisabled),
+      formDisabled: formDisabled,
+      submitDisabled: formDisabled || this.state.phase === 'loading',
+      synthLabel: this.state.phase === 'loading' ? 'synthesizing…' : 'synthesize',
+      onHash: (ev) => this.setState({ txHash: ev.target.value }),
+      onNet: (ev) => this.setState({ network: ev.target.value }),
+      onTight: (ev) => this.setState({ tightness: ev.target.value }),
+      onMode: (ev) => this.setState({ mode: ev.target.value }),
+      onLifetime: (ev) => this.setState({ lifetime: ev.target.value }),
+      onRule: (ev) => this.setState({ ruleName: ev.target.value }),
+      doSynth: () => this.synthesize(),
+      loadExample: () => this.setState({ txHash: '5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e', network: 'testnet', tightness: 'exact', mode: 'auto', lifetime: 432000, ruleName: 'blend-claim' }),
+      pvInput: () => { this.clearTimers(); this.setState({ phase: 'idle' }); },
+      pvLoading: () => { this.clearTimers(); this.setState({ phase: 'loading', loadingStep: 1 }); },
+      pvSuccess: () => { this.clearTimers(); this.setState({ phase: 'success' }); },
+      pvError: () => { this.clearTimers(); this.setState({ phase: 'error' }); },
+      pvDisabled: () => { this.clearTimers(); this.setState({ phase: 'disabled' }); },
+    };
+  }
+}
+</script>
+</body>
+</html>
