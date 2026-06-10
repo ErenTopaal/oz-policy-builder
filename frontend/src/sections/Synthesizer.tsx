@@ -9,8 +9,11 @@ import type {
   SimReport,
 } from "../lib/types";
 
-// sample tx hash for the "try a sample" button. real blend testnet claim.
-const SAMPLE_HASH = "5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e";
+// sample tx hash for the "try a sample" button is fetched at mount from
+// /sample-hash.txt, which a server-side hourly job refreshes from stellar
+// testnet horizon. if the fetch fails, the sample button stays disabled —
+// no stale or fabricated hash is ever shown.
+const SAMPLE_HASH_URL = "/sample-hash.txt";
 
 type Phase =
   | { kind: "idle" }
@@ -46,6 +49,7 @@ export function Synthesizer() {
 
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [backend, setBackend] = useState<BackendStatus>({ kind: "checking" });
+  const [sampleHash, setSampleHash] = useState<string | null>(null);
 
   const cfg = useMemo(() => readConfig(), []);
   const cancelRef = useRef<AbortController | null>(null);
@@ -80,13 +84,37 @@ export function Synthesizer() {
     };
   }, [cfg]);
 
+  // fetch the current sample hash. file is refreshed hourly server-side
+  // from horizon. on failure (404, network error, invalid format) leave
+  // sampleHash null so the button stays disabled.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(SAMPLE_HASH_URL, { cache: "no-store" });
+        if (!r.ok) return;
+        const text = (await r.text()).trim();
+        if (!/^[0-9a-f]{64}$/.test(text)) return;
+        if (!cancelled) setSampleHash(text);
+      } catch {
+        // network failure — leave button disabled, no fallback
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const isBusy =
     phase.kind === "recording" || phase.kind === "synthesizing" || phase.kind === "simulating";
   const isFormDisabled = backend.kind !== "live" || isBusy;
   const isSubmitDisabled =
     isFormDisabled || !/^[0-9a-fA-F]{64}$/.test(txHash.trim());
 
-  const loadSample = useCallback(() => setTxHash(SAMPLE_HASH), []);
+  const sampleDisabled = isFormDisabled || !sampleHash;
+  const loadSample = useCallback(() => {
+    if (sampleHash) setTxHash(sampleHash);
+  }, [sampleHash]);
 
   const cancel = useCallback(() => {
     cancelRef.current?.abort();
@@ -228,11 +256,12 @@ export function Synthesizer() {
                 <FieldLabel>transaction hash</FieldLabel>
                 <button
                   onClick={loadSample}
-                  disabled={isFormDisabled}
+                  disabled={sampleDisabled}
+                  title={!sampleHash ? "sample hash unavailable" : "load a fresh testnet hash"}
                   style={{
                     background: "rgba(28,28,33,0.06)",
                     border: "none",
-                    cursor: isFormDisabled ? "not-allowed" : "pointer",
+                    cursor: sampleDisabled ? "not-allowed" : "pointer",
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 10.5,
                     color: "#1c1c20",
@@ -241,7 +270,7 @@ export function Synthesizer() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 5,
-                    opacity: isFormDisabled ? 0.5 : 1,
+                    opacity: sampleDisabled ? 0.5 : 1,
                   }}
                 >
                   ↺ try a sample

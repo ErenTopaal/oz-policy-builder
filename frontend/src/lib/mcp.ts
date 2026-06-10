@@ -59,6 +59,10 @@ export class McpClient {
   readonly cfg: McpConfig;
   private nextId = 1;
   private initialized = false;
+  // mcp streamable-http is session-stateful. server returns
+  // `Mcp-Session-Id` on the initialize response; every subsequent
+  // request in this session must echo it back.
+  private sessionId: string | null = null;
 
   constructor(cfg: McpConfig) {
     if (!cfg.endpoint) {
@@ -151,12 +155,17 @@ export class McpClient {
       );
     }
 
-    const envelope = (await r.json()) as {
-      jsonrpc?: string;
-      id?: number;
-      result?: unknown;
-      error?: { code: number; message: string; data?: { error_code?: string; details?: unknown } };
-    };
+    // capture the session id on the initialize response so subsequent
+    // requests in this client instance land in the same session.
+    const sid = r.headers.get("Mcp-Session-Id") ?? r.headers.get("mcp-session-id");
+    if (sid && !this.sessionId) this.sessionId = sid;
+
+    // mcp streamable http servers may respond as plain json OR as
+    // text/event-stream (single sse stream with one or more `data:` frames).
+    // honor the server's content-type instead of assuming json.
+    const ct = r.headers.get("content-type") ?? "";
+    const raw = await r.text();
+    const envelope = parseRpcEnvelope(raw, ct, id);
 
     if (envelope.error) {
       const ec = envelope.error.data?.error_code ?? "E_UNKNOWN";
@@ -177,10 +186,64 @@ export class McpClient {
   }
 
   private headers(): Record<string, string> {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
+    const h: Record<string, string> = {
+      "Content-Type": "application/json",
+      // mcp streamable http spec requires the client to accept both
+      Accept: "application/json, text/event-stream",
+    };
     if (this.cfg.token) h["Authorization"] = `Bearer ${this.cfg.token}`;
+    if (this.sessionId) h["Mcp-Session-Id"] = this.sessionId;
     return h;
   }
+}
+
+type JsonRpcEnvelope = {
+  jsonrpc?: string;
+  id?: number;
+  result?: unknown;
+  error?: { code: number; message: string; data?: { error_code?: string; details?: unknown } };
+};
+
+// parses an mcp streamable-http response body, handling both
+// `application/json` and `text/event-stream`. for sse, walks `data:` frames
+// and returns the first one whose id matches `expectedId`, falling back to
+// the last parseable json frame.
+function parseRpcEnvelope(raw: string, contentType: string, expectedId: number): JsonRpcEnvelope {
+  const isSse =
+    contentType.toLowerCase().includes("text/event-stream") || /^\s*(?:data|event|id|retry)\s*:/m.test(raw);
+
+  if (!isSse) {
+    try {
+      return JSON.parse(raw) as JsonRpcEnvelope;
+    } catch {
+      throw new McpError(
+        "E_MALFORMED_RESPONSE",
+        `expected json, got: ${raw.slice(0, 160)}`,
+        -32603
+      );
+    }
+  }
+
+  let fallback: JsonRpcEnvelope | null = null;
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload) continue;
+    let parsed: JsonRpcEnvelope;
+    try {
+      parsed = JSON.parse(payload) as JsonRpcEnvelope;
+    } catch {
+      continue;
+    }
+    if (parsed.id === expectedId) return parsed;
+    fallback = parsed;
+  }
+  if (fallback) return fallback;
+  throw new McpError(
+    "E_MALFORMED_RESPONSE",
+    `sse stream contained no parseable json-rpc frame: ${raw.slice(0, 160)}`,
+    -32603
+  );
 }
 
 function healthzUrlFor(endpoint: string): string {

@@ -59,3 +59,4 @@ _probe*.mjs
 _probe*.ts
 _probe*.py
 scratch/
+.superpowers/
