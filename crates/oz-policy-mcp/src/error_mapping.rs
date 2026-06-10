@@ -20,6 +20,8 @@
 //! | `WalletRejected`                      | -32107          | `E_WALLET_REJECTED`            |
 //! | `InstallPreflightFailed`              | -32108          | `E_INSTALL_PREFLIGHT_FAILED`   |
 //! | `RecorderXdrDecodeFailed`             | -32109          | `E_RECORDER_XDR_DECODE_FAILED` |
+//! | `SpecNotFound`                        | -32110          | `E_SPEC_NOT_FOUND`             |
+//! | `SnapshotNotFound`                    | -32111          | `E_SNAPSHOT_NOT_FOUND`         |
 //!
 //! these codes occupy the JSON-RPC "server-defined" range
 //! (-32000 to -32099 is reserved for transport-level errors per the
@@ -53,6 +55,8 @@ pub fn code_to_int(e: &Error) -> i32 {
         Error::WalletRejected(_) => -32107,
         Error::InstallPreflightFailed(_) => -32108,
         Error::RecorderXdrDecodeFailed(_) => -32109,
+        Error::SpecNotFound(_) => -32110,
+        Error::SnapshotNotFound(_) => -32111,
     }
 }
 
@@ -135,6 +139,16 @@ mod tests {
                 -32109,
                 "E_RECORDER_XDR_DECODE_FAILED",
             ),
+            (
+                Error::SpecNotFound("nf".into()),
+                -32110,
+                "E_SPEC_NOT_FOUND",
+            ),
+            (
+                Error::SnapshotNotFound("sn".into()),
+                -32111,
+                "E_SNAPSHOT_NOT_FOUND",
+            ),
         ];
 
         let mut seen_codes = std::collections::HashSet::new();
@@ -148,8 +162,8 @@ mod tests {
             );
             // codes sit in the documented band.
             assert!(
-                (-32109..=-32100).contains(expected_code),
-                "code {expected_code} outside -32100..-32109"
+                (-32111..=-32100).contains(expected_code),
+                "code {expected_code} outside -32100..-32111"
             );
             // errorData carries the canonical E_* in `data.error_code`.
             let ed = error_to_jsonrpc(err);
@@ -174,7 +188,7 @@ mod tests {
                 message = ed.message
             );
         }
-        assert_eq!(seen_codes.len(), 10, "must cover 10 variants");
+        assert_eq!(seen_codes.len(), 12, "must cover 12 variants");
     }
 
     /// `code_to_int` must be a pure function: two calls with the same

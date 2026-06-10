@@ -44,6 +44,19 @@ pub enum Error {
     /// preflight failed (e.g., target predates PR-#655).
     #[error("E_INSTALL_PREFLIGHT_FAILED: {0}")]
     InstallPreflightFailed(String),
+
+    /// `spec_id` lookup against the MCP store returned no entry. Surfaced
+    /// by tools (e.g. `get_policy_artifacts`) that take a `spec_id` and
+    /// fail closed when the caller-supplied ID has no matching spec.
+    #[error("E_SPEC_NOT_FOUND: {0}")]
+    SpecNotFound(String),
+
+    /// snapshot id lookup against the on-disk snapshot store returned no
+    /// entry — either the file never existed, the id format was invalid,
+    /// or the snapshot's `expires_at` is in the past (treated as gone).
+    /// Surfaced by `get_snapshot` (see `crates/oz-policy-mcp/src/tools/snapshot.rs`).
+    #[error("E_SNAPSHOT_NOT_FOUND: {0}")]
+    SnapshotNotFound(String),
 }
 
 impl Error {
@@ -60,6 +73,8 @@ impl Error {
             Error::VerifyDrift(_) => "E_VERIFY_DRIFT",
             Error::WalletRejected(_) => "E_WALLET_REJECTED",
             Error::InstallPreflightFailed(_) => "E_INSTALL_PREFLIGHT_FAILED",
+            Error::SpecNotFound(_) => "E_SPEC_NOT_FOUND",
+            Error::SnapshotNotFound(_) => "E_SNAPSHOT_NOT_FOUND",
         }
     }
 }
@@ -112,6 +127,14 @@ mod tests {
                 Error::InstallPreflightFailed("smart account predates PR-#655".into()),
                 "E_INSTALL_PREFLIGHT_FAILED",
             ),
+            (
+                Error::SpecNotFound("spec_bogus not in store".into()),
+                "E_SPEC_NOT_FOUND",
+            ),
+            (
+                Error::SnapshotNotFound("snap_bogus not on disk".into()),
+                "E_SNAPSHOT_NOT_FOUND",
+            ),
         ];
 
         for (err, expected_code) in cases {
@@ -144,6 +167,8 @@ mod tests {
                 Error::VerifyDrift(_) => "E_VERIFY_DRIFT",
                 Error::WalletRejected(_) => "E_WALLET_REJECTED",
                 Error::InstallPreflightFailed(_) => "E_INSTALL_PREFLIGHT_FAILED",
+                Error::SpecNotFound(_) => "E_SPEC_NOT_FOUND",
+                Error::SnapshotNotFound(_) => "E_SNAPSHOT_NOT_FOUND",
             }
         }
 

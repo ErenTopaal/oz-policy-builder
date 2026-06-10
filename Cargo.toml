@@ -66,6 +66,10 @@ tower-http = { version = "=0.6.8", features = ["trace"] }
 http = "=1.4.0"
 # rustls-tls keeps us off openssl; matches stellar-rpc-client.
 reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls"] }
+# regex powers the `simulate_custom_source` pre-flight forbidden-pattern
+# check (see playground design §6.1). pinned to align with the version
+# transitively brought in by tracing-subscriber/regex-automata.
+regex = "=1.12.3"
 
 # `overflow-checks = true` is load-bearing for i128 safety. do not unset.
 [profile.release]

@@ -144,6 +144,54 @@ export interface SimulatePolicyInput {
 
 // SimulatePolicyOutput is SimReport directly.
 
+// --- /playground tools (spec §3.4 + §5) ---
+
+export interface GetPolicyArtifactsInput {
+  spec_id: string;
+}
+
+export interface GeneratedSource {
+  slot_index: number;
+  cargo_toml: string;
+  lib_rs: string;
+}
+
+export interface PolicyArtifacts {
+  spec_id: string;
+  generated_sources: GeneratedSource[];
+  composed_count: number;
+  generated_count: number;
+  wasm_sha256: string;
+  optimized_wasm_sha256: string;
+}
+
+export interface SimulateCustomSourceInput {
+  recording_id: string;
+  spec_id: string;
+  modified_lib_rs: string;
+}
+
+// SimulateCustomSourceOutput is SimReport.
+
+export interface CreateSnapshotInput {
+  recording_id: string;
+  spec_id: string;
+  modified_lib_rs?: string;
+  report: SimReport;
+}
+
+export interface SnapshotRef {
+  snapshot_id: string;
+  expires_at: string;
+}
+
+export interface Snapshot {
+  recording_id: string;
+  spec_id: string;
+  modified_lib_rs?: string;
+  report: SimReport;
+}
+
 // --- typed mcp errors. matches `oz_policy_core::errors::Error::code()`. ---
 
 export type McpErrorCode =

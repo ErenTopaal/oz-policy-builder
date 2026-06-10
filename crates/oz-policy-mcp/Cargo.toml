@@ -65,6 +65,10 @@ sha2 = "=0.10.9"
 # also normalises caller-provided hex inputs through the same crate so the
 # encoding stays consistent.
 hex = "=0.4.3"
+# `simulate_custom_source` runs a pre-flight regex check on user-supplied
+# `lib.rs` (forbidden-pattern list — see playground design §6.1) before
+# handing off to the codegen sandbox.
+regex = { workspace = true }
 
 # --- verify_install on-chain readback (RFP deliverable #5, 2026-05-18) ---
 # `verify_install` simulates `SA.get_context_rule(rule_id)` against a
@@ -138,6 +142,15 @@ uuid = { workspace = true }
 # base64: serialises WASM payloads as base64 JSON strings inside
 # `ArtifactBundle` and emits `BlobResourceContents` for `artifact://…wasm`.
 base64 = { workspace = true }
+# rand: 40-bit Crockford base32 snapshot id generation in `tools/snapshot.rs`
+# (per playground design §3.4 / §6.5). Pinned to the version already in
+# `Cargo.lock` as a transitive dep so no new lockfile churn.
+rand = "=0.9.4"
+# chrono: RFC3339 timestamps for snapshot `created_at` / `expires_at`
+# (30-day retention window). Already in `Cargo.lock` as a transitive dep;
+# pin to that version. `clock` for `Utc::now()`, `serde` for ser/de of
+# `DateTime<Utc>` in the on-disk snapshot record.
+chrono = { version = "=0.4.44", default-features = false, features = ["clock", "serde"] }
 
 [dev-dependencies]
 # tempfile used by the disk-persistence unit tests to scope writes to a

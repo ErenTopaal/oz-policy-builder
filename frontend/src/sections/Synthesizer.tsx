@@ -8,6 +8,7 @@ import type {
   PolicySpec,
   SimReport,
 } from "../lib/types";
+import { Field, FieldHeader, FieldLabel } from "./fields";
 
 // sample tx hash for the "try a sample" button is fetched at mount from
 // /sample-hash.txt, which a server-side hourly job refreshes from stellar
@@ -401,6 +402,20 @@ export function Synthesizer() {
             >
               code-first · deployment is always a separate, explicit step you take
             </div>
+            <a
+              href="/playground"
+              style={{
+                fontFamily: "'Hanken Grotesk', sans-serif",
+                fontSize: 12.5,
+                color: "#1c1c20",
+                opacity: 0.7,
+                textAlign: "center",
+                textDecoration: "none",
+                letterSpacing: "0.01em",
+              }}
+            >
+              → open full playground
+            </a>
           </div>
 
           <div style={{ flex: "1.15 1 440px", minWidth: 340 }}>
@@ -413,41 +428,6 @@ export function Synthesizer() {
 }
 
 // ─── sub-components ────────────────────────────────────────────────────────────
-
-function Field({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>{children}</div>;
-}
-
-function FieldHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 10,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: 10.5,
-        letterSpacing: "0.05em",
-        color: "#797980",
-        textTransform: "uppercase",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
 
 function Segments<T extends string>({
   options,

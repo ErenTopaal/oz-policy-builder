@@ -12,7 +12,7 @@ pub mod sandbox;
 
 pub use audit_lints::{lint_rendered_source, AuditLintError};
 pub use render::render_contract;
-pub use sandbox::{compile, CompiledArtifact, RenderedCrate, SandboxError};
+pub use sandbox::{cache_dir_for, compile, CompiledArtifact, RenderedCrate, SandboxError};
 
 use oz_policy_core::spec::{PolicySlot, PolicySpec};
 

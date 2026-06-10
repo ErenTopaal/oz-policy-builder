@@ -21,8 +21,10 @@ pub use resources::Resources;
 pub use server::PolicyServer;
 pub use store::{ArtifactBundle, McpStore, StorePersistKind};
 pub use tools::{
-    export_policy, record_transaction, simulate_policy, synthesize_policy, verify_install,
-    DriftItem, ExportFormat, ExportPolicyInput, ExportPolicyOutput, NetworkKind,
-    RecordTransactionInput, RecordTransactionOutput, SimulatePolicyInput, SynthesizePolicyInput,
-    SynthesizePolicyOutput, VerifyInstallInput, VerifyInstallOutput,
+    create_snapshot, export_policy, get_snapshot, record_transaction, simulate_policy,
+    spawn_gc as spawn_snapshot_gc, synthesize_policy, verify_install, CreateSnapshotInput,
+    CreateSnapshotOutput, DriftItem, ExportFormat, ExportPolicyInput, ExportPolicyOutput,
+    GetSnapshotInput, NetworkKind, RecordTransactionInput, RecordTransactionOutput,
+    SimulatePolicyInput, SnapshotRecord, SynthesizePolicyInput, SynthesizePolicyOutput,
+    VerifyInstallInput, VerifyInstallOutput,
 };

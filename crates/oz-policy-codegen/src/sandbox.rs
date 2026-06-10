@@ -90,6 +90,7 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
     let cache_dir = resolve_cache_dir(&rendered.wasm_hash_of_src)?;
     let opt_wasm_path = cache_dir.join("policy.opt.wasm");
     let opt_hash_path = cache_dir.join("policy.opt.wasm.sha256");
+    let pre_hash_path = cache_dir.join("policy.pre.wasm.sha256");
 
     // cache hit?
     if opt_wasm_path.exists() && opt_hash_path.exists() {
@@ -181,6 +182,19 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
 
     run_sandboxed_build(&cache_dir, &host_cargo_home).await?;
     let built_wasm = locate_built_wasm(&cache_dir, &rendered.cargo_toml)?;
+    // hash the unoptimized wasm before handing it to `stellar contract
+    // optimize` and persist as a cache sidecar so downstream tools (e.g.
+    // `get_policy_artifacts`) can surface a verifiable pre-optimize digest
+    // without re-running the build.
+    {
+        let bytes = tokio::fs::read(&built_wasm)
+            .await
+            .map_err(|e| SandboxError::SetupFailed(format!("read built wasm: {e}")))?;
+        let pre_hash = sha256(&bytes);
+        tokio::fs::write(&pre_hash_path, hex32(&pre_hash))
+            .await
+            .map_err(|e| SandboxError::SetupFailed(format!("write pre hash: {e}")))?;
+    }
     // stellar contract optimize:
     let optimize_out = Command::new("stellar")
         .arg("contract")
@@ -213,6 +227,15 @@ pub async fn compile(rendered: &RenderedCrate) -> Result<CompiledArtifact, oz_po
         source: rendered.src_lib_rs.clone(),
         cache_hit: false,
     })
+}
+
+/// expose the cache directory for a given source hash so external tools
+/// (e.g. `oz_policy_mcp::tools::get_policy_artifacts`) can read sidecar
+/// files (`policy.pre.wasm.sha256`) the sandbox writes alongside the
+/// optimized wasm. The directory may not exist yet — callers must handle
+/// `try_exists() == Ok(false)` themselves.
+pub fn cache_dir_for(src_hash: &[u8; 32]) -> Result<PathBuf, SandboxError> {
+    resolve_cache_dir(src_hash)
 }
 
 /// resolve `CARGO_HOME` (default `${HOME}/.cargo`).

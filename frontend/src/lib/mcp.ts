@@ -10,6 +10,12 @@ import {
   type SynthesizePolicyOutput,
   type SimulatePolicyInput,
   type SimReport,
+  type GetPolicyArtifactsInput,
+  type PolicyArtifacts,
+  type SimulateCustomSourceInput,
+  type CreateSnapshotInput,
+  type SnapshotRef,
+  type Snapshot,
   McpError,
 } from "./types";
 
@@ -85,6 +91,26 @@ export class McpClient {
 
   async simulatePolicy(input: SimulatePolicyInput): Promise<SimReport> {
     return this.callTool<SimReport>("simulate_policy", input);
+  }
+
+  // /playground tools. these are real network calls — there is no mock
+  // fallback. until the backend agents land the corresponding rmcp tools,
+  // the server will return E_TOOL_ERROR, surfaced honestly to the caller.
+
+  async getPolicyArtifacts(input: GetPolicyArtifactsInput): Promise<PolicyArtifacts> {
+    return this.callTool<PolicyArtifacts>("get_policy_artifacts", input);
+  }
+
+  async simulateCustomSource(input: SimulateCustomSourceInput): Promise<SimReport> {
+    return this.callTool<SimReport>("simulate_custom_source", input);
+  }
+
+  async createSnapshot(input: CreateSnapshotInput): Promise<SnapshotRef> {
+    return this.callTool<SnapshotRef>("create_snapshot", input);
+  }
+
+  async getSnapshot(snapshotId: string): Promise<Snapshot> {
+    return this.callTool<Snapshot>("get_snapshot", { snapshot_id: snapshotId });
   }
 
   private async callTool<T>(name: string, args: unknown): Promise<T> {

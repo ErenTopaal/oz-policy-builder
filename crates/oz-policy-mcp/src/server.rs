@@ -39,9 +39,9 @@ use crate::{
     prompts::Prompts,
     resources::Resources,
     tools::{
-        export_policy, record_transaction, simulate_policy, synthesize_policy, verify_install,
-        ExportPolicyInput, RecordTransactionInput, SimulatePolicyInput, SynthesizePolicyInput,
-        VerifyInstallInput,
+        export_policy, record_transaction, simulate_custom_source, simulate_policy,
+        synthesize_policy, verify_install, ExportPolicyInput, RecordTransactionInput,
+        SimulateCustomSourceInput, SimulatePolicyInput, SynthesizePolicyInput, VerifyInstallInput,
     },
 };
 
@@ -111,6 +111,8 @@ pub const TOOL_SYNTHESIZE_POLICY: &str = "synthesize_policy";
 pub const TOOL_SIMULATE_POLICY: &str = "simulate_policy";
 pub const TOOL_EXPORT_POLICY: &str = "export_policy";
 pub const TOOL_VERIFY_INSTALL: &str = "verify_install";
+/// playground `/playground` re-simulate loop — see design §3.4.
+pub const TOOL_SIMULATE_CUSTOM_SOURCE: &str = "simulate_custom_source";
 
 /// the fixed surface — order matters for `tools/list` test determinism.
 const TOOL_NAMES: &[&str] = &[
@@ -119,6 +121,7 @@ const TOOL_NAMES: &[&str] = &[
     TOOL_SIMULATE_POLICY,
     TOOL_EXPORT_POLICY,
     TOOL_VERIFY_INSTALL,
+    TOOL_SIMULATE_CUSTOM_SOURCE,
 ];
 
 /// build a `Tool` descriptor for the given input type. Pulls the JSON
@@ -167,6 +170,13 @@ fn build_tool_list() -> Vec<Tool> {
             "Verify the on-chain context rule at `(smart_account, context_rule_id)` \
              matches the expected `PolicySpec`. Returns a drift report (empty when \
              matches=true).",
+        ),
+        tool_descriptor::<SimulateCustomSourceInput>(
+            TOOL_SIMULATE_CUSTOM_SOURCE,
+            "Playground re-simulate: rebuild the Track-B WASM from a user-edited \
+             `lib.rs` (Cargo.toml stays the spec's rendered template) and replay \
+             the recording + deny matrix against it. Returns `SimReport`. Pre-flight \
+             rejects sources containing forbidden patterns before invoking cargo.",
         ),
     ]
 }

@@ -2,6 +2,44 @@
 //! determinism contract: payloads round-trip byte-equal, ids are fresh uuids.
 //! errors route through `error_mapping::error_to_jsonrpc`.
 
+// playground (`/playground` design spec §3.4) — `get_policy_artifacts`
+// surfaces the rendered Cargo.toml + lib.rs from the codegen pipeline so
+// the frontend Source tab can mount Monaco against the same bytes the
+// sandbox sees. Lives in a sibling submodule because the in-memory cache
+// + integration tests warrant their own file.
+pub mod get_policy_artifacts;
+
+pub use get_policy_artifacts::{
+    get_policy_artifacts, GeneratedSource, GetPolicyArtifactsCache, GetPolicyArtifactsInput,
+    GetPolicyArtifactsOutput,
+};
+
+// playground (`/playground` design spec §3.4) — `simulate_custom_source`
+// re-runs the codegen sandbox + simhost over a user-edited `lib.rs` body
+// (with the Cargo.toml locked to the spec's rendered template). Lives in
+// its own submodule so the forbidden-pattern table + corpus tests stay
+// next to the implementation.
+pub mod simulate_custom_source;
+
+pub use simulate_custom_source::{
+    check_forbidden, simulate_custom_source, ForbiddenPattern, SimulateCustomSourceInput,
+    CARGO_BUILD_FAILED_CODE, CARGO_BUILD_FAILED_NAME, PREFLIGHT_FORBIDDEN_PATTERN_CODE,
+    PREFLIGHT_FORBIDDEN_PATTERN_NAME,
+};
+
+// playground (`/playground` design spec §3.4) — `create_snapshot` /
+// `get_snapshot` MCP tools plus the on-disk snapshot store and its
+// background GC task. Lives in its own submodule because the on-disk
+// layout, the Crockford base32 id encoding, the 30-day retention
+// window, and the GC loop all warrant being kept next to each other.
+pub mod snapshot;
+
+pub use snapshot::{
+    create_snapshot, get_snapshot, run_gc_once, snapshot_dir, spawn_gc, spawn_gc_with_interval,
+    CreateSnapshotInput, CreateSnapshotOutput, GetSnapshotInput, SnapshotRecord, GC_INTERVAL,
+    RETENTION, SNAPSHOT_DIR_ENV,
+};
+
 use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
