@@ -39,8 +39,9 @@ use crate::{
     prompts::Prompts,
     resources::Resources,
     tools::{
-        export_policy, record_transaction, simulate_custom_source, simulate_policy,
-        synthesize_policy, verify_install, ExportPolicyInput, RecordTransactionInput,
+        export_policy, get_policy_artifacts, record_transaction, simulate_custom_source,
+        simulate_policy, synthesize_policy, verify_install, ExportPolicyInput,
+        GetPolicyArtifactsCache, GetPolicyArtifactsInput, RecordTransactionInput,
         SimulateCustomSourceInput, SimulatePolicyInput, SynthesizePolicyInput, VerifyInstallInput,
     },
 };
@@ -63,6 +64,10 @@ pub struct PolicyServer {
     /// future bodies (which run after `&self` borrows expire) can cheap-clone
     /// the handle without locking.
     pub store: Arc<McpStore>,
+    /// per-spec_id in-memory cache for `get_policy_artifacts`. Shared
+    /// across every per-connection handler clone so two playground users
+    /// hitting the same spec only run the codegen pipeline once.
+    pub artifacts_cache: GetPolicyArtifactsCache,
 }
 
 impl PolicyServer {
@@ -70,6 +75,7 @@ impl PolicyServer {
     pub fn new() -> Self {
         Self {
             store: Arc::new(McpStore::new()),
+            artifacts_cache: GetPolicyArtifactsCache::new(),
         }
     }
 
@@ -80,7 +86,10 @@ impl PolicyServer {
     /// for the whole binary and hands `Arc::clone`s to each per-connection
     /// `PolicyServer` factory).
     pub fn with_store(store: Arc<McpStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            artifacts_cache: GetPolicyArtifactsCache::new(),
+        }
     }
 
     /// returns a `Resources` façade over `self.store`. Cheap — `Resources`
@@ -113,6 +122,9 @@ pub const TOOL_EXPORT_POLICY: &str = "export_policy";
 pub const TOOL_VERIFY_INSTALL: &str = "verify_install";
 /// playground `/playground` re-simulate loop — see design §3.4.
 pub const TOOL_SIMULATE_CUSTOM_SOURCE: &str = "simulate_custom_source";
+/// playground source inspection — see design §3.4. Hands the rendered
+/// Cargo.toml + lib.rs back to the Source tab.
+pub const TOOL_GET_POLICY_ARTIFACTS: &str = "get_policy_artifacts";
 
 /// the fixed surface — order matters for `tools/list` test determinism.
 const TOOL_NAMES: &[&str] = &[
@@ -122,6 +134,7 @@ const TOOL_NAMES: &[&str] = &[
     TOOL_EXPORT_POLICY,
     TOOL_VERIFY_INSTALL,
     TOOL_SIMULATE_CUSTOM_SOURCE,
+    TOOL_GET_POLICY_ARTIFACTS,
 ];
 
 /// build a `Tool` descriptor for the given input type. Pulls the JSON
@@ -274,6 +287,11 @@ impl ServerHandler for PolicyServer {
             TOOL_VERIFY_INSTALL => {
                 let input: VerifyInstallInput = decode_input(arguments_value, name)?;
                 let output = verify_install(&self.store, input).await?;
+                Ok(structured_ok(&output))
+            }
+            TOOL_SIMULATE_CUSTOM_SOURCE => {
+                let input: SimulateCustomSourceInput = decode_input(arguments_value, name)?;
+                let output = simulate_custom_source(&self.store, input).await?;
                 Ok(structured_ok(&output))
             }
             unknown => Err(McpError::invalid_params(
