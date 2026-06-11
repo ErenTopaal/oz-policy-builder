@@ -39,10 +39,11 @@ use crate::{
     prompts::Prompts,
     resources::Resources,
     tools::{
-        export_policy, get_policy_artifacts, record_transaction, simulate_custom_source,
-        simulate_policy, synthesize_policy, verify_install, ExportPolicyInput,
-        GetPolicyArtifactsCache, GetPolicyArtifactsInput, RecordTransactionInput,
-        SimulateCustomSourceInput, SimulatePolicyInput, SynthesizePolicyInput, VerifyInstallInput,
+        create_snapshot, export_policy, get_policy_artifacts, get_snapshot, record_transaction,
+        simulate_custom_source, simulate_policy, synthesize_policy, verify_install,
+        CreateSnapshotInput, ExportPolicyInput, GetPolicyArtifactsCache, GetPolicyArtifactsInput,
+        GetSnapshotInput, RecordTransactionInput, SimulateCustomSourceInput, SimulatePolicyInput,
+        SynthesizePolicyInput, VerifyInstallInput,
     },
 };
 
@@ -125,6 +126,13 @@ pub const TOOL_SIMULATE_CUSTOM_SOURCE: &str = "simulate_custom_source";
 /// playground source inspection — see design §3.4. Hands the rendered
 /// Cargo.toml + lib.rs back to the Source tab.
 pub const TOOL_GET_POLICY_ARTIFACTS: &str = "get_policy_artifacts";
+/// playground share-link mint — see design §3.4 (snapshot store).
+/// Freezes (recording, spec, modified_lib_rs?, report) to an on-disk
+/// JSON file under the snapshot directory and returns its 8-char id.
+pub const TOOL_CREATE_SNAPSHOT: &str = "create_snapshot";
+/// playground share-link redeem — see design §3.4 (snapshot store).
+/// Returns the frozen `SnapshotRecord` or `E_SNAPSHOT_NOT_FOUND`.
+pub const TOOL_GET_SNAPSHOT: &str = "get_snapshot";
 
 /// the fixed surface — order matters for `tools/list` test determinism.
 const TOOL_NAMES: &[&str] = &[
@@ -135,6 +143,8 @@ const TOOL_NAMES: &[&str] = &[
     TOOL_VERIFY_INSTALL,
     TOOL_SIMULATE_CUSTOM_SOURCE,
     TOOL_GET_POLICY_ARTIFACTS,
+    TOOL_CREATE_SNAPSHOT,
+    TOOL_GET_SNAPSHOT,
 ];
 
 /// build a `Tool` descriptor for the given input type. Pulls the JSON
@@ -190,6 +200,24 @@ fn build_tool_list() -> Vec<Tool> {
              `lib.rs` (Cargo.toml stays the spec's rendered template) and replay \
              the recording + deny matrix against it. Returns `SimReport`. Pre-flight \
              rejects sources containing forbidden patterns before invoking cargo.",
+        ),
+        tool_descriptor::<GetPolicyArtifactsInput>(
+            TOOL_GET_POLICY_ARTIFACTS,
+            "Playground source inspection: returns the rendered Cargo.toml + lib.rs \
+             for every Generated slot in the given spec, plus the (pre- and \
+             post-optimize) WASM sha-256 the codegen sandbox produces. Result is \
+             cached per `spec_id` so repeated calls don't re-run the build.",
+        ),
+        tool_descriptor::<CreateSnapshotInput>(
+            TOOL_CREATE_SNAPSHOT,
+            "Playground share: freezes (recording, spec, modified_lib_rs?, report) \
+             to a single on-disk JSON record and returns its 8-char Crockford base32 \
+             id plus the 30-day `expires_at`. Used by the share button.",
+        ),
+        tool_descriptor::<GetSnapshotInput>(
+            TOOL_GET_SNAPSHOT,
+            "Playground reopen: returns the frozen `SnapshotRecord` for the given id, \
+             or `E_SNAPSHOT_NOT_FOUND` when the id is unknown / expired / malformed.",
         ),
     ]
 }
@@ -292,6 +320,22 @@ impl ServerHandler for PolicyServer {
             TOOL_SIMULATE_CUSTOM_SOURCE => {
                 let input: SimulateCustomSourceInput = decode_input(arguments_value, name)?;
                 let output = simulate_custom_source(&self.store, input).await?;
+                Ok(structured_ok(&output))
+            }
+            TOOL_GET_POLICY_ARTIFACTS => {
+                let input: GetPolicyArtifactsInput = decode_input(arguments_value, name)?;
+                let output =
+                    get_policy_artifacts(&self.store, &self.artifacts_cache, input).await?;
+                Ok(structured_ok(&output))
+            }
+            TOOL_CREATE_SNAPSHOT => {
+                let input: CreateSnapshotInput = decode_input(arguments_value, name)?;
+                let output = create_snapshot(&self.store, input).await?;
+                Ok(structured_ok(&output))
+            }
+            TOOL_GET_SNAPSHOT => {
+                let input: GetSnapshotInput = decode_input(arguments_value, name)?;
+                let output = get_snapshot(input).await?;
                 Ok(structured_ok(&output))
             }
             unknown => Err(McpError::invalid_params(
@@ -457,11 +501,12 @@ mod tests {
         assert!(Arc::ptr_eq(&s.store, &s2.store));
     }
 
-    /// the fixed tool surface must always be exactly five tools, in the
-    /// documented order. Regression guard against accidental additions /
-    /// reorderings that would break clients caching the list.
+    /// the fixed tool surface must stay stable in documented order.
+    /// Regression guard against accidental additions / reorderings that
+    /// would break clients caching the list. The playground design (§3.4)
+    /// adds four playground tools after the original five.
     #[test]
-    fn build_tool_list_returns_five_tools_in_canonical_order() {
+    fn build_tool_list_returns_canonical_order() {
         let tools = build_tool_list();
         let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
         assert_eq!(
@@ -472,6 +517,10 @@ mod tests {
                 TOOL_SIMULATE_POLICY,
                 TOOL_EXPORT_POLICY,
                 TOOL_VERIFY_INSTALL,
+                TOOL_SIMULATE_CUSTOM_SOURCE,
+                TOOL_GET_POLICY_ARTIFACTS,
+                TOOL_CREATE_SNAPSHOT,
+                TOOL_GET_SNAPSHOT,
             ],
             "tool order must stay stable across releases"
         );

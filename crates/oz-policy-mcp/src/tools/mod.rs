@@ -35,9 +35,9 @@ pub use simulate_custom_source::{
 pub mod snapshot;
 
 pub use snapshot::{
-    create_snapshot, get_snapshot, run_gc_once, snapshot_dir, spawn_gc, spawn_gc_with_interval,
-    CreateSnapshotInput, CreateSnapshotOutput, GetSnapshotInput, SnapshotRecord, GC_INTERVAL,
-    RETENTION, SNAPSHOT_DIR_ENV,
+    create_snapshot, get_snapshot, retention, run_gc_once, snapshot_dir, spawn_gc,
+    spawn_gc_with_interval, CreateSnapshotInput, CreateSnapshotOutput, GetSnapshotInput,
+    SnapshotRecord, GC_INTERVAL, RETENTION_DAYS, SNAPSHOT_DIR_ENV,
 };
 
 use std::sync::Arc;

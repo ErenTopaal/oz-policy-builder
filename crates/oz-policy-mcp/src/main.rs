@@ -123,6 +123,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = Arc::new(McpStore::new());
 
+    // start the snapshot-store GC task before either transport begins.
+    // detached on purpose — the loop runs for the lifetime of the binary
+    // and exits when the tokio runtime shuts down. Per playground design
+    // §3.4 it wakes every 6 hours and unlinks expired snapshot files.
+    let _gc_handle = oz_policy_mcp::spawn_snapshot_gc();
+
     match args.http {
         Some(port) => run_http_server(port, args.token, store).await,
         None => run_stdio_server(store).await,

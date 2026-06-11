@@ -68,8 +68,11 @@ struct PatternEntry {
 /// tests can assert the expected label).
 const PATTERNS: &[PatternEntry] = &[
     PatternEntry {
-        label: r"\bunsafe\s*(\{|fn|impl|trait)\b",
-        regex: r"\bunsafe\s*(\{|fn|impl|trait)\b",
+        // the trailing alternation may end in `{`, which is a non-word char;
+        // a trailing `\b` would refuse to match `unsafe { ... }` because `{`
+        // → space is non-word → non-word. drop the boundary for that branch.
+        label: r"\bunsafe\s*(\{|\bfn|\bimpl|\btrait)",
+        regex: r"\bunsafe\s*(\{|\bfn|\bimpl|\btrait)",
     },
     PatternEntry {
         label: r#"\bextern\s+"[A-Za-z]+""#,

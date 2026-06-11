@@ -40,7 +40,6 @@
 //! not leak filesystem details to MCP clients.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -63,10 +62,18 @@ const DEFAULT_SNAPSHOT_DIR: &str = "/var/lib/oz-policy-mcp/snapshots";
 /// to a `tempfile::tempdir()` path.
 pub const SNAPSHOT_DIR_ENV: &str = "OZ_POLICY_SNAPSHOT_DIR";
 
-/// retention window for newly-created snapshots (30 days). After
-/// `created_at + RETENTION`, [`get_snapshot`] returns `E_SNAPSHOT_NOT_FOUND`
-/// and the GC task unlinks the file on its next pass.
-pub const RETENTION: chrono::Duration = chrono::Duration::days(30);
+/// retention window for newly-created snapshots, in days. After
+/// `created_at + RETENTION_DAYS days`, [`get_snapshot`] returns
+/// `E_SNAPSHOT_NOT_FOUND` and the GC task unlinks the file on its next
+/// pass. Kept as an integer constant (rather than a `chrono::Duration`)
+/// because `Duration::days` is not yet `const` in chrono 0.4.x.
+pub const RETENTION_DAYS: i64 = 30;
+
+/// retention window as a `chrono::Duration`. Built once via [`OnceLock`]
+/// since `Duration::days` isn't `const` in chrono 0.4.x.
+pub fn retention() -> chrono::Duration {
+    chrono::Duration::days(RETENTION_DAYS)
+}
 
 /// GC interval — the background task wakes this often and walks the store
 /// directory. 6 hours is per spec §3.4; tests use a shorter interval via
@@ -238,7 +245,7 @@ pub async fn create_snapshot(
     let dir = snapshot_dir();
     let snapshot_id = fresh_id_in_dir(&dir)?;
     let created_at = Utc::now();
-    let expires_at = created_at + RETENTION;
+    let expires_at = created_at + retention();
 
     let record = SnapshotRecord {
         snapshot_id: snapshot_id.clone(),
@@ -441,18 +448,6 @@ pub fn run_gc_once(dir: &Path) {
             }
         }
     }
-}
-
-// arc-store ergonomics
-
-/// thin overload so server handlers holding `Arc<McpStore>` (Stream C's
-/// `PolicyServer`) can call us without dereferencing the Arc first. Mirrors
-/// `tools::AsStore`.
-pub async fn create_snapshot_arc(
-    store: &Arc<McpStore>,
-    input: CreateSnapshotInput,
-) -> Result<CreateSnapshotOutput, ErrorData> {
-    create_snapshot(store.as_ref(), input).await
 }
 
 // tests

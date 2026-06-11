@@ -21,10 +21,12 @@ pub use resources::Resources;
 pub use server::PolicyServer;
 pub use store::{ArtifactBundle, McpStore, StorePersistKind};
 pub use tools::{
-    create_snapshot, export_policy, get_snapshot, record_transaction, simulate_policy,
-    spawn_gc as spawn_snapshot_gc, synthesize_policy, verify_install, CreateSnapshotInput,
-    CreateSnapshotOutput, DriftItem, ExportFormat, ExportPolicyInput, ExportPolicyOutput,
-    GetSnapshotInput, NetworkKind, RecordTransactionInput, RecordTransactionOutput,
+    check_forbidden, create_snapshot, export_policy, get_snapshot, record_transaction,
+    simulate_custom_source, simulate_policy, spawn_gc as spawn_snapshot_gc, synthesize_policy,
+    verify_install, CreateSnapshotInput, CreateSnapshotOutput, DriftItem, ExportFormat,
+    ExportPolicyInput, ExportPolicyOutput, ForbiddenPattern, GetSnapshotInput, NetworkKind,
+    RecordTransactionInput, RecordTransactionOutput, SimulateCustomSourceInput,
     SimulatePolicyInput, SnapshotRecord, SynthesizePolicyInput, SynthesizePolicyOutput,
-    VerifyInstallInput, VerifyInstallOutput,
+    VerifyInstallInput, VerifyInstallOutput, CARGO_BUILD_FAILED_CODE, CARGO_BUILD_FAILED_NAME,
+    PREFLIGHT_FORBIDDEN_PATTERN_CODE, PREFLIGHT_FORBIDDEN_PATTERN_NAME,
 };

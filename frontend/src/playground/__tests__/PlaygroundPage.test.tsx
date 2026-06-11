@@ -33,10 +33,12 @@ describe("PlaygroundPage", () => {
       </MemoryRouter>
     );
     fireEvent.click(screen.getByRole("tab", { name: "Source" }));
-    expect(screen.getByText("Source — coming in wave 2")).toBeTruthy();
+    // SourceTab is implemented — without artifacts it shows the empty marker.
+    expect(screen.getByText("no source yet — synthesize first")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "Simulate" }));
-    expect(screen.getByText("Simulate — coming in wave 2")).toBeTruthy();
+    // SimulateTab is implemented — without a report it shows the empty marker.
+    expect(screen.getByText("no simulation yet — synthesize first")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "Bundle" }));
     expect(screen.getByText("Bundle — coming in wave 2")).toBeTruthy();
