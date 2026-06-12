@@ -7,7 +7,6 @@
 //! serde round-trips against an actual filesystem path. Per the spec's
 //! "Mocks are forbidden across the board" rule (playground design §9).
 
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use chrono::{Duration as ChronoDuration, Utc};
@@ -63,10 +62,6 @@ impl DirScope {
             prev,
             _guard: guard,
         }
-    }
-
-    fn path(&self) -> PathBuf {
-        self._dir.path().to_path_buf()
     }
 }
 
