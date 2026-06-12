@@ -22,8 +22,8 @@ describe("PlaygroundPage", () => {
     expect(screen.getByRole("tab", { name: "Source" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Simulate" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Bundle" })).toBeTruthy();
-    // spec is the default active tab
-    expect(screen.getByText("Spec — coming in wave 2")).toBeTruthy();
+    // spec is the default active tab — real SpecTab empty state
+    expect(screen.getByTestId("spec-empty")).toBeTruthy();
   });
 
   it("switches active tab on click", () => {
@@ -34,14 +34,15 @@ describe("PlaygroundPage", () => {
     );
     fireEvent.click(screen.getByRole("tab", { name: "Source" }));
     // SourceTab is implemented — without artifacts it shows the empty marker.
-    expect(screen.getByText("no source yet — synthesize first")).toBeTruthy();
+    expect(screen.getByTestId("source-tab-empty")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "Simulate" }));
     // SimulateTab is implemented — without a report it shows the empty marker.
     expect(screen.getByText("no simulation yet — synthesize first")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "Bundle" }));
-    expect(screen.getByText("Bundle — coming in wave 2")).toBeTruthy();
+    // BundleTab is implemented — without artifacts/spec/report, empty marker.
+    expect(screen.getByTestId("bundle-empty")).toBeTruthy();
   });
 
   it("renders the snapshot id from the URL into the share badge", () => {
