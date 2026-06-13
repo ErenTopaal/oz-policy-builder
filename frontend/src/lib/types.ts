@@ -188,6 +188,11 @@ export interface SnapshotRef {
 export interface Snapshot {
   recording_id: string;
   spec_id: string;
+  // backend SnapshotRecord embeds Recording + PolicySpec by value so shared
+  // snapshot URLs render full state (SpecTab reasoning trace etc.) even
+  // after the in-memory recorder cache has GC'd the original recording.
+  recording: Recording;
+  spec: PolicySpec;
   modified_lib_rs?: string;
   report: SimReport;
 }

@@ -130,12 +130,12 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     (async () => {
       const snap = await loadSnapshot(routeSnapshotId);
       if (cancelled || !snap) return;
-      // Snapshot record carries the full Recording + Spec + Report by
-      // value (spec §3.4). Hydrate state with what we have.
-      // Note: Snapshot type currently doesn't include recording/spec
-      // by-value — only recording_id/spec_id + modified_lib_rs + report.
-      // We hydrate report immediately, and fire follow-up calls to fetch
-      // the spec + artifacts so the panels render fully.
+      // Snapshot record carries Recording + PolicySpec + Report by value
+      // (spec §3.4) so shared URLs survive after the recorder cache GCs
+      // the original recording_id. Hydrate everything from the snapshot
+      // before any follow-up fetch.
+      dispatch({ type: "setRecording", recording: snap.recording });
+      dispatch({ type: "setSpec", spec: snap.spec });
       dispatch({ type: "setReport", report: snap.report });
       if (snap.modified_lib_rs !== undefined && snap.modified_lib_rs !== null) {
         dispatch({ type: "setModifiedLibRs", modifiedLibRs: snap.modified_lib_rs });
