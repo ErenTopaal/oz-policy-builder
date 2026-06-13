@@ -14,9 +14,7 @@ import type { SimReport, DenyResult } from "../../lib/types";
 import { describeError } from "../../lib/mcp";
 
 // PLACEHOLDER: real org/repo URL must replace this before shipping. The user's
-// honesty-no-fakes rule forbids fabricating a real-looking URL, so we leave
-// the angle-bracket placeholder visible in the link.
-const BUG_REPORT_URL = "https://github.com/<your-repo-url>/issues/new";
+const BUG_REPORT_URL = "https://github.com/ErenTopaal/oz-policy-builder/issues/new";
 
 const COLOR_PASS = "#16a34a";
 const COLOR_FAIL = "#dc2626";

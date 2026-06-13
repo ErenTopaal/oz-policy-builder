@@ -43,9 +43,7 @@ export interface BundleTabProps {
 
 // upstream reference link. real. not fabricated.
 const STELLAR_CONTRACTS_URL = "https://github.com/openzeppelin/stellar-contracts";
-// project repo url is a placeholder — flagged in agent reply, not fabricated.
-const PROJECT_REPO_URL_PLACEHOLDER =
-  "TODO: project repo URL (placeholder — replace before publishing the bundle)";
+const PROJECT_REPO_URL = "https://github.com/ErenTopaal/oz-policy-builder";
 
 export function BundleTab(props: BundleTabProps = {}): ReactNode {
   const artifacts = props.artifacts ?? null;
@@ -472,7 +470,7 @@ ${installSnippet}\`\`\`
 ## References
 
 - OpenZeppelin Stellar Contracts: ${STELLAR_CONTRACTS_URL}
-- Project repository: ${PROJECT_REPO_URL_PLACEHOLDER}
+- Project repository: ${PROJECT_REPO_URL}
 `;
 }
 
