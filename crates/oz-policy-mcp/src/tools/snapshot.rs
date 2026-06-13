@@ -165,6 +165,17 @@ pub struct SnapshotRecord {
     /// `E_SNAPSHOT_NOT_FOUND` even if the file still exists on disk (GC
     /// catches up on its next pass).
     pub expires_at: DateTime<Utc>,
+    /// originating `recording_id` from the recorder cache. Preserved so the
+    /// frontend can correlate the snapshot with the live cache when both
+    /// happen to be present; the `recording` field below is the canonical
+    /// source of truth after GC.
+    #[serde(default)]
+    pub recording_id: String,
+    /// originating `spec_id` from the spec cache. Required for the
+    /// frontend's `get_policy_artifacts(spec_id)` call when rendering the
+    /// Source tab on a shared `/playground/s/<id>` URL.
+    #[serde(default)]
+    pub spec_id: String,
     /// frozen copy of the source recording (by value — the originating
     /// `recording_id` may have been GC'd from the recorder cache).
     pub recording: Recording,
@@ -251,6 +262,8 @@ pub async fn create_snapshot(
         snapshot_id: snapshot_id.clone(),
         created_at,
         expires_at,
+        recording_id: input.recording_id.clone(),
+        spec_id: input.spec_id.clone(),
         recording,
         spec,
         modified_lib_rs: input.modified_lib_rs,

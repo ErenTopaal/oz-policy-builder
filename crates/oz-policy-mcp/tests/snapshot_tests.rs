@@ -219,6 +219,8 @@ async fn gc_removes_expired_snapshot_file() {
         snapshot_id: id.to_string(),
         created_at: Utc::now() - ChronoDuration::days(31),
         expires_at: Utc::now() - ChronoDuration::days(1),
+        recording_id: "rec_expired".to_string(),
+        spec_id: "spec_expired".to_string(),
         recording: sep41_recording(),
         spec: sample_spec("rule"),
         modified_lib_rs: None,

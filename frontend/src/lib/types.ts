@@ -185,12 +185,13 @@ export interface SnapshotRef {
   expires_at: string;
 }
 
+// Mirrors backend `oz_policy_mcp::tools::snapshot::SnapshotRecord`. Recording
+// + PolicySpec are embedded by value so shared snapshot URLs survive after
+// the in-memory recorder cache has GC'd the originating recording_id.
 export interface Snapshot {
-  recording_id: string;
-  spec_id: string;
-  // backend SnapshotRecord embeds Recording + PolicySpec by value so shared
-  // snapshot URLs render full state (SpecTab reasoning trace etc.) even
-  // after the in-memory recorder cache has GC'd the original recording.
+  snapshot_id: string;
+  created_at: string; // RFC3339 UTC
+  expires_at: string; // RFC3339 UTC
   recording: Recording;
   spec: PolicySpec;
   modified_lib_rs?: string;
