@@ -1,9 +1,3 @@
-// thin reducer scaffold for the /playground page. spec §4.1 defines the
-// single state interface; this file owns its shape + the action types
-// other wave-2 components will dispatch. business logic (URL sync, abort
-// controllers, async flows) is intentionally NOT here yet — those land in
-// later siblings (useSnapshot, usePresets, InputPanel, SourceTab, etc.).
-
 import { useReducer } from "react";
 import type { Dispatch } from "react";
 import type {

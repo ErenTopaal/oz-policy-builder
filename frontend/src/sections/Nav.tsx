@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 export function Nav() {
   return (
     <nav
@@ -81,13 +83,13 @@ export function Nav() {
           >
             How it works
           </a>
-          <a
-            href="#synthesize"
+          <Link
+            to="/playground"
             className="nav-link"
             style={{ textDecoration: "none", color: "#55555b", fontSize: 14.5, fontWeight: 500 }}
           >
-            Synthesizer
-          </a>
+            Playground
+          </Link>
           <a
             href="#quickstart"
             className="nav-link"

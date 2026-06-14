@@ -1,9 +1,3 @@
-// Tests for BundleTab. We build real PolicyArtifacts/PolicySpec/SimReport
-// fixtures from the actual type definitions (no partials, no mock
-// components) so the tests reflect reality. No mocks per
-// feedback-no-mock-fallback — the only thing stubbed is the DOM-only
-// URL.createObjectURL, which jsdom doesn't implement.
-
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { BundleTab } from "../BundleTab";

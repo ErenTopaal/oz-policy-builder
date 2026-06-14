@@ -1,14 +1,3 @@
-// useSnapshot — create + load /playground share-link snapshots.
-//
-// Backed by the real MCP client (`createSnapshot` / `getSnapshot`). No mock
-// fallbacks — if the backend isn't reachable, the underlying McpClient
-// raises a real McpError and we surface it verbatim to the caller. Per
-// feedback-no-mock-fallback + feedback-honesty-no-fakes, on any error we
-// expose the McpError directly so the page can render its code + detail.
-//
-// Spec refs: §3.4 (snapshot store), §4.3 (share loop), §5 (hook signature),
-// §7 (E_SNAPSHOT_NOT_FOUND surface).
-
 import { useCallback, useMemo, useState } from "react";
 import { McpClient, type McpConfig } from "../../lib/mcp";
 import { McpError, type CreateSnapshotInput, type Snapshot, type SnapshotRef } from "../../lib/types";

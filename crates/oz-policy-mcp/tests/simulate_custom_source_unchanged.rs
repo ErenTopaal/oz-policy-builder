@@ -40,15 +40,26 @@ const TESTNET_PASSPHRASE: &str = "Test SDF Network ; September 2015";
 /// because `record_transaction` would require Soroban RPC; the recorder
 /// is integration-tested separately in `oz-policy-recorder` and the spec
 /// for THIS test is the substitution + simhost path, not the recorder.
-// real StrKey-shaped placeholders the simhost's `TestHost::build_context`
-// will accept. Lifted verbatim from
-// `crates/oz-policy-simhost/src/permit.rs::recording_with_one_transfer`
-// so the in-tree simhost tests + this integration test share the same
-// representative SEP-41 shape — keeps drift between the two suites loud.
+// real StrKey-shaped placeholders the simhost's
+// `TestHost::build_context_contract_scval` will accept. We compute the
+// G-address from a deterministic 32-byte seed because the bogus literal
+// `GAEEZ…` used in `crates/oz-policy-simhost/src/permit.rs` has an
+// invalid checksum (`stellar-strkey::ed25519::PublicKey::from_string`
+// returns `Err(Invalid)`) — see `crates/oz-policy-simhost/tests/host_smoke.rs`
+// Round-2 note. The simhost permit test only survived because it never
+// reached `build_context_contract_scval`; the moment a Track-B policy
+// is installed (this test installs one) the strkey decode runs.
+//
+// C-address (contract) is the round-tripped checksum from the same test
+// file — `stellar-strkey` accepts it directly.
 const TOKEN_C_ADDR: &str = "CDG7N5LG7TAWOHZH27TW6XN3WBA66TA5TUXYJP6552KVPZ3CTWABHKIH";
-const SIGNER_G_ADDR: &str = "GAEEZQIBQHBP3CG3F2BSTQHBHM5LJUFRTL2EFRC6CN4MV3OWJZ74C6XR";
+
+fn signer_strkey() -> String {
+    stellar_strkey::ed25519::PublicKey([0xaau8; 32]).to_string()
+}
 
 fn sep41_recording() -> Recording {
+    let signer = signer_strkey();
     Recording {
         schema: RECORDING_SCHEMA_URI.to_string(),
         network_passphrase: TESTNET_PASSPHRASE.to_string(),
@@ -60,15 +71,15 @@ fn sep41_recording() -> Recording {
             address: TOKEN_C_ADDR.to_string(),
             function: "transfer".to_string(),
             args: vec![
-                ArgValue::Address(SIGNER_G_ADDR.to_string()),
-                ArgValue::Address(SIGNER_G_ADDR.to_string()),
+                ArgValue::Address(signer.clone()),
+                ArgValue::Address(signer.clone()),
                 ArgValue::I128("100".to_string()),
             ],
         }],
         auth_tree: AuthTree {
             roots: vec![AuthEntry {
                 credentials: Credentials::Address {
-                    signer: SIGNER_G_ADDR.to_string(),
+                    signer: signer.clone(),
                     nonce: "1".to_string(),
                     signature_expiration_ledger: 1000,
                     signature: ArgValue::Void,

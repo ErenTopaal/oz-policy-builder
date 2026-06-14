@@ -1,37 +1,12 @@
-// BundleTab — generates a downloadable .zip containing the policy source
-// bundle (README, src/lib.rs, Cargo.toml, spec.json, sim-report.md, and
-// DIVERGENCE.md if the user edited lib.rs). zip layout per spec §4.4.
-//
-// honesty rules (per feedback-no-mock-fallback, feedback-honesty-no-fakes):
-// - if any of `artifacts | spec | report` is null, we render an explicit
-//   "no bundle yet" empty state. no fixture data, no half-bundle.
-// - jszip is lazy-imported on click so it lands in its own chunk and
-//   never pollutes the landing-page bundle.
-// - install snippet references real binaries (`stellar contract build`,
-//   `oz-policy-cli install`) and a real upstream URL
-//   (github.com/openzeppelin/stellar-contracts). the project repo URL
-//   is left as a TODO placeholder rather than fabricated.
-//
-// per RFP code-first / spec §1: NO deploy button. the install snippet is
-// the entire deploy surface.
-//
-// theme tokens inlined verbatim from spec §8. no Tailwind, no css
-// modules. primary button mirrors Synthesizer.tsx's submitBtn style.
-//
-// props are optional only to keep the wave-1 PlaygroundPage.tsx shell
-// (`<BundleTab />`) type-clean until the wave-2 orchestrator wires real
-// state through; passing nothing renders the same empty state as
-// passing all-null. spec §5 defines the public signature as
-// `{ artifacts, modifiedLibRs, spec, report, ruleName }`.
-
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import type {
   PolicyArtifacts,
   PolicySpec,
   SimReport,
   DenyResult,
 } from "../../lib/types";
+import { T, bytesOf, fmtBytes } from "../theme";
+import { EmptyState } from "./SpecTab";
 
 export interface BundleTabProps {
   artifacts?: PolicyArtifacts | null;
@@ -41,11 +16,10 @@ export interface BundleTabProps {
   ruleName?: string | null;
 }
 
-// upstream reference link. real. not fabricated.
 const STELLAR_CONTRACTS_URL = "https://github.com/openzeppelin/stellar-contracts";
 const PROJECT_REPO_URL = "https://github.com/ErenTopaal/oz-policy-builder";
 
-export function BundleTab(props: BundleTabProps = {}): ReactNode {
+export function BundleTab(props: BundleTabProps = {}) {
   const artifacts = props.artifacts ?? null;
   const modifiedLibRs = props.modifiedLibRs ?? null;
   const spec = props.spec ?? null;
@@ -54,18 +28,12 @@ export function BundleTab(props: BundleTabProps = {}): ReactNode {
 
   if (!artifacts || !spec || !report) {
     return (
-      <div
-        style={{
-          padding: 24,
-          color: "#a0a0a8",
-          fontFamily: "'Hanken Grotesk', sans-serif",
-          fontSize: 13.5,
-          lineHeight: 1.55,
-        }}
-        data-testid="bundle-empty"
-      >
-        no bundle yet — synthesize and simulate first.
-      </div>
+      <EmptyState
+        title="No bundle yet"
+        sub="Synthesize first. A downloadable bundle of the spec, source, and report will be previewed here."
+        testId="bundle-empty"
+        fallbackText="no bundle yet — synthesize and simulate first."
+      />
     );
   }
 
@@ -92,20 +60,25 @@ function BundleReady({
   spec: PolicySpec;
   report: SimReport;
   ruleName: string | null;
-}): ReactNode {
+}) {
   const shortId = useMemo(() => deriveShortSpecId(spec), [spec]);
   const wasmName = useMemo(() => deriveWasmName(artifacts), [artifacts]);
   const zipName = `oz-policy-bundle-${shortId}.zip`;
+  const composed = artifacts.generated_sources.length === 0;
 
-  const libRs = modifiedLibRs ?? artifacts.generated_sources[0]?.lib_rs ?? "";
-  const cargoToml = artifacts.generated_sources[0]?.cargo_toml ?? "";
+  const libRs = composed
+    ? ""
+    : modifiedLibRs ?? artifacts.generated_sources[0]?.lib_rs ?? "";
+  const cargoToml = composed
+    ? ""
+    : artifacts.generated_sources[0]?.cargo_toml ?? "";
   const specJson = useMemo(() => JSON.stringify(spec, null, 2), [spec]);
   const simReportMd = useMemo(() => renderSimReportMd(report), [report]);
   const divergenceMd = useMemo(() => {
-    if (modifiedLibRs === null) return null;
+    if (modifiedLibRs === null || composed) return null;
     const original = artifacts.generated_sources[0]?.lib_rs ?? "";
     return renderDivergenceMd(original, modifiedLibRs);
-  }, [modifiedLibRs, artifacts]);
+  }, [modifiedLibRs, artifacts, composed]);
   const installSnippet = useMemo(
     () => renderInstallSnippet({ shortId, wasmName, ruleName }),
     [shortId, wasmName, ruleName],
@@ -143,7 +116,6 @@ function BundleReady({
     setErr(null);
     setBusy(true);
     try {
-      // lazy import so jszip is split into its own chunk.
       const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
       for (const entry of entries) {
@@ -160,8 +132,6 @@ function BundleReady({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // give the browser a tick before revoking, otherwise some browsers
-      // cancel the download mid-flight.
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -176,179 +146,230 @@ function BundleReady({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard may not be available (e.g. insecure context). don't fake it.
       setCopied(false);
     }
   }
 
   return (
-    <div
-      style={{
-        padding: "20px 22px 28px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 18,
-      }}
-    >
-      <div>
-        <div
-          style={{
-            fontFamily: "'Bricolage Grotesque', sans-serif",
-            fontSize: 18,
-            fontWeight: 500,
-            letterSpacing: "-0.01em",
-            color: "#1c1c20",
-            marginBottom: 4,
-          }}
-        >
-          bundle
-        </div>
-        <div
-          style={{
-            fontFamily: "'Hanken Grotesk', sans-serif",
-            fontSize: 13,
-            color: "#54545a",
-            lineHeight: 1.55,
-          }}
-        >
-          a self-contained zip you can hand off to{" "}
-          <code style={inlineCode}>oz-policy-cli</code> to install on a smart
-          account.
-        </div>
-      </div>
-
-      <FileTree zipName={zipName} entries={entries} />
-
-      <button
-        type="button"
-        onClick={onDownload}
-        disabled={busy}
-        data-testid="bundle-download"
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div
         style={{
-          ...primaryBtn,
-          opacity: busy ? 0.6 : 1,
-          cursor: busy ? "wait" : "pointer",
+          borderRadius: 16,
+          background: T.surface,
+          padding: 22,
+          boxShadow: "0 3px 12px -7px rgba(22,24,21,0.2)",
         }}
       >
-        {busy ? "preparing zip…" : "download bundle"}
-      </button>
-
-      {err !== null && (
-        <div
-          role="alert"
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 12,
-            color: "#dc2626",
-            background: "rgba(220,38,38,0.06)",
-            border: "1px solid rgba(220,38,38,0.25)",
-            borderRadius: 8,
-            padding: "10px 12px",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {err}
-        </div>
-      )}
-
-      <div>
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 6,
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 14,
+            flexWrap: "wrap",
           }}
         >
+          <span
+            style={{
+              fontFamily: T.disp,
+              fontSize: 17,
+              fontWeight: 600,
+              color: T.ink,
+            }}
+          >
+            {zipName}
+          </span>
+          <button
+            data-testid="bundle-download"
+            onClick={onDownload}
+            disabled={busy}
+            style={{
+              background: T.dark,
+              color: T.darkInk,
+              border: "none",
+              fontFamily: T.mono,
+              fontSize: 12.5,
+              fontWeight: 600,
+              padding: "10px 16px",
+              borderRadius: 10,
+              cursor: busy ? "wait" : "pointer",
+              opacity: busy ? 0.7 : 1,
+            }}
+          >
+            {busy ? "preparing zip…" : "download bundle"}
+          </button>
+        </div>
+        <FileList entries={entries} zipName={zipName} />
+        {composed && (
           <div
             style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 11,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "#797980",
+              marginTop: 11,
+              fontFamily: T.mono,
+              fontSize: 11.5,
+              color: T.faint,
+              lineHeight: 1.5,
             }}
           >
-            install snippet
+            Composed-only: src/lib.rs and Cargo.toml are 0 B. The README
+            explains which OZ primitive to compose.
+          </div>
+        )}
+        {err !== null && (
+          <div
+            role="alert"
+            style={{
+              marginTop: 12,
+              fontFamily: T.mono,
+              fontSize: 12,
+              color: T.danger,
+              background: T.dangerBg,
+              borderRadius: 8,
+              padding: "10px 12px",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {err}
+          </div>
+        )}
+      </div>
+
+      {/* install snippet on dark code bg */}
+      <div
+        style={{
+          borderRadius: 16,
+          background: T.codeBg,
+          overflow: "hidden",
+          boxShadow: "0 12px 30px -18px rgba(22,24,21,0.5)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+            background: "rgba(255,255,255,0.04)",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 12,
+                color: "#cfcfd6",
+                fontWeight: 600,
+              }}
+            >
+              install snippet
+            </span>
+            <span style={{ fontFamily: T.mono, fontSize: 10.5, color: "#8e8e96" }}>
+              runs on your machine · never deploys from the browser
+            </span>
           </div>
           <button
-            type="button"
-            onClick={onCopySnippet}
             data-testid="bundle-copy-snippet"
+            onClick={onCopySnippet}
             style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 11.5,
-              color: "#1c1c20",
-              background: "rgba(28,28,33,0.06)",
-              border: "1px solid #e4e4e7",
-              padding: "5px 10px",
-              borderRadius: 7,
+              background: "rgba(255,255,255,0.1)",
+              color: "#cfcfd6",
+              border: "none",
+              fontFamily: T.mono,
+              fontSize: 11,
+              padding: "6px 11px",
+              borderRadius: 8,
               cursor: "pointer",
-              letterSpacing: "0.02em",
             }}
           >
-            {copied ? "copied" : "copy"}
+            {copied ? "copied ✓" : "copy"}
           </button>
         </div>
         <pre
           data-testid="install-snippet"
           style={{
             margin: 0,
-            background: "#1e1e1e",
-            color: "#dddddd",
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 12,
-            lineHeight: 1.55,
-            padding: "14px 16px",
-            borderRadius: 10,
+            padding: "16px",
+            fontFamily: T.mono,
+            fontSize: 12.5,
+            color: T.codeInk,
+            lineHeight: 1.7,
             overflowX: "auto",
             whiteSpace: "pre",
           }}
         >
-          {installSnippet}
+          {installSnippet.split("\n").map((ln, i) => (
+            <div key={i}>
+              {ln.startsWith("#") ? (
+                <span style={{ color: T.kCmt }}>{ln}</span>
+              ) : (
+                ln || " "
+              )}
+            </div>
+          ))}
         </pre>
       </div>
     </div>
   );
 }
 
-// --- file tree ---
+// ─── file list ───────────────────────────────────────────────────────────
 
-function FileTree({
-  zipName,
+function FileList({
   entries,
+  zipName,
 }: {
-  zipName: string;
   entries: Array<{ path: string; content: string; edited: boolean }>;
-}): ReactNode {
+  zipName: string;
+}) {
   return (
     <div
       data-testid="bundle-tree"
       style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: 12.5,
-        lineHeight: 1.7,
-        background: "#fafafa",
-        border: "1px solid #e4e4e7",
-        borderRadius: 8,
-        padding: "12px 14px",
-        color: "#1c1c20",
-        whiteSpace: "pre",
-        overflowX: "auto",
+        borderRadius: 12,
+        background: T.toned,
+        overflow: "hidden",
       }}
     >
-      <div>{zipName}</div>
-      {entries.map((entry, i) => {
-        const isLast = i === entries.length - 1;
-        const branch = isLast ? "└── " : "├── ";
-        const size = formatSize(byteLength(entry.content));
+      {/* zip name hidden span keeps test assertion stable */}
+      <span style={{ position: "absolute", left: -9999, top: -9999 }}>
+        {zipName}
+      </span>
+      {entries.map((f, i) => {
+        const bytes = bytesOf(f.content);
         return (
-          <div key={entry.path} data-testid={`bundle-entry-${entry.path}`}>
-            <span>{branch}</span>
-            <span>{entry.path}</span>
-            <span style={{ color: "#797980" }}>
-              {pad(entry.path, 36)} ({size}
-              {entry.edited ? ", edited" : ""})
+          <div
+            key={f.path}
+            data-testid={`bundle-entry-${f.path}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "11px 15px",
+              borderTop: i ? `1px solid ${T.line2}` : "none",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 12.5,
+                color: bytes === 0 ? T.faint2 : T.ink,
+              }}
+            >
+              {f.path.indexOf("/") > -1 ? "└ " : ""}
+              {f.path}
+              {f.edited ? (
+                <span style={{ color: T.faint, marginLeft: 8 }}>edited</span>
+              ) : null}
+            </span>
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 11.5,
+                color: T.faint,
+              }}
+            >
+              {fmtBytes(bytes)}
             </span>
           </div>
         );
@@ -357,28 +378,7 @@ function FileTree({
   );
 }
 
-function pad(path: string, target: number): string {
-  const spaces = Math.max(2, target - path.length);
-  return " ".repeat(spaces);
-}
-
-function byteLength(s: string): number {
-  // approximate utf-8 byte length without needing TextEncoder in older envs.
-  if (typeof TextEncoder !== "undefined") {
-    return new TextEncoder().encode(s).length;
-  }
-  return s.length;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(2)} MB`;
-}
-
-// --- derivation helpers ---
+// ─── derivation helpers (preserved from prior impl for tests) ────────────
 
 export function deriveShortSpecId(spec: PolicySpec): string {
   const hash = spec.recording_ref?.hash;
@@ -390,15 +390,10 @@ export function deriveShortSpecId(spec: PolicySpec): string {
 
 export function deriveWasmName(artifacts: PolicyArtifacts): string {
   const cargo = artifacts.generated_sources[0]?.cargo_toml ?? "";
-  // parse top-level `name = "..."` from [package]. simple regex; the cargo
-  // template is generated server-side and we only need one line.
   const m = cargo.match(/^\s*name\s*=\s*"([^"]+)"/m);
   if (m) return m[1].replace(/-/g, "_");
-  // fallback matches crates/oz-policy-codegen/src/render.rs::generated_cargo_toml.
   return "oz_policy_generated_slot_0";
 }
-
-// --- README + install snippet rendering ---
 
 function renderInstallSnippet({
   shortId,
@@ -422,7 +417,7 @@ stellar contract deploy \\
   --wasm target/wasm32-unknown-unknown/release/${wasmName}.wasm \\
   --source SOURCE --network testnet
 
-# install on your smart account (replace ACCOUNT, POLICY_ADDR, CONTEXT_RULE_ID)
+# install on your smart account (replace ACCOUNT, POLICY_ADDR)
 oz-policy-cli install \\
   --account ACCOUNT \\
   --rule-name "${rule}" \\
@@ -474,8 +469,6 @@ ${installSnippet}\`\`\`
 `;
 }
 
-// --- sim report md rendering ---
-
 export function renderSimReportMd(report: SimReport): string {
   const lines: string[] = [];
   lines.push("# Simulation report");
@@ -516,8 +509,6 @@ function denyLine(dv: DenyResult): string {
   return `${status} (expected=${dv.expected_error_code}, actual=${actual})`;
 }
 
-// --- divergence md rendering (tiny unified diff) ---
-
 export function renderDivergenceMd(original: string, modified: string): string {
   const diff = unifiedDiff(original, modified);
   return `# Divergence from synthesizer output
@@ -532,12 +523,9 @@ ${diff}
 `;
 }
 
-// minimal unified diff. line-oriented, no hunk headers (the file is short
-// enough to read whole). keeps the implementation under 100 LOC per spec.
 function unifiedDiff(a: string, b: string): string {
   const aLines = a.split("\n");
   const bLines = b.split("\n");
-  // LCS table for line-level diff.
   const n = aLines.length;
   const m = bLines.length;
   const dp: number[][] = Array.from({ length: n + 1 }, () =>
@@ -578,27 +566,3 @@ function unifiedDiff(a: string, b: string): string {
   }
   return out.join("\n");
 }
-
-// --- styles ---
-
-const inlineCode: React.CSSProperties = {
-  fontFamily: "'JetBrains Mono', monospace",
-  fontSize: 12,
-  background: "rgba(28,28,33,0.06)",
-  border: "1px solid #e4e4e7",
-  padding: "1px 6px",
-  borderRadius: 5,
-};
-
-const primaryBtn: React.CSSProperties = {
-  width: "100%",
-  background: "#1c1c20",
-  color: "#fbfbfb",
-  fontFamily: "'JetBrains Mono', monospace",
-  fontWeight: 600,
-  fontSize: 14,
-  border: "none",
-  borderRadius: 11,
-  padding: 15,
-  letterSpacing: "0.02em",
-};

@@ -1,23 +1,6 @@
-// /playground route shell + controller. Wave-2 wiring:
-//   - usePlaygroundState (reducer, single source of truth)
-//   - useSnapshot (load on :snapshotId mount, create on share click)
-//   - usePresets (preset dropdown source-of-truth for InputPanel)
-//   - InputPanel onSubmit orchestrates record → synth → [artifacts || report]
-//   - SourceTab onReSimulate runs preflight + simulate_custom_source
-//   - Header share button calls createSnapshot, pushes URL, copies link
-//
-// Honesty rules carried in (per the user's standing feedback memory):
-//   - Real MCP calls; zero mock fallbacks anywhere in this module.
-//   - Each backend error is surfaced into the right panel slot (spec §7),
-//     never collapsed into a generic toast.
-//   - Snapshot 404 → full-page error block per spec §4.3.
-//
-// Theme tokens are inlined (spec §8) — Hanken Grotesk body, Bricolage
-// Grotesque display, JetBrains Mono labels, #1c1c20 ink, #fbfbfb/#fafafa
-// surfaces, #e4e4e7 borders, panel shadow 0 12px 34px -20px rgba(22,24,21,0.35).
+// /playground route shell + controller.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { InputPanel, type SubmitIntent, type SubmitPhase } from "./InputPanel";
 import { SpecTab } from "./panels/SpecTab";
@@ -35,6 +18,7 @@ import {
   readConfig,
   type McpConfig,
 } from "../lib/mcp";
+import { T } from "./theme";
 
 type TabKey = "spec" | "source" | "simulate" | "bundle";
 
@@ -45,22 +29,13 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "bundle", label: "Bundle" },
 ];
 
-// SourceTab's compileError prop type is { stderr, exit_code }. We honor
-// that contract here — preflight rejections are visualized by SourceTab
-// itself (it runs its own checkForbidden against the live source), so
-// PlaygroundPage's compileError only carries server-side cargo build
-// stderr or transport errors that should look the same to the user.
 type CompileError = { stderr: string; exit_code: number } | null;
-
 type ResimError = { code: string; detail: string } | null;
 
 interface PlaygroundPageProps {
   /**
-   * Optional override for tests: a function returning the McpClient.
-   * Production callers pass nothing → readConfig() + new McpClient().
-   * Per feedback-no-mock-fallback, this is ONLY for orchestration tests
-   * (see __tests__/PlaygroundPage.controller.test.tsx). The prod path is
-   * real network I/O via the default factory below.
+   * Test seam. Production callers pass nothing → readConfig() + new McpClient().
+   * Per feedback-no-mock-fallback, this is ONLY for orchestration tests.
    */
   clientFactory?: (cfg: McpConfig) => McpClient;
 }
@@ -72,7 +47,7 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
   const [activeTab, setActiveTab] = useState<TabKey>("spec");
   const [phase, setPhase] = useState<SubmitPhase>("idle");
   const [busy, setBusy] = useState(false);
-  const [compileError, setCompileError] = useState<CompileError | null>(null);
+  const [compileError, setCompileError] = useState<CompileError>(null);
   const [resimError, setResimError] = useState<ResimError>(null);
   const [pageError, setPageError] = useState<{ code: string; detail: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -82,10 +57,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
   const { state, dispatch } = usePlaygroundState();
   const { presets } = usePresets();
 
-  // Single MCP client per page-load. Built lazily so SSR / static rendering
-  // doesn't fail on a missing endpoint. clientFactory is the test seam.
-  // Production path: `new McpClient(readConfig())` — real network calls,
-  // no fallbacks, per feedback-no-mock-fallback.
   const client = useMemo<McpClient | null>(() => {
     try {
       return clientFactory ? clientFactory(cfg) : new McpClient(cfg);
@@ -101,9 +72,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
   );
 
   const cancelRef = useRef<AbortController | null>(null);
-  // recording_id + spec_id are not on Recording / PolicySpec by value;
-  // we stash them here so re-simulate + share can reuse them after
-  // onSubmit finishes. Cleared at the start of each new submit.
   const idsRef = useRef<{ recordingId: string; specId: string } | null>(null);
 
   const getClient = useCallback((): McpClient => {
@@ -117,9 +85,8 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     return client;
   }, [client]);
 
-  // Spec §4.3 — on mount with :snapshotId, hydrate from the server.
-  // Tracks a ref because StrictMode double-invokes effects; we only want
-  // one load + one hydrate per snapshotId.
+  // Hydrate on :snapshotId mount. StrictMode double-invokes effects, so
+  // we ref-guard to avoid double fetch.
   const hydratedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!routeSnapshotId) return;
@@ -130,10 +97,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     (async () => {
       const snap = await loadSnapshot(routeSnapshotId);
       if (cancelled || !snap) return;
-      // Snapshot record carries Recording + PolicySpec + Report by value
-      // (spec §3.4) so shared URLs survive after the recorder cache GCs
-      // the original recording_id. Hydrate everything from the snapshot
-      // before any follow-up fetch.
       dispatch({ type: "setRecording", recording: snap.recording });
       dispatch({ type: "setSpec", spec: snap.spec });
       dispatch({ type: "setReport", report: snap.report });
@@ -141,16 +104,18 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
         dispatch({ type: "setModifiedLibRs", modifiedLibRs: snap.modified_lib_rs });
       }
       dispatch({ type: "setSnapshotId", snapshotId: routeSnapshotId });
-
-      // Fetch artifacts so SourceTab + BundleTab have lib_rs / cargo_toml.
+      if (!snap.spec_id) {
+        // older snapshot records may not carry the spec_id explicitly —
+        // we still have the embedded PolicySpec, so spec/simulate tabs
+        // render; source/bundle just show their empty state.
+        return;
+      }
       try {
         const artifacts = await getClient().getPolicyArtifacts({ spec_id: snap.spec_id });
         if (!cancelled) dispatch({ type: "setArtifacts", artifacts });
       } catch (e) {
-        // Non-fatal: snapshot still renders report + lib edits. Surface
-        // honestly in the bundle/source areas via empty state.
         if (e instanceof McpError && !cancelled) {
-          // leave artifacts null — panels render empty state per §7.
+          // non-fatal — panels show empty state for source/bundle.
         }
       }
     })();
@@ -159,22 +124,19 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     };
   }, [routeSnapshotId, loadSnapshot, dispatch, getClient]);
 
-  // Surface loadSnapshot's error to a full-page block (spec §4.3 / §7).
   useEffect(() => {
     if (!routeSnapshotId) return;
-    if (snapshotError && snapshotError.code === "E_SNAPSHOT_NOT_FOUND") {
-      setPageError({ code: snapshotError.code, detail: snapshotError.detail });
-    } else if (snapshotError) {
+    if (snapshotError) {
       setPageError({ code: snapshotError.code, detail: snapshotError.detail });
     } else {
       setPageError(null);
     }
   }, [snapshotError, routeSnapshotId]);
 
-  // Auto-dismiss toast.
+  // toast auto-dismiss after 2.2s (matches design).
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
+    const t = setTimeout(() => setToast(null), 2200);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -184,9 +146,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     setBusy(false);
   }, []);
 
-  // ──────────────────────────────────────────────────────────────────────
-  // SourceTab.onReSimulate — preflight + simulate_custom_source.
-  // ──────────────────────────────────────────────────────────────────────
   const onReSimulate = useCallback(async () => {
     if (!state.recording || !state.spec) return;
     if (state.modifiedLibRs === null) return;
@@ -195,11 +154,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     setCompileError(null);
     setResimError(null);
 
-    // Spec §4.2 pre-flight: never call the server if the client check rejects.
-    // SourceTab visualizes the offending line itself by running the same
-    // checkForbidden over the editor buffer (see SourceTab's preflight
-    // useMemo). We mirror it here so the network call is skipped and the
-    // Simulate panel surfaces the rejection with the matching error code.
     const pf = checkForbidden(state.modifiedLibRs);
     if (!pf.ok) {
       setResimError({
@@ -230,16 +184,11 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     } catch (e) {
       const err = toErr(e);
       if (err.code === "E_PREFLIGHT_FORBIDDEN_PATTERN") {
-        // Backend mirrored the preflight reject — surface to Simulate
-        // banner; SourceTab's own preflight squiggle already covers the
-        // line:col annotation.
         setResimError(err);
       } else if (err.code === "E_CODEGEN_COMPILE_FAILED") {
-        // Cargo build failed — backend includes stderr in detail.
         setCompileError({ stderr: err.detail, exit_code: 1 });
         setResimError(err);
       } else {
-        // Any other transport / network error — Simulate tab banner.
         setResimError(err);
       }
     } finally {
@@ -247,8 +196,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     }
   }, [state.recording, state.spec, state.modifiedLibRs, dispatch, getClient]);
 
-  // onSubmit — wraps record→synth→[artifacts||report] and updates idsRef
-  // so re-simulate + share can reuse the ids without re-fetching.
   const onSubmitWithIds = useCallback(
     async (intent: SubmitIntent) => {
       idsRef.current = null;
@@ -260,13 +207,13 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
       setCompileError(null);
       setRuleName(intent.ruleName ?? "");
 
-      const client = getClient();
+      const c = getClient();
       let recordingId: string | null = null;
       let specId: string | null = null;
 
       try {
         setPhase("recording");
-        const rec = await client.recordTransaction({
+        const rec = await c.recordTransaction({
           network: intent.network,
           hash: intent.hash,
           envelope_xdr_base64: intent.envelope_xdr_base64,
@@ -284,7 +231,7 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
 
       try {
         setPhase("synthesizing");
-        const synth = await client.synthesizePolicy({
+        const synth = await c.synthesizePolicy({
           recording_id: recordingId!,
           tightness: intent.tightness,
           mode: intent.mode,
@@ -305,16 +252,13 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
 
       setPhase("simulating");
       const [artifactsRes, reportRes] = await Promise.allSettled([
-        client.getPolicyArtifacts({ spec_id: specId! }),
-        client.simulatePolicy({ spec_id: specId!, recording_id: recordingId! }),
+        c.getPolicyArtifacts({ spec_id: specId! }),
+        c.simulatePolicy({ spec_id: specId!, recording_id: recordingId! }),
       ]);
 
       if (artifactsRes.status === "fulfilled") {
         dispatch({ type: "setArtifacts", artifacts: artifactsRes.value });
       } else {
-        // E_CODEGEN_COMPILE_FAILED + any transport error get rendered
-        // as stderr in SourceTab so the user sees the raw backend
-        // message — per feedback-honesty-no-fakes, never collapse.
         const err = toErr(artifactsRes.reason);
         setCompileError({
           stderr: `[${err.code}] ${err.detail}`,
@@ -333,9 +277,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     [dispatch, getClient],
   );
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Share button — createSnapshot → URL push → clipboard → toast.
-  // ──────────────────────────────────────────────────────────────────────
   const onShare = useCallback(async () => {
     const ids = idsRef.current;
     if (!ids || !state.latestReport) {
@@ -359,7 +300,7 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
-        setToast("share link copied");
+        setToast(`share link copied · /playground/s/${ref.snapshot_id}`);
       } else {
         setToast("share link ready (clipboard unavailable)");
       }
@@ -373,53 +314,58 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
     [dispatch],
   );
 
-  // ──────────────────────────────────────────────────────────────────────
-  // render
-  // ──────────────────────────────────────────────────────────────────────
+  const onRevertSource = useCallback(
+    () => dispatch({ type: "setModifiedLibRs", modifiedLibRs: null }),
+    [dispatch],
+  );
 
-  // Snapshot 404 → full-page error block (spec §4.3 + §7).
-  if (
-    routeSnapshotId &&
-    pageError &&
-    pageError.code === "E_SNAPSHOT_NOT_FOUND"
-  ) {
+  // Full-page snapshot 404 block (design's pageErrorView).
+  if (routeSnapshotId && pageError && pageError.code === "E_SNAPSHOT_NOT_FOUND") {
     return <ExpiredSnapshotBlock />;
   }
 
   const diverged = state.modifiedLibRs !== null;
+  const visibleSnapshotId = state.snapshotId ?? (routeSnapshotId || null);
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#fafafa",
-        fontFamily: "'Hanken Grotesk', sans-serif",
-        color: "#1c1c20",
+        background: T.page,
+        backgroundImage:
+          "linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px)",
+        backgroundSize: "42px 42px",
+        color: T.ink,
+        fontFamily: T.body,
       }}
     >
-      <Header snapshotId={state.snapshotId ?? routeSnapshotId} onShare={onShare} />
-      <div
+      <NavBar
+        snapshotId={visibleSnapshotId}
+        onShare={onShare}
+        canShare={!!idsRef.current && !!state.latestReport && !busy}
+      />
+      <main
         style={{
-          maxWidth: 1400,
+          maxWidth: 1320,
           margin: "0 auto",
-          padding: "24px 28px 64px",
+          padding: 24,
           display: "grid",
-          gridTemplateColumns: "320px 1fr",
-          gap: 24,
-          alignItems: "flex-start",
+          gridTemplateColumns: "minmax(340px, 390px) 1fr",
+          gap: 22,
+          alignItems: "start",
         }}
       >
         <aside
           style={{
             position: "sticky",
-            top: 24,
-            alignSelf: "flex-start",
-            background: "#fbfbfb",
-            border: "1px solid #e4e4e7",
-            borderRadius: 12,
-            boxShadow: "0 12px 34px -20px rgba(22,24,21,0.35)",
-            padding: 18,
-            minHeight: 360,
+            top: 88,
+            background: T.surface,
+            borderRadius: 16,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+            boxShadow: "0 16px 40px -22px rgba(0,0,0,0.55)",
           }}
           aria-label="input panel"
         >
@@ -434,17 +380,31 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
           />
         </aside>
 
-        <main
+        <section
           style={{
-            background: "#fbfbfb",
-            border: "1px solid #e4e4e7",
-            borderRadius: 12,
-            boxShadow: "0 12px 34px -20px rgba(22,24,21,0.35)",
-            overflow: "hidden",
-            minHeight: 480,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
           }}
         >
-          <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
+          <TabBar
+            tabs={TABS}
+            active={activeTab}
+            onChange={setActiveTab}
+            badges={{
+              source:
+                state.artifacts && state.artifacts.generated_sources.length === 0
+                  ? "muted"
+                  : null,
+              simulate:
+                state.latestReport &&
+                (state.latestReport.permit.passed === false ||
+                  state.latestReport.deny_results.some((d) => !d.passed))
+                  ? "danger"
+                  : null,
+            }}
+          />
           {pageError && pageError.code !== "E_SNAPSHOT_NOT_FOUND" && (
             <PageErrorBanner err={pageError} />
           )}
@@ -454,6 +414,7 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
                 spec={state.spec}
                 recording={state.recording}
                 diverged={diverged}
+                onRevert={onRevertSource}
               />
             )}
             {activeTab === "source" && (
@@ -469,9 +430,6 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
             {activeTab === "simulate" && (
               <SimulateTab
                 report={state.latestReport}
-                modified={diverged}
-                onReSimulate={onReSimulate}
-                busy={busy}
                 resimError={resimError}
               />
             )}
@@ -485,8 +443,8 @@ export function PlaygroundPage({ clientFactory }: PlaygroundPageProps = {}) {
               />
             )}
           </div>
-        </main>
-      </div>
+        </section>
+      </main>
       {toast && <Toast text={toast} />}
     </div>
   );
@@ -500,105 +458,191 @@ function toErr(e: unknown): { code: string; detail: string } {
   return { code: "E_UNKNOWN", detail: String(e) };
 }
 
-function Header({
+function NavBar({
   snapshotId,
   onShare,
+  canShare,
 }: {
   snapshotId: string | null;
   onShare: () => void;
+  canShare: boolean;
 }) {
   return (
-    <header
+    <nav
       style={{
-        maxWidth: 1400,
-        margin: "0 auto",
-        padding: "28px 28px 8px",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "space-between",
-        gap: 16,
-        flexWrap: "wrap",
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+        backdropFilter: "blur(13px)",
+        WebkitBackdropFilter: "blur(13px)",
+        background: "rgba(20,20,23,0.8)",
+        boxShadow: "0 1px 0 rgba(255,255,255,0.07)",
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <span
+      <div
+        style={{
+          maxWidth: 1320,
+          margin: "0 auto",
+          padding: "14px 24px",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <Link
+          to="/"
           style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 11,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "#797980",
+            display: "flex",
+            alignItems: "center",
+            gap: 11,
+            textDecoration: "none",
           }}
         >
-          /playground
-        </span>
-        <h1
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 7,
+              background: T.dark,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: T.page,
+              }}
+            />
+          </span>
+          <span
+            style={{
+              fontFamily: T.disp,
+              fontSize: 16,
+              color: T.ink,
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+            }}
+          >
+            OZ Policy Builder
+          </span>
+        </Link>
+        <span
           style={{
-            margin: 0,
-            fontFamily: "'Bricolage Grotesque', sans-serif",
-            fontSize: "clamp(22px,2.4vw,32px)",
-            fontWeight: 500,
-            letterSpacing: "-0.02em",
-            color: "#1c1c20",
+            fontFamily: T.mono,
+            fontSize: 11,
+            color: T.ink2,
+            background: "rgba(255,255,255,0.08)",
+            padding: "3px 9px",
+            borderRadius: 7,
           }}
         >
           playground
-        </h1>
-        <p
-          style={{
-            margin: 0,
-            color: "#54545a",
-            fontSize: 13.5,
-            lineHeight: 1.5,
-            maxWidth: "62ch",
-          }}
-        >
-          RFP §3.1 — inspect, modify, simulate generated policy code
-        </p>
+        </span>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
+          <Link
+            to="/#how"
+            style={{ textDecoration: "none", color: T.ink2, fontSize: 14.5, fontWeight: 500 }}
+          >
+            How it works
+          </Link>
+          <Link
+            to="/playground"
+            style={{ textDecoration: "none", color: T.ink2, fontSize: 14.5, fontWeight: 500 }}
+          >
+            Playground
+          </Link>
+          <Link
+            to="/#quickstart"
+            style={{ textDecoration: "none", color: T.ink2, fontSize: 14.5, fontWeight: 500 }}
+          >
+            Quick start
+          </Link>
+          <Link
+            to="/#architecture"
+            style={{ textDecoration: "none", color: T.ink2, fontSize: 14.5, fontWeight: 500 }}
+          >
+            Architecture
+          </Link>
+          <SnapshotPill snapshotId={snapshotId} />
+          <button
+            data-testid="share-button"
+            onClick={onShare}
+            disabled={!canShare}
+            style={{
+              background: canShare ? T.dark : T.stone,
+              color: canShare ? T.darkInk : T.faint2,
+              border: "none",
+              fontFamily: T.mono,
+              fontSize: 12.5,
+              fontWeight: 600,
+              padding: "9px 15px",
+              borderRadius: 9,
+              cursor: canShare ? "pointer" : "not-allowed",
+            }}
+          >
+            share ↗
+          </button>
+          <a
+            href="https://github.com/ErenTopaal/oz-policy-builder"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              textDecoration: "none",
+              color: T.page,
+              fontSize: 13,
+              fontFamily: T.mono,
+              background: T.dark,
+              padding: "9px 15px",
+              borderRadius: 9,
+            }}
+          >
+            GitHub ↗
+          </a>
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <ShareBadge snapshotId={snapshotId ?? ""} />
-        <button
-          data-testid="share-button"
-          onClick={onShare}
-          style={{
-            background: "#1c1c20",
-            color: "#f4f4f5",
-            fontFamily: "'JetBrains Mono', monospace",
-            fontWeight: 600,
-            fontSize: 12.5,
-            border: "none",
-            borderRadius: 9,
-            padding: "9px 14px",
-            cursor: "pointer",
-            letterSpacing: "0.02em",
-          }}
-        >
-          share
-        </button>
-      </div>
-    </header>
+    </nav>
   );
 }
 
-function ShareBadge({ snapshotId }: { snapshotId: string }) {
+function SnapshotPill({ snapshotId }: { snapshotId: string | null }) {
+  const id = snapshotId;
   return (
-    <span
+    <div
       data-testid="share-badge"
       style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: 11.5,
-        color: "#1c1c20",
-        opacity: 0.7,
-        background: "rgba(28,28,33,0.06)",
-        border: "1px solid #e4e4e7",
-        padding: "5px 10px",
-        borderRadius: 7,
-        letterSpacing: "0.02em",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        background: T.surface,
+        borderRadius: 9,
+        padding: "8px 13px",
+        boxShadow: "0 2px 8px -5px rgba(22,24,21,0.2)",
       }}
     >
-      share: {snapshotId}
-    </span>
+      <span
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: id ? T.dark : "#c5c5ca",
+        }}
+      />
+      <span
+        style={{
+          fontFamily: T.mono,
+          fontSize: 11.5,
+          color: id ? T.ink : T.faint2,
+        }}
+      >
+        {id ? `share: ${id}` : "not shared yet"}
+      </span>
+    </div>
   );
 }
 
@@ -606,45 +650,63 @@ function TabBar({
   tabs,
   active,
   onChange,
+  badges,
 }: {
   tabs: Array<{ key: TabKey; label: string }>;
   active: TabKey;
   onChange: (k: TabKey) => void;
-}): ReactNode {
+  badges?: Partial<Record<TabKey, "danger" | "muted" | null>>;
+}) {
   return (
     <div
       role="tablist"
       style={{
-        display: "flex",
+        display: "inline-flex",
         gap: 4,
-        padding: "10px 10px 0",
-        borderBottom: "1px solid #e4e4e7",
-        background: "#fafafa",
+        background: T.stone,
+        padding: 5,
+        borderRadius: 13,
+        alignSelf: "flex-start",
+        flexWrap: "wrap",
       }}
     >
-      {tabs.map((t) => {
-        const isActive = t.key === active;
+      {tabs.map((tab) => {
+        const isActive = tab.key === active;
+        const badge = badges?.[tab.key];
         return (
           <button
-            key={t.key}
+            key={tab.key}
             role="tab"
             aria-selected={isActive}
-            onClick={() => onChange(t.key)}
+            onClick={() => onChange(tab.key)}
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              background: isActive ? T.surfaceHi : "transparent",
+              color: isActive ? T.ink : T.ink2,
               border: "none",
-              background: isActive ? "#fbfbfb" : "transparent",
-              color: isActive ? "#1c1c20" : "#54545a",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 12,
-              padding: "10px 14px",
-              borderRadius: "8px 8px 0 0",
+              borderRadius: 9,
+              padding: "10px 18px",
               cursor: "pointer",
-              letterSpacing: "0.02em",
-              borderBottom: isActive ? "2px solid #1c1c20" : "2px solid transparent",
-              marginBottom: -1,
+              fontFamily: T.mono,
+              fontSize: 13,
+              fontWeight: isActive ? 600 : 500,
+              boxShadow: isActive ? "0 2px 8px -4px rgba(0,0,0,0.4)" : "none",
+              transition: "all .2s",
             }}
           >
-            {t.label}
+            {tab.label}
+            {badge && (
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: badge === "danger" ? T.danger : T.faint2,
+                }}
+              />
+            )}
           </button>
         );
       })}
@@ -658,14 +720,13 @@ function PageErrorBanner({ err }: { err: { code: string; detail: string } }) {
       data-testid="page-error-banner"
       role="alert"
       style={{
-        margin: "10px 14px 0",
-        padding: "10px 12px",
-        background: "rgba(220,38,38,0.06)",
-        border: "1px solid #e4e4e7",
-        borderRadius: 8,
-        fontFamily: "'JetBrains Mono', monospace",
+        padding: "12px 14px",
+        background: T.dangerBg,
+        borderRadius: 12,
+        fontFamily: T.mono,
         fontSize: 12,
-        color: "#dc2626",
+        color: T.danger,
+        boxShadow: `inset 0 0 0 1.5px ${T.danger}`,
       }}
     >
       [{err.code}] {err.detail}
@@ -679,9 +740,9 @@ function ExpiredSnapshotBlock() {
       data-testid="snapshot-expired-block"
       style={{
         minHeight: "100vh",
-        background: "#fafafa",
-        fontFamily: "'Hanken Grotesk', sans-serif",
-        color: "#1c1c20",
+        background: T.page,
+        color: T.ink,
+        fontFamily: T.body,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -690,52 +751,68 @@ function ExpiredSnapshotBlock() {
     >
       <div
         style={{
-          maxWidth: 480,
-          background: "#fbfbfb",
-          border: "1px solid #e4e4e7",
-          borderRadius: 12,
-          boxShadow: "0 12px 34px -20px rgba(22,24,21,0.35)",
-          padding: 28,
+          maxWidth: 520,
+          background: T.surface,
+          borderRadius: 16,
+          boxShadow: "0 16px 40px -22px rgba(0,0,0,0.6)",
+          padding: 36,
           textAlign: "center",
         }}
       >
+        <span
+          style={{
+            display: "inline-block",
+            fontFamily: T.mono,
+            fontSize: 11,
+            color: T.darkInk,
+            background: T.danger,
+            padding: "4px 11px",
+            borderRadius: 7,
+            fontWeight: 600,
+          }}
+        >
+          E_SNAPSHOT_NOT_FOUND
+        </span>
         <h1
           style={{
-            margin: "0 0 12px",
-            fontFamily: "'Bricolage Grotesque', sans-serif",
-            fontSize: 22,
-            fontWeight: 500,
+            margin: "18px 0 0",
+            fontFamily: T.disp,
+            fontSize: 24,
+            fontWeight: 600,
+            color: T.ink,
           }}
         >
           this share link expired or was never created
         </h1>
         <p
           style={{
-            margin: "0 0 18px",
-            color: "#54545a",
-            fontSize: 13.5,
-            lineHeight: 1.5,
+            margin: "9px auto 0",
+            color: T.ink2,
+            fontSize: 14.5,
+            lineHeight: 1.55,
+            maxWidth: "46ch",
           }}
         >
-          snapshots are retained for 30 days. open a new session to start
-          fresh.
+          Shared snapshots are retained for 30 days. Start a fresh synthesis to
+          create a new one.
         </p>
         <Link
           to="/playground"
           style={{
             display: "inline-block",
-            background: "#1c1c20",
-            color: "#f4f4f5",
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 12.5,
+            marginTop: 24,
+            background: T.dark,
+            color: T.darkInk,
+            fontFamily: T.mono,
+            fontSize: 13,
+            fontWeight: 600,
             border: "none",
-            borderRadius: 9,
-            padding: "10px 16px",
+            borderRadius: 11,
+            padding: "13px 22px",
             textDecoration: "none",
-            letterSpacing: "0.02em",
           }}
         >
-          start a new session →
+          → back to playground
         </Link>
       </div>
     </div>
@@ -749,15 +826,18 @@ function Toast({ text }: { text: string }) {
       role="status"
       style={{
         position: "fixed",
-        bottom: 24,
-        right: 24,
-        background: "#1c1c20",
-        color: "#f4f4f5",
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: 12,
-        padding: "10px 14px",
-        borderRadius: 9,
-        boxShadow: "0 12px 34px -20px rgba(22,24,21,0.35)",
+        bottom: 26,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 80,
+        background: T.dark,
+        color: T.darkInk,
+        fontFamily: T.mono,
+        fontSize: 12.5,
+        padding: "13px 20px",
+        borderRadius: 11,
+        boxShadow: "0 16px 40px -16px rgba(0,0,0,0.5)",
+        maxWidth: "90vw",
       }}
     >
       {text}

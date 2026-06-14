@@ -1,16 +1,3 @@
-// client-side mirror of `crates/oz-policy-mcp/src/tools/simulate_custom_source.rs::check_forbidden`.
-//
-// The backend re-runs this exact same regex sweep (defense in depth, per
-// spec §6.1 + §6.3). The two implementations MUST agree on accept/reject —
-// they share a corpus. If you change a pattern here, change it in the Rust
-// source too, and rerun the corpus tests.
-//
-// pattern labels are copied verbatim from the backend (the `label` field
-// of `PatternEntry`). The frontend surfaces the label to the user; the
-// backend surfaces the same label in the `E_PREFLIGHT_FORBIDDEN_PATTERN`
-// error payload. Keeping them identical means our UI can render the
-// server's error the same way it renders a client-side hit.
-
 export type ForbiddenHit = {
   ok: false;
   /** stable identifier — same string as the backend's `pattern` field. */

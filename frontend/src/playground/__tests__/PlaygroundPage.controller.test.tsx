@@ -1,18 +1,3 @@
-// PlaygroundPage controller tests — assert orchestration logic only.
-//
-// We pass a `clientFactory` to PlaygroundPage that returns a stub McpClient.
-// This is the documented test seam in PlaygroundPage.tsx (no mock fallback
-// in prod — see the comment on PlaygroundPageProps.clientFactory). Each
-// test asserts the order + arguments of MCP calls and the resulting
-// state-of-panels, not the underlying network.
-//
-// honesty rules:
-//   - the stub raises real `McpError` instances for failure paths so the
-//     PlaygroundPage code that walks `e.code` runs against the same shape
-//     as production.
-//   - we don't fake panel content; we drive the page through real user
-//     events and read what the real panel components render.
-
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";

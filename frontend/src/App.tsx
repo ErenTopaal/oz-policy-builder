@@ -4,7 +4,7 @@ import { Hero } from "./sections/Hero";
 import { Problem } from "./sections/Problem";
 import { HowItWorks } from "./sections/HowItWorks";
 import { ProofPoint } from "./sections/ProofPoint";
-import { Synthesizer } from "./sections/Synthesizer";
+import { PlaygroundShowcase } from "./sections/PlaygroundShowcase";
 import { Primitives } from "./sections/Primitives";
 import { Stats } from "./sections/Stats";
 import { QuickStart } from "./sections/QuickStart";
@@ -21,7 +21,7 @@ function Landing() {
       <Problem />
       <HowItWorks />
       <ProofPoint />
-      <Synthesizer />
+      <PlaygroundShowcase />
       <Primitives />
       <Stats />
       <QuickStart />

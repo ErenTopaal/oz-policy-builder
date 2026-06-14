@@ -1,12 +1,3 @@
-// InputPanel unit tests. uses real React state + a fake `presets` prop
-// (the hook is tested separately in usePresets.test.tsx if needed).
-//
-// for the "fetch fails → unavailable preset" path we DON'T mock the hook;
-// the spec asks us to model it at network level. since this test renders
-// InputPanel directly (not via PlaygroundPage), we pass the unavailable
-// entry through props — which is exactly what the hook would surface
-// after a real 404. no production fallback is exercised.
-
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { InputPanel, type SubmitIntent } from "../InputPanel";
@@ -43,7 +34,7 @@ function renderPanel(
     presets?: Presets;
     onSubmit?: (intent: SubmitIntent) => void;
     onCancel?: () => void;
-  } = {}
+  } = {},
 ) {
   const onSubmit = opts.onSubmit ?? vi.fn();
   const onCancel = opts.onCancel ?? vi.fn();
@@ -57,7 +48,7 @@ function renderPanel(
       backendDown={opts.backendDown ?? false}
       onSubmit={onSubmit}
       onCancel={onCancel}
-    />
+    />,
   );
   return { ...utils, onSubmit, onCancel };
 }
@@ -67,11 +58,10 @@ describe("InputPanel", () => {
     renderPanel();
     expect(screen.getByLabelText("transaction hash")).toBeTruthy();
     expect(screen.queryByLabelText("envelope XDR")).toBeNull();
-    expect(screen.getByLabelText("preset")).toBeTruthy();
+    expect(screen.getByTestId("preset-trigger")).toBeTruthy();
     expect(screen.getByLabelText("lifetime ledgers")).toBeTruthy();
     expect(screen.getByLabelText("rule name")).toBeTruthy();
     expect(screen.getByRole("button", { name: /synthesize/i })).toBeTruthy();
-    // both segmented chip buttons present
     expect(screen.getByRole("button", { name: "hash" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "envelope XDR" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "testnet" })).toBeTruthy();
@@ -88,34 +78,44 @@ describe("InputPanel", () => {
 
   it("picking a preset auto-fills hash and switches input to hash mode", () => {
     renderPanel();
-    // start in XDR mode to prove the preset flips it back
     fireEvent.click(screen.getByRole("button", { name: "envelope XDR" }));
     expect(screen.queryByLabelText("transaction hash")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("preset"), { target: { value: "blend" } });
+    fireEvent.click(screen.getByTestId("preset-trigger"));
+    fireEvent.click(screen.getByTestId("preset-row-blend"));
 
     const input = screen.getByLabelText("transaction hash") as HTMLInputElement;
     expect(input.value).toBe(VALID_HASH_B);
   });
 
-  it("disables the unavailable preset option", () => {
+  it("disables the unavailable preset row in the dropdown", () => {
     renderPanel();
-    const select = screen.getByLabelText("preset") as HTMLSelectElement;
-    const opts = Array.from(select.options);
-    const soroswap = opts.find((o) => o.value === "soroswap");
-    expect(soroswap).toBeDefined();
-    expect(soroswap!.disabled).toBe(true);
-    expect(soroswap!.textContent).toContain("unavailable");
-    expect(soroswap!.title).toContain("preset unavailable");
+    fireEvent.click(screen.getByTestId("preset-trigger"));
+    const row = screen.getByTestId("preset-row-soroswap") as HTMLButtonElement;
+    expect(row.disabled).toBe(true);
+    // chip carries the 'unavailable' status word
+    const chip = screen.getByTestId("preset-chip-soroswap");
+    expect(chip.textContent).toContain("unavailable");
+    // hover reason on the row
+    expect(row.title).toContain("no recent testnet activity");
   });
 
-  it("marks stale presets with '(stale)' suffix but keeps them selectable", () => {
+  it("marks stale presets with the 'stale' chip but keeps them selectable", () => {
     renderPanel();
-    const select = screen.getByLabelText("preset") as HTMLSelectElement;
-    const sep41 = Array.from(select.options).find((o) => o.value === "sep41");
-    expect(sep41).toBeDefined();
-    expect(sep41!.disabled).toBe(false);
-    expect(sep41!.textContent).toContain("(stale)");
+    fireEvent.click(screen.getByTestId("preset-trigger"));
+    const row = screen.getByTestId("preset-row-sep41") as HTMLButtonElement;
+    expect(row.disabled).toBe(false);
+    const chip = screen.getByTestId("preset-chip-sep41");
+    expect(chip.textContent).toContain("stale");
+  });
+
+  it("dropdown footnote explains the 'unavailable' status meaning", () => {
+    renderPanel();
+    fireEvent.click(screen.getByTestId("preset-trigger"));
+    const panel = screen.getByTestId("preset-panel");
+    expect(panel.textContent).toContain(
+      "unavailable = no recent testnet activity on that contract",
+    );
   });
 
   it("submit calls onSubmit with the expected intent shape", () => {
@@ -141,10 +141,11 @@ describe("InputPanel", () => {
     const onSubmit = vi.fn();
     renderPanel({
       onSubmit,
-      // give sep41 a fresh status so we can submit
+      // sep41 needs a fresh status so we can submit
       presets: makePresets({ sep41: { hash: VALID_HASH_C, status: "fresh" } }),
     });
-    fireEvent.change(screen.getByLabelText("preset"), { target: { value: "sep41" } });
+    fireEvent.click(screen.getByTestId("preset-trigger"));
+    fireEvent.click(screen.getByTestId("preset-row-sep41"));
     fireEvent.click(screen.getByRole("button", { name: /synthesize/i }));
     const intent = onSubmit.mock.calls[0][0] as SubmitIntent;
     expect(intent.tightness).toBe("small_margin");

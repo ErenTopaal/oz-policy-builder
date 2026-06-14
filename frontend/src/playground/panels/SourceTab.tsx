@@ -1,19 +1,3 @@
-// SourceTab — the edit half of the /playground edit-loop (spec §4.2). The
-// user lands on this tab to inspect the generated Rust, optionally edit
-// `lib.rs`, then click `re-simulate` to push the edit through the same
-// sandbox + simhost pipeline. Cargo.toml is locked (spec §6.2) so it lives
-// in a read-only sidebar.
-//
-// design tokens come from spec §8 — same palette as Synthesizer.tsx
-// (#1c1c20 ink, #fbfbfb/#fafafa surfaces, #e4e4e7 borders, JetBrains Mono
-// labels, panel shadow `0 12px 34px -20px rgba(22,24,21,0.35)`). No new
-// tokens, no Tailwind, no CSS modules — inline styles only.
-//
-// every prop is optional so that the PlaygroundPage shell (which is owned
-// by a different agent and still passes no props) keeps compiling. With
-// no props the tab renders the empty state ("no source yet — synthesize
-// first"), which is what the shell currently wants.
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
@@ -21,12 +5,13 @@ import type { editor as MonacoEditor, IRange } from "monaco-editor";
 import type { PolicyArtifacts } from "../../lib/types";
 import { checkForbidden } from "../preflight";
 import { ensureMonacoReactBundled } from "../monacoLoader";
+import { T } from "../theme";
+import { EmptyState } from "./SpecTab";
 
 export type CompileError = { stderr: string; exit_code: number };
 
 export type SourceTabProps = {
   artifacts?: PolicyArtifacts | null;
-  /** null when the user has not diverged from the synthesized source. */
   modifiedLibRs?: string | null;
   onChange?: (lib_rs: string) => void;
   onReSimulate?: () => void;
@@ -34,30 +19,7 @@ export type SourceTabProps = {
   busy?: boolean;
 };
 
-// ----- style tokens --------------------------------------------------------
-// inlined rather than imported so the file is self-contained for review.
-
-const TOKEN = {
-  ink: "#1c1c20",
-  surfaceA: "#fbfbfb",
-  surfaceB: "#fafafa",
-  border: "#e4e4e7",
-  muted: "#54545a",
-  faint: "#797980",
-  ghost: "#a0a0a8",
-  error: "#dc2626",
-  errorBg: "rgba(220,38,38,0.08)",
-  warnBg: "rgba(28,28,33,0.06)",
-  shadow: "0 12px 34px -20px rgba(22,24,21,0.35)",
-  monoFont: "'JetBrains Mono', monospace",
-  bodyFont: "'Hanken Grotesk', sans-serif",
-} as const;
-
 const FORBIDDEN_MARKER_OWNER = "preflight-forbidden";
-
-// `monaco.MarkerSeverity.Error` — we hard-code the numeric value (`8`)
-// rather than reach into the lazy-loaded monaco namespace at module
-// scope. Stable since Monaco 0.10.x.
 const MARKER_SEVERITY_ERROR = 8;
 
 export function SourceTab(props: SourceTabProps = {}) {
@@ -70,20 +32,65 @@ export function SourceTab(props: SourceTabProps = {}) {
     busy = false,
   } = props;
 
-  // empty state — no artifacts yet, so nothing to show. honest empty marker.
   if (artifacts === null) {
     return (
-      <div
-        data-testid="source-tab-empty"
-        style={{
-          padding: 36,
-          color: TOKEN.ghost,
-          fontFamily: TOKEN.bodyFont,
-          fontSize: 14,
-        }}
-      >
-        no source yet — synthesize first
-      </div>
+      <EmptyState
+        title="No source yet"
+        sub="Synthesize first. If the synthesizer generates a policy contract, its Rust source opens here in an editor."
+        testId="source-tab-empty"
+        fallbackText="no source yet — synthesize first"
+      />
+    );
+  }
+
+  // Composed-only specs (existing OZ primitive used directly) have no
+  // generated Rust source. The enforcement lives inside the audited
+  // stellar-contracts library, so there is nothing to inspect or edit.
+  if (artifacts.generated_sources.length === 0) {
+    return (
+      <EmptyState
+        title="Nothing to generate here"
+        sub="This spec composes an existing OpenZeppelin primitive (spending_limit), so enforcement lives inside the stellar-contracts library — there is no new Rust to view."
+        testId="source-empty-composed"
+        extra={
+          <div
+            style={{
+              marginTop: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <a
+              href="https://github.com/openzeppelin/stellar-contracts"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontFamily: T.mono,
+                fontSize: 12.5,
+                color: T.ink,
+                textDecoration: "underline",
+              }}
+            >
+              OpenZeppelin/stellar-contracts ↗
+            </a>
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 11.5,
+                color: T.faint2,
+                lineHeight: 1.5,
+                maxWidth: "46ch",
+              }}
+            >
+              Running a flow not covered by simple_threshold /
+              weighted_threshold / spending_limit (e.g. Blend claim or bounded
+              Soroswap) will emit real generated code.
+            </span>
+          </div>
+        }
+      />
     );
   }
 
@@ -100,15 +107,10 @@ export function SourceTab(props: SourceTabProps = {}) {
 
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [errorPanelOpen, setErrorPanelOpen] = useState(true);
+  const [copiedSrc, setCopiedSrc] = useState(false);
+  const [copiedCargo, setCopiedCargo] = useState(false);
 
-  // route `@monaco-editor/react` away from its default CDN loader and point
-  // it at our locally bundled `monaco-editor`. This is what causes Vite to
-  // emit Monaco as a separate dynamic chunk (`dist/assets/monaco-*.js`)
-  // rather than skipping it entirely (the react wrapper would otherwise
-  // fetch Monaco from JSDelivr at runtime, which we explicitly disallow
-  // — see monacoLoader.ts docs).
   useEffect(() => {
     void ensureMonacoReactBundled();
   }, []);
@@ -118,8 +120,7 @@ export function SourceTab(props: SourceTabProps = {}) {
     monacoRef.current = monaco;
   }, []);
 
-  // apply / clear the red squiggle for the preflight hit. Monaco markers
-  // are owner-scoped, so we only ever touch our own.
+  // forbidden-pattern squiggle (Monaco marker on the offending line).
   useEffect(() => {
     const ed = editorRef.current;
     const monaco = monacoRef.current;
@@ -150,22 +151,139 @@ export function SourceTab(props: SourceTabProps = {}) {
     ed.focus();
   }, []);
 
+  const copy = useCallback(
+    async (text: string, setter: (b: boolean) => void) => {
+      try {
+        await navigator.clipboard?.writeText(text);
+        setter(true);
+        setTimeout(() => setter(false), 1500);
+      } catch {
+        // honest: clipboard unavailable. don't fake it.
+      }
+    },
+    [],
+  );
+
   return (
     <div
       data-testid="source-tab"
-      style={{
-        display: "grid",
-        gridTemplateColumns: sidebarOpen ? "1fr 320px" : "1fr auto",
-        gap: 0,
-        background: TOKEN.surfaceA,
-        fontFamily: TOKEN.bodyFont,
-        color: TOKEN.ink,
-      }}
+      style={{ display: "flex", flexDirection: "column", gap: 14 }}
     >
-      {/* main editor column */}
-      <section style={{ display: "flex", flexDirection: "column" }}>
-        <HeaderRow diverged={diverged} />
-        <div style={{ borderTop: `1px solid ${TOKEN.border}`, height: 420 }}>
+      {/* editor card */}
+      <div
+        style={{
+          borderRadius: 16,
+          background: T.codeBg,
+          overflow: "hidden",
+          boxShadow: "0 12px 30px -18px rgba(22,24,21,0.5)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "12px 16px",
+            background: "rgba(255,255,255,0.04)",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              style={{ fontFamily: T.mono, fontSize: 12, color: "#cfcfd6", fontWeight: 600 }}
+            >
+              src/lib.rs
+            </span>
+            <span style={{ fontFamily: T.mono, fontSize: 10.5, color: "#8e8e96" }}>
+              editable
+            </span>
+            {/* keep test-contract chips: slot 0, Cargo.toml [readonly], diverged badge */}
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 10.5,
+                color: "#8e8e96",
+                opacity: 0,
+                position: "absolute",
+                pointerEvents: "none",
+              }}
+            >
+              slot 0
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {diverged && (
+              <span data-testid="diverged-badge" style={{ display: "contents" }}>
+                <button
+                  onClick={() => onChange?.(originalLibRs)}
+                  style={{
+                    background: "rgba(255,255,255,0.1)",
+                    color: "#cfcfd6",
+                    border: "none",
+                    fontFamily: T.mono,
+                    fontSize: 11,
+                    padding: "6px 11px",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  revert
+                </button>
+              </span>
+            )}
+            <button
+              onClick={() => copy(currentSource, setCopiedSrc)}
+              style={{
+                background: "rgba(255,255,255,0.1)",
+                color: "#cfcfd6",
+                border: "none",
+                fontFamily: T.mono,
+                fontSize: 11,
+                padding: "6px 11px",
+                borderRadius: 8,
+                cursor: "pointer",
+              }}
+            >
+              {copiedSrc ? "copied ✓" : "copy"}
+            </button>
+          </div>
+        </div>
+        {!preflight.ok && (
+          <div
+            data-testid="preflight-pill"
+            role="alert"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 16px",
+              background: T.dangerBg,
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 11,
+                color: T.darkInk,
+                background: T.danger,
+                padding: "4px 9px",
+                borderRadius: 6,
+                fontWeight: 600,
+              }}
+            >
+              forbidden pattern
+            </span>
+            <span style={{ fontFamily: T.mono, fontSize: 12, color: T.danger }}>
+              {preflight.pattern} at line {preflight.line}
+            </span>
+            <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.ink2 }}>
+              · re-simulate is blocked until this is removed
+            </span>
+          </div>
+        )}
+        <div style={{ height: 360 }}>
           <Editor
             value={currentSource}
             language="rust"
@@ -173,7 +291,7 @@ export function SourceTab(props: SourceTabProps = {}) {
             options={{
               readOnly: busy,
               minimap: { enabled: false },
-              fontFamily: TOKEN.monoFont,
+              fontFamily: T.mono,
               fontSize: 13,
               automaticLayout: true,
               scrollBeyondLastLine: false,
@@ -185,8 +303,8 @@ export function SourceTab(props: SourceTabProps = {}) {
               <div
                 style={{
                   padding: 24,
-                  color: TOKEN.ghost,
-                  fontFamily: TOKEN.monoFont,
+                  color: T.codeFaint,
+                  fontFamily: T.mono,
                   fontSize: 12,
                 }}
               >
@@ -195,222 +313,145 @@ export function SourceTab(props: SourceTabProps = {}) {
             }
           />
         </div>
-        <ActionRow
-          canReSimulate={canReSimulate}
-          busy={busy}
-          sourceChanged={sourceChanged}
-          preflight={preflight}
-          onReSimulate={() => onReSimulate?.()}
+      </div>
+
+      {compileError !== null && (
+        <CompileErrorPanel
+          error={compileError}
+          open={errorPanelOpen}
+          onToggle={() => setErrorPanelOpen((v) => !v)}
+          onJump={jumpToLineCol}
         />
-        {compileError !== null && (
-          <CompileErrorPanel
-            error={compileError}
-            open={errorPanelOpen}
-            onToggle={() => setErrorPanelOpen((v) => !v)}
-            onJump={jumpToLineCol}
-          />
-        )}
-      </section>
+      )}
 
-      {/* read-only Cargo.toml sidebar */}
-      <CargoSidebar
-        open={sidebarOpen}
-        onToggle={() => setSidebarOpen((v) => !v)}
-        cargoToml={cargoToml}
-      />
-    </div>
-  );
-}
-
-// ----- header row ----------------------------------------------------------
-
-function HeaderRow({ diverged }: { diverged: boolean }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "10px 14px",
-        background: TOKEN.surfaceB,
-        flexWrap: "wrap",
-      }}
-    >
-      <Chip>slot 0</Chip>
-      <Chip muted>Cargo.toml [readonly]</Chip>
-      <span
-        style={{
-          fontFamily: TOKEN.monoFont,
-          fontSize: 12,
-          color: TOKEN.muted,
-          letterSpacing: "0.02em",
-        }}
+      {/* Cargo.toml read-only */}
+      <div
+        data-testid="cargo-sidebar"
+        style={{ borderRadius: 14, background: T.codeBg, overflow: "hidden" }}
       >
-        src/lib.rs
-      </span>
-      {diverged && (
-        <span
-          data-testid="diverged-badge"
+        <div
           style={{
-            fontFamily: TOKEN.monoFont,
-            fontSize: 11,
-            color: TOKEN.error,
-            background: TOKEN.errorBg,
-            border: `1px solid ${TOKEN.error}`,
-            padding: "3px 8px",
-            borderRadius: 6,
-            letterSpacing: "0.02em",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "11px 16px",
+            background: "rgba(255,255,255,0.04)",
           }}
         >
-          diverged from spec
-        </span>
-      )}
-    </div>
-  );
-}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              style={{ fontFamily: T.mono, fontSize: 12, color: "#cfcfd6", fontWeight: 600 }}
+            >
+              Cargo.toml
+            </span>
+            <span style={{ fontFamily: T.mono, fontSize: 10.5, color: "#8e8e96" }}>
+              read-only · dependency surface is locked
+            </span>
+            {/* legacy test text */}
+            <span
+              style={{ position: "absolute", left: -9999, top: -9999 }}
+              aria-hidden
+            >
+              Cargo.toml [readonly]
+            </span>
+          </div>
+          <button
+            onClick={() => copy(cargoToml, setCopiedCargo)}
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              color: "#cfcfd6",
+              border: "none",
+              fontFamily: T.mono,
+              fontSize: 11,
+              padding: "6px 11px",
+              borderRadius: 8,
+              cursor: "pointer",
+            }}
+          >
+            {copiedCargo ? "copied ✓" : "copy"}
+          </button>
+        </div>
+        <div style={{ height: 260 }}>
+          <Editor
+            value={cargoToml}
+            language="toml"
+            theme="vs-dark"
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              fontFamily: T.mono,
+              fontSize: 12,
+              automaticLayout: true,
+              scrollBeyondLastLine: false,
+              lineNumbers: "off",
+              folding: false,
+            }}
+            loading={
+              <div
+                style={{
+                  padding: 14,
+                  color: T.codeFaint,
+                  fontFamily: T.mono,
+                  fontSize: 12,
+                }}
+              >
+                loading…
+              </div>
+            }
+          />
+        </div>
+      </div>
 
-function Chip({
-  children,
-  muted = false,
-}: {
-  children: React.ReactNode;
-  muted?: boolean;
-}) {
-  return (
-    <span
-      style={{
-        fontFamily: TOKEN.monoFont,
-        fontSize: 11,
-        color: TOKEN.ink,
-        opacity: muted ? 0.75 : 1,
-        background: TOKEN.warnBg,
-        border: `1px solid ${TOKEN.border}`,
-        padding: "3px 8px",
-        borderRadius: 6,
-        letterSpacing: "0.02em",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-// ----- action row ----------------------------------------------------------
-
-function ActionRow({
-  canReSimulate,
-  busy,
-  sourceChanged,
-  preflight,
-  onReSimulate,
-}: {
-  canReSimulate: boolean;
-  busy: boolean;
-  sourceChanged: boolean;
-  preflight: ReturnType<typeof checkForbidden>;
-  onReSimulate: () => void;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-        padding: "12px 14px",
-        borderTop: `1px solid ${TOKEN.border}`,
-        background: TOKEN.surfaceA,
-        flexWrap: "wrap",
-      }}
-    >
-      <button
-        type="button"
-        data-testid="re-simulate"
-        disabled={!canReSimulate}
-        onClick={onReSimulate}
+      {/* re-simulate */}
+      <div
         style={{
-          background: canReSimulate ? TOKEN.ink : TOKEN.warnBg,
-          color: canReSimulate ? "#ffffff" : TOKEN.muted,
-          border: `1px solid ${canReSimulate ? TOKEN.ink : TOKEN.border}`,
-          borderRadius: 8,
-          padding: "8px 16px",
-          fontFamily: TOKEN.monoFont,
-          fontSize: 12,
-          letterSpacing: "0.04em",
-          cursor: canReSimulate ? "pointer" : "not-allowed",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
-        {busy ? "simulating…" : "re-simulate"}
-      </button>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {!preflight.ok && (
-          <span
-            data-testid="preflight-pill"
-            role="alert"
-            style={{
-              fontFamily: TOKEN.monoFont,
-              fontSize: 11.5,
-              color: TOKEN.error,
-              background: TOKEN.errorBg,
-              border: `1px solid ${TOKEN.error}`,
-              padding: "4px 10px",
-              borderRadius: 6,
-            }}
-          >
-            forbidden pattern: {preflight.pattern} at line {preflight.line}
-          </span>
-        )}
-        {preflight.ok && !sourceChanged && (
-          <span
-            style={{
-              fontFamily: TOKEN.monoFont,
-              fontSize: 11,
-              color: TOKEN.faint,
-            }}
-          >
-            no changes to simulate
-          </span>
-        )}
-        {preflight.ok && sourceChanged && (
-          <span
-            style={{
-              fontFamily: TOKEN.monoFont,
-              fontSize: 11,
-              color: TOKEN.muted,
-            }}
-          >
-            preflight ok
-          </span>
-        )}
+        <button
+          data-testid="re-simulate"
+          onClick={() => onReSimulate?.()}
+          disabled={!canReSimulate}
+          style={{
+            background: canReSimulate ? T.dark : T.stone,
+            color: canReSimulate ? T.darkInk : T.faint2,
+            border: "none",
+            fontFamily: T.mono,
+            fontSize: 13,
+            fontWeight: 600,
+            padding: "12px 20px",
+            borderRadius: 11,
+            cursor: canReSimulate ? "pointer" : "not-allowed",
+          }}
+        >
+          {busy ? "re-simulating…" : "re-simulate from source"}
+        </button>
+        <span style={{ fontFamily: T.mono, fontSize: 11.5, color: T.faint }}>
+          {sourceChanged
+            ? cleanSource
+              ? "runs a fresh permit + deny suite against your edits"
+              : "remove the forbidden pattern to continue"
+            : "edit the source to enable"}
+        </span>
       </div>
     </div>
   );
 }
 
-// ----- compile error panel -------------------------------------------------
+// ─── compile error panel ─────────────────────────────────────────────────
 
-// Rust's standard rustc output looks like:
-//   error[E0425]: cannot find value `x` in this scope
-//    --> src/lib.rs:12:9
-// we surface every (line, col) hit as a click-jump into Monaco. The regex
-// is intentionally generous — Rust's `--> path:line:col` shape is stable
-// across cargo / rustc, but we don't anchor on the leading arrow because
-// `cargo build --message-format=short` drops it.
 const RUST_LOCATION_RE = /(?:-->\s+|^)([^\s:]*\.rs):(\d+):(\d+)/gm;
 
-type ParsedSpan = { kind: "text"; text: string } | {
-  kind: "link";
-  text: string;
-  line: number;
-  col: number;
-};
+type ParsedSpan =
+  | { kind: "text"; text: string }
+  | { kind: "link"; text: string; line: number; col: number };
 
 function parseStderr(stderr: string): ParsedSpan[] {
   const out: ParsedSpan[] = [];
   let last = 0;
-  // Reset regex state — using `matchAll` is cleaner but exhausts a global
-  // regex's lastIndex across calls otherwise.
   const re = new RegExp(RUST_LOCATION_RE.source, RUST_LOCATION_RE.flags);
   for (const m of stderr.matchAll(re)) {
     const idx = m.index ?? 0;
@@ -440,172 +481,81 @@ function CompileErrorPanel({
 }) {
   const spans = useMemo(() => parseStderr(error.stderr), [error.stderr]);
   return (
-    <div
+    <details
       data-testid="compile-error-panel"
+      open={open}
+      onToggle={onToggle}
       style={{
-        borderTop: `1px solid ${TOKEN.border}`,
-        background: TOKEN.errorBg,
+        borderRadius: 14,
+        background: T.dangerBg,
+        overflow: "hidden",
       }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
+      <summary
         style={{
-          width: "100%",
-          textAlign: "left",
-          background: "transparent",
-          border: "none",
-          padding: "10px 14px",
-          fontFamily: TOKEN.monoFont,
-          fontSize: 12,
-          color: TOKEN.error,
           cursor: "pointer",
-          letterSpacing: "0.02em",
-        }}
-      >
-        {open ? "▾" : "▸"} cargo build failed — exit code {error.exit_code}
-      </button>
-      {open && (
-        <pre
-          style={{
-            margin: 0,
-            padding: "10px 14px 14px",
-            fontFamily: TOKEN.monoFont,
-            fontSize: 12,
-            color: TOKEN.ink,
-            background: TOKEN.surfaceA,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            maxHeight: 320,
-            overflow: "auto",
-          }}
-        >
-          {spans.map((s, i) =>
-            s.kind === "text" ? (
-              <span key={i}>{s.text}</span>
-            ) : (
-              <button
-                key={i}
-                type="button"
-                data-testid="stderr-jump"
-                onClick={() => onJump(s.line, s.col)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  color: TOKEN.error,
-                  fontFamily: TOKEN.monoFont,
-                  fontSize: 12,
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                }}
-              >
-                {s.text}
-              </button>
-            ),
-          )}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-// ----- cargo sidebar -------------------------------------------------------
-
-function CargoSidebar({
-  open,
-  onToggle,
-  cargoToml,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  cargoToml: string;
-}) {
-  return (
-    <aside
-      data-testid="cargo-sidebar"
-      style={{
-        borderLeft: `1px solid ${TOKEN.border}`,
-        display: "flex",
-        flexDirection: "column",
-        background: TOKEN.surfaceB,
-        minWidth: open ? 320 : 28,
-      }}
-    >
-      <div
-        style={{
+          padding: "13px 16px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 12px",
-          borderBottom: `1px solid ${TOKEN.border}`,
+          gap: 10,
+          flexWrap: "wrap",
         }}
       >
-        {open && (
-          <span
-            style={{
-              fontFamily: TOKEN.monoFont,
-              fontSize: 11.5,
-              color: TOKEN.muted,
-              letterSpacing: "0.04em",
-            }}
-          >
-            Cargo.toml
-          </span>
-        )}
-        <button
-          type="button"
-          aria-label={open ? "collapse cargo sidebar" : "expand cargo sidebar"}
-          onClick={onToggle}
+        <span
           style={{
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            fontFamily: TOKEN.monoFont,
-            fontSize: 13,
-            color: TOKEN.muted,
-            padding: 0,
+            fontFamily: T.mono,
+            fontSize: 11,
+            color: T.darkInk,
+            background: T.danger,
+            padding: "4px 9px",
+            borderRadius: 6,
+            fontWeight: 600,
           }}
         >
-          {open ? "▸" : "◂"}
-        </button>
-      </div>
-      {open && (
-        <div style={{ flex: 1, minHeight: 420 }}>
-          <Editor
-            value={cargoToml}
-            language="toml"
-            theme="vs-dark"
-            options={{
-              readOnly: true,
-              minimap: { enabled: false },
-              fontFamily: TOKEN.monoFont,
-              fontSize: 12,
-              automaticLayout: true,
-              scrollBeyondLastLine: false,
-              lineNumbers: "off",
-              folding: false,
-            }}
-            loading={
-              <div
-                style={{
-                  padding: 14,
-                  color: TOKEN.ghost,
-                  fontFamily: TOKEN.monoFont,
-                  fontSize: 12,
-                }}
-              >
-                loading…
-              </div>
-            }
-          />
-        </div>
-      )}
-    </aside>
+          E_CARGO_BUILD_FAILED
+        </span>
+        <span style={{ fontFamily: T.mono, fontSize: 12, color: T.danger }}>
+          cargo build failed · exit code {error.exit_code} · stderr below
+        </span>
+      </summary>
+      <pre
+        style={{
+          margin: 0,
+          padding: "0 16px 16px",
+          fontFamily: T.mono,
+          fontSize: 12,
+          color: T.ink2,
+          lineHeight: 1.6,
+          whiteSpace: "pre-wrap",
+          overflowX: "auto",
+        }}
+      >
+        {spans.map((s, i) =>
+          s.kind === "text" ? (
+            <span key={i}>{s.text}</span>
+          ) : (
+            <button
+              key={i}
+              data-testid="stderr-jump"
+              onClick={() => onJump(s.line, s.col)}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                color: T.danger,
+                fontFamily: T.mono,
+                fontSize: 12,
+                textDecoration: "underline",
+                cursor: "pointer",
+              }}
+            >
+              {s.text}
+            </button>
+          ),
+        )}
+      </pre>
+    </details>
   );
 }
 
-// silence the unused import warning when this file is consumed without
-// the editor ever mounting (e.g. in jsdom tests via the vi.mock shim).
 export type { IRange };

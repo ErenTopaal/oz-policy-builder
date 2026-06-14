@@ -87,7 +87,7 @@ export function Hero() {
               View on GitHub ↗
             </a>
             <a
-              href="#synthesize"
+              href="/playground"
               className="btn-light"
               style={{
                 display: "inline-flex",
@@ -103,7 +103,7 @@ export function Hero() {
                 boxShadow: "0 2px 8px -3px rgba(22,24,21,0.18)",
               }}
             >
-              Try the synthesizer ↓
+              Open playground ↗
             </a>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 36 }}>

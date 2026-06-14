@@ -1,7 +1,3 @@
-// Tests for SpecTab. We build real PolicySpec + Recording fixtures from
-// the actual type definitions (no partials, no mock components) so the
-// tests reflect reality. No mocks per feedback-no-mock-fallback.
-
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SpecTab } from "../SpecTab";
@@ -80,8 +76,9 @@ describe("SpecTab", () => {
       <SpecTab spec={spec} recording={emptyRecording()} diverged={false} />,
     );
     expect(container.textContent).toContain("primitive:spending_limit");
-    expect(container.textContent).toContain('"max":"1000"');
-    expect(container.textContent).toContain('"asset":"USDC"');
+    // JSON serialized with 2-space indent → key/value pairs with single space after colon
+    expect(container.textContent).toContain('"max": "1000"');
+    expect(container.textContent).toContain('"asset": "USDC"');
   });
 
   it("renders generated slot with its constraint list", () => {

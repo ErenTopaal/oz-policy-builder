@@ -1,19 +1,3 @@
-// SourceTab tests.
-//
-// NOTE on the @monaco-editor/react mock below:
-// Monaco is a full-blown DOM editor — it depends on layout APIs (clientRect,
-// ResizeObserver, Web Workers) that jsdom doesn't implement and that we
-// explicitly DO NOT want to polyfill (that path lies madness, see prior
-// art). Production code mounts the real `<Editor>` which lazy-loads the
-// real Monaco bundle, verified by the e2e + build-time chunk-size check.
-//
-// In jsdom we substitute a `<textarea>` stand-in for the `Editor`
-// component. This is a UI-behaviour isolation, NOT a data-mock-fallback
-// (per the no-fakes operating rule): we are not faking a backend
-// response, we are swapping a rendering primitive that the test harness
-// can't host. Every assertion in this file would still be valid against
-// the real Editor — the textarea simply makes the assertion possible.
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { ComponentProps } from "react";

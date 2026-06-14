@@ -22,7 +22,11 @@ import {
 export { McpError } from "./types";
 
 const MCP_PROTOCOL_VERSION = "2025-11-25";
-const DEFAULT_TIMEOUT_MS = 30_000;
+// Backend codegen + simulate_custom_source run a real cargo build + stellar
+// contract optimize + simhost. Cold runs can take 1-3 minutes; warm cache
+// hits are sub-second. We pick a ceiling long enough to never abort a real
+// compile and rely on the user-facing cancel button for explicit aborts.
+const DEFAULT_TIMEOUT_MS = 600_000; // 10 min
 
 export interface McpConfig {
   endpoint: string | null; // null = not configured

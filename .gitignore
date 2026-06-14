@@ -60,3 +60,12 @@ _probe*.ts
 _probe*.py
 scratch/
 .superpowers/
+
+# brainstorm / design canvas artifacts
+*.dc.html
+playground-design/
+*Dev Tool Dashboard*
+
+# playwright (also in frontend/.gitignore)
+test-results/
+playwright-report/

@@ -1,14 +1,16 @@
 # oz-policy-builder
 
-records a stellar transaction and synthesizes the minimum openzeppelin smart-account
-policy that would permit exactly that transaction. ships as a rust cli + mcp server
-+ typescript wallet adapter.
+records a stellar transaction and synthesizes the minimum openzeppelin
+smart-account policy that would permit exactly that transaction.
 
-## requirements
+ships as a rust cli + mcp server + typescript wallet adapter + a hosted
+playground.
 
-- rust 1.89
-- stellar-cli 25
-- node 22, pnpm 10 (only for the wallet adapter)
+## live
+
+- landing — <https://policy.erentopal.xyz>
+- playground — <https://policy.erentopal.xyz/playground>
+- mcp endpoint — <https://mcp.erentopal.xyz/mcp>
 
 ## build
 
@@ -16,7 +18,9 @@ policy that would permit exactly that transaction. ships as a rust cli + mcp ser
 cargo build --release
 ```
 
-## use (cli)
+requires rust 1.89, stellar-cli 25. for the wallet adapter and frontend: node 22 + pnpm 10.
+
+## cli
 
 ```bash
 # record a testnet tx
@@ -28,59 +32,48 @@ cargo run -p oz-policy-cli -- record \
 
 # synthesize the minimum policy
 cargo run -p oz-policy-cli -- synthesize recording.json \
-  --mode auto --tightness exact --lifetime 432000 \
-  --rule-name "my-rule" > spec.json
+  --mode auto --tightness exact --lifetime 432000 > spec.json
 
 # generate the soroban contract source + wasm
 cargo run -p oz-policy-cli -- codegen spec.json --out ./out
 
-# simulate permit + deny vectors
+# simulate permit + deny
 cargo run -p oz-policy-cli -- simulate spec.json recording.json \
   --wasm-dir ./out --out report.json
-
-# build a wallet-signable install envelope (does not submit)
-cargo run -p oz-policy-cli -- prepare-install spec.json \
-  --smart-account <c-addr> --source <g-addr> \
-  --rpc https://soroban-testnet.stellar.org \
-  --network "Test SDF Network ; September 2015" \
-  --account-revision post-pr-655
 ```
 
-## use (mcp server)
+## mcp server
 
-5 tools (`record_transaction`, `synthesize_policy`, `simulate_policy`, `export_policy`,
-`verify_install`) over stdio or streamable http.
+9 tools (`record_transaction`, `synthesize_policy`, `simulate_policy`,
+`export_policy`, `verify_install`, `get_policy_artifacts`,
+`simulate_custom_source`, `create_snapshot`, `get_snapshot`).
 
 ```bash
-cargo build --release -p oz-policy-mcp
-./target/release/oz-policy-mcp --stdio          # subprocess transport
-./target/release/oz-policy-mcp --http 8080 --token "$TOKEN"   # http transport
+./target/release/oz-policy-mcp --stdio                          # local
+./target/release/oz-policy-mcp --http 8080 --token "$TOKEN"     # hosted
 ```
 
-wire the binary path into your mcp client's config.
+## playground
 
-## use (wallet adapter)
+interactive `/playground` route — record → synthesize → inspect generated
+rust → edit → re-simulate → share as a stable url.
 
-```bash
-cd wallet-adapter
-pnpm install
-pnpm test
+## layout
+
 ```
-
-real example in `wallet-adapter/src/integration.test.ts` — runs the full
-sign + submit + verify flow against testnet.
-
-## crate layout
-
-- `oz-policy-core` — policy ir, decision tree, sep-41 detection, error types
-- `oz-policy-recorder` — soroban rpc + xdr decoder
-- `oz-policy-codegen` — askama templates + sandbox build
-- `oz-policy-simhost` — in-process `soroban-env-host` harness
-- `oz-policy-installer` — install envelope builder + preflight
-- `oz-policy-mcp` — rmcp server
-- `oz-policy-cli` — thin cli over the others
-- `wallet-adapter` — typescript sep-43 adapter (freighter + passkey-kit)
+crates/
+  oz-policy-core/        policy ir, decision tree, errors
+  oz-policy-recorder/    soroban rpc + xdr decoder
+  oz-policy-codegen/     askama templates + sandbox build
+  oz-policy-simhost/     in-process soroban-env-host harness
+  oz-policy-installer/   install envelope builder
+  oz-policy-mcp/         rmcp server (stdio + http)
+  oz-policy-cli/         thin cli over the above
+wallet-adapter/          typescript sep-43 adapter
+frontend/                vite + react landing + /playground
+skills/oz-policy-builder/  agent skill
+```
 
 ## license
 
-apache-2.0 (see `LICENSE-APACHE`)
+apache-2.0

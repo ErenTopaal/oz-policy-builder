@@ -1,13 +1,3 @@
-// Tiny URL-sync helper used by PlaygroundPage to flip the address bar to
-// /playground/s/<snapshotId> after a successful createSnapshot, without
-// remounting the page.
-//
-// Why not just useNavigate? We deliberately want history.pushState semantics
-// so that opening a share link in a new tab still works (full reload),
-// while the *current* tab keeps its in-memory state. react-router v7's
-// `navigate(...)` would do the same here, but exporting this as a thin
-// helper lets tests stub it (and keeps the page module slim).
-
 export function pushSnapshotUrl(snapshotId: string): string {
   const url = `/playground/s/${snapshotId}`;
   // jsdom + happy-dom both expose history.pushState; guard for SSR.

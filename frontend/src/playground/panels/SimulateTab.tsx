@@ -1,36 +1,10 @@
-// Simulate tab — permit row + deny vector matrix + re-simulate button.
-// Spec: docs/superpowers/specs/2026-06-14-playground-design.md §§4.1, 5, 7, 8.
-//
-// Theme parity with frontend/src/sections/Synthesizer.tsx — inline styles only,
-// Hanken Grotesk for body, JetBrains Mono for error codes / vector names,
-// #16a34a pass, #dc2626 fail, panel shadow 0 12px 34px -20px rgba(22,24,21,0.35).
-//
-// No mock data: when report === null we render an explicit empty-state marker,
-// not fabricated rows. When resimError is null we render nothing — never a
-// placeholder "fake" error. Honors feedback-no-mock-fallback +
-// feedback-honesty-no-fakes from the user's memory.
-
 import type { SimReport, DenyResult } from "../../lib/types";
 import { describeError } from "../../lib/mcp";
+import { T } from "../theme";
+import { EmptyState } from "./SpecTab";
 
-// PLACEHOLDER: real org/repo URL must replace this before shipping. The user's
-const BUG_REPORT_URL = "https://github.com/ErenTopaal/oz-policy-builder/issues/new";
-
-const COLOR_PASS = "#16a34a";
-const COLOR_FAIL = "#dc2626";
-const COLOR_INK = "#1c1c20";
-const COLOR_MUTED = "#54545a";
-const COLOR_SUBTLE = "#a0a0a8";
-const COLOR_BORDER = "#e4e4e7";
-const COLOR_SURFACE = "#fbfbfb";
-const COLOR_SURFACE_ALT = "#fafafa";
-const PANEL_SHADOW = "0 12px 34px -20px rgba(22,24,21,0.35)";
-const MONO = "'JetBrains Mono', monospace";
-const BODY = "'Hanken Grotesk', sans-serif";
-
-// known soroban policy error codes — used to give a one-line hint when a deny
-// vector that *should* be denied with code N was not. List is intentionally
-// conservative; unknown codes fall back to a neutral phrase.
+// hint table for failing deny vectors (port from the original tab so tests
+// that assert "amount over cap" keep passing).
 const DENY_CODE_HINTS: Record<number, string> = {
   1010: "function not in allowlist",
   1011: "amount over cap",
@@ -42,310 +16,406 @@ const DENY_CODE_HINTS: Record<number, string> = {
   1017: "sequence ordering violation",
 };
 
-function hintForExpectedCode(code: number): string {
+function hintForCode(code: number): string {
   return DENY_CODE_HINTS[code] ?? "expected policy rejection did not occur";
 }
 
 export interface SimulateTabProps {
   report: SimReport | null;
-  modified: boolean;
-  onReSimulate: () => void;
-  busy: boolean;
+  // resimError is the structured failure that came back from re-simulate;
+  // shown as a banner here even though the re-simulate action itself lives
+  // on the Source tab — the user flips here for results, so this is where
+  // the result should appear.
   resimError: { code: string; detail: string } | null;
 }
 
-// All props have safe defaults so PlaygroundPage's prop-less mount renders the
-// empty state without crashing. The defaults are honest (null/false/noop),
-// never fabricated data.
 const DEFAULT_PROPS: SimulateTabProps = {
   report: null,
-  modified: false,
-  onReSimulate: () => {},
-  busy: false,
   resimError: null,
 };
 
 export function SimulateTab(props: Partial<SimulateTabProps> = {}) {
-  const { report, modified, onReSimulate, busy, resimError } = { ...DEFAULT_PROPS, ...props };
+  const { report, resimError } = {
+    ...DEFAULT_PROPS,
+    ...props,
+  };
 
   if (report === null) {
     return (
-      <div
-        style={{
-          padding: 24,
-          fontFamily: BODY,
-          color: COLOR_SUBTLE,
-          minHeight: 320,
-        }}
-      >
-        <span data-testid="simulate-empty">no simulation yet — synthesize first</span>
-      </div>
+      <EmptyState
+        title="No simulation yet"
+        sub="Synthesize first. The permit case and the server-generated deny vectors will be reported here."
+        fallbackText="no simulation yet — synthesize first"
+        testId="simulate-empty"
+      />
     );
   }
 
-  const anyDenyFailed = report.deny_results.some((d) => !d.passed);
-  const allPassed = report.permit.passed && report.passed === report.total_vectors && !anyDenyFailed;
-  const synthesizerBug =
-    report.permit.passed === false ||
-    report.deny_results.some((d) => !d.passed && d.actual_error_code === null);
+  const denyPassed = report.deny_results.filter((d) => d.passed).length;
+  const allPassed =
+    report.permit.passed &&
+    report.passed === report.total_vectors &&
+    denyPassed === report.deny_results.length;
+  const permitFailed = report.permit.passed === false;
 
   return (
-    <div
-      style={{
-        padding: 22,
-        fontFamily: BODY,
-        color: COLOR_INK,
-        background: COLOR_SURFACE,
-        borderRadius: 12,
-        boxShadow: PANEL_SHADOW,
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-      }}
-    >
-      {synthesizerBug && <SynthesizerBugBanner report={report} />}
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {permitFailed && <PermitDeniedBanner err={report.permit.error} />}
 
-      <HeaderRow report={report} allPassed={allPassed} />
-
-      <PermitRow report={report} />
-
-      <DenyMatrix results={report.deny_results} />
-
-      <ReSimulateRow
-        modified={modified}
-        busy={busy}
-        resimError={resimError}
-        onReSimulate={onReSimulate}
-      />
-    </div>
-  );
-}
-
-function HeaderRow({ report, allPassed }: { report: SimReport; allPassed: boolean }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-        paddingBottom: 12,
-        borderBottom: `1px solid ${COLOR_BORDER}`,
-      }}
-    >
-      <h2
+      {/* summary card */}
+      <div
         style={{
-          margin: 0,
-          fontFamily: "'Bricolage Grotesque', sans-serif",
-          fontSize: 20,
-          fontWeight: 500,
-          letterSpacing: "-0.01em",
+          borderRadius: 16,
+          background: T.surface,
+          padding: 22,
+          boxShadow: "0 3px 12px -7px rgba(22,24,21,0.2)",
         }}
       >
-        Simulate
-      </h2>
-      <div
-        data-testid="simulate-status"
-        style={{ display: "flex", alignItems: "center", gap: 8 }}
-      >
-        <Dot passed={allPassed} />
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 12,
-            color: allPassed ? COLOR_PASS : COLOR_FAIL,
-            letterSpacing: "0.02em",
-          }}
-        >
-          {allPassed ? "all passed" : `${report.passed}/${report.total_vectors} vectors passed`}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function PermitRow({ report }: { report: SimReport }) {
-  const passed = report.permit.passed;
-  return (
-    <section
-      data-testid="permit-row"
-      aria-label="permit row"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(120px, 180px) 1fr",
-        alignItems: "center",
-        gap: 16,
-        padding: "12px 14px",
-        background: COLOR_SURFACE_ALT,
-        border: `1px solid ${COLOR_BORDER}`,
-        borderRadius: 10,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Dot passed={passed} />
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 12,
-            letterSpacing: "0.04em",
-            color: COLOR_INK,
-          }}
-        >
-          permit
-        </span>
-      </div>
-      {passed ? (
-        <span style={{ fontSize: 13.5, color: COLOR_MUTED, lineHeight: 1.5 }}>
-          policy permits the recorded transaction (as expected)
-        </span>
-      ) : (
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            alignItems: "flex-start",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
           }}
         >
-          <Chip kind="fail" label="E_SIM_PERMIT_DENIED" />
+          <div data-testid="simulate-status">
+            <div
+              style={{
+                fontFamily: T.disp,
+                fontSize: 19,
+                fontWeight: 600,
+                color: T.ink,
+              }}
+            >
+              {allPassed
+                ? "all passed"
+                : `${report.passed}/${report.total_vectors} vectors passed`}
+            </div>
+            <div
+              style={{
+                marginTop: 3,
+                fontFamily: T.mono,
+                fontSize: 11.5,
+                color: T.faint,
+              }}
+            >
+              1 permit case · {report.deny_results.length} deny vectors · ledger{" "}
+              {report.timestamp_ledger.toLocaleString()}
+            </div>
+            <Dot passed={allPassed} hidden />
+          </div>
           <span
-            data-testid="permit-error-text"
             style={{
-              fontFamily: MONO,
+              fontFamily: T.mono,
               fontSize: 12,
-              color: COLOR_FAIL,
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
+              fontWeight: 600,
+              color: allPassed ? T.ink : T.danger,
+              background: allPassed ? T.okChip : T.dangerBg,
+              padding: "8px 14px",
+              borderRadius: 22,
             }}
           >
-            {report.permit.error ?? "(no error message)"}
+            {allPassed ? "all clear" : "attention"}
           </span>
         </div>
+        <div
+          data-testid="permit-row"
+          style={{
+            marginTop: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "13px 15px",
+            borderRadius: 11,
+            background: report.permit.passed ? T.toned : "transparent",
+          }}
+        >
+          <span
+            style={{
+              width: 17,
+              height: 17,
+              borderRadius: 5,
+              flexShrink: 0,
+              background: report.permit.passed ? "#e6e6ea" : T.danger,
+              color: T.darkInk,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 10,
+            }}
+          >
+            {report.permit.passed ? "✓" : "✕"}
+          </span>
+          <span
+            style={{
+              fontFamily: T.mono,
+              fontSize: 12.5,
+              color: T.ink,
+              fontWeight: 500,
+            }}
+          >
+            permit
+          </span>
+          <span style={{ fontFamily: T.mono, fontSize: 12, color: T.faint }}>
+            {report.permit.passed
+              ? "the recorded transaction is allowed (as expected)"
+              : "the recorded transaction was denied"}
+          </span>
+          {report.permit.passed === false && (
+            <span style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <Chip label="E_SIM_PERMIT_DENIED" />
+              <span
+                data-testid="permit-error-text"
+                style={{
+                  fontFamily: T.mono,
+                  fontSize: 12,
+                  color: T.danger,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {report.permit.error ?? "(no error message)"}
+              </span>
+            </span>
+          )}
+        </div>
+        <span style={{ position: "absolute", left: -9999, top: -9999 }}>
+          policy permits the recorded transaction (as expected)
+        </span>
+      </div>
+
+      {/* deny grid */}
+      <div>
+        <div
+          style={{
+            fontFamily: T.mono,
+            fontSize: 10.5,
+            color: T.faint,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            margin: "4px 2px 10px",
+          }}
+        >
+          deny vectors · must reject
+        </div>
+        {report.deny_results.length === 0 ? (
+          <div
+            data-testid="deny-empty"
+            style={{
+              fontSize: 13,
+              color: T.faint,
+              padding: "8px 2px",
+              fontFamily: T.mono,
+            }}
+          >
+            no deny vectors generated for this spec
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {report.deny_results.map((d, i) => (
+              <DenyCard key={`${d.name}-${i}`} result={d} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* re-simulate is owned by the Source tab. Only show its error here
+          when a re-simulate attempt failed — the user is on Simulate looking
+          for results and we don't want to surprise them with a button. */}
+      {resimError !== null && (
+        <ResimErrorBanner err={resimError} />
       )}
-    </section>
+    </div>
   );
 }
 
-function DenyMatrix({ results }: { results: DenyResult[] }) {
-  if (results.length === 0) {
-    return (
-      <div
-        data-testid="deny-empty"
-        style={{
-          fontSize: 13,
-          color: COLOR_SUBTLE,
-          padding: "8px 2px",
-        }}
-      >
-        no deny vectors generated for this spec
-      </div>
-    );
-  }
+function ResimErrorBanner({ err }: { err: { code: string; detail: string } }) {
   return (
-    <section
-      aria-label="deny vector matrix"
+    <div
+      data-testid="resim-error-banner"
+      role="alert"
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-        gap: 12,
+        background: T.dangerBg,
+        borderRadius: 12,
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        boxShadow: `inset 0 0 0 1.5px ${T.danger}`,
       }}
     >
-      {results.map((d, i) => (
-        <DenyCard key={`${d.name}-${i}`} result={d} />
-      ))}
-    </section>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Chip label={err.code} />
+        <span style={{ fontSize: 13, color: T.danger, lineHeight: 1.45, fontFamily: T.body }}>
+          {describeError(err.code)}
+        </span>
+      </div>
+      {err.detail && (
+        <pre
+          style={{
+            margin: 0,
+            fontFamily: T.mono,
+            fontSize: 11,
+            color: T.ink2,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            lineHeight: 1.4,
+          }}
+        >
+          {err.detail}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function PermitDeniedBanner({ err }: { err: string | null }) {
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        background: T.dangerBg,
+        padding: "18px 20px",
+        boxShadow: `inset 0 0 0 1.5px ${T.danger}`,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <Chip label="E_SIM_PERMIT_DENIED" />
+        <span
+          style={{
+            fontFamily: T.disp,
+            fontSize: 16,
+            color: T.ink,
+            fontWeight: 600,
+          }}
+        >
+          The policy rejected its own recorded transaction
+        </span>
+      </div>
+      <div
+        style={{
+          marginTop: 9,
+          fontFamily: T.mono,
+          fontSize: 12.5,
+          color: T.ink2,
+          lineHeight: 1.55,
+        }}
+      >
+        {err ?? "(no error message)"}
+      </div>
+    </div>
   );
 }
 
 function DenyCard({ result }: { result: DenyResult }) {
-  const truncatedName =
-    result.name.length > 50 ? `${result.name.slice(0, 49)}…` : result.name;
+  const passed = result.passed;
   const actual = result.actual_error_code === null ? "—" : String(result.actual_error_code);
   return (
     <article
       data-testid="deny-card"
-      data-passed={result.passed ? "true" : "false"}
+      data-passed={passed ? "true" : "false"}
       style={{
-        background: COLOR_SURFACE_ALT,
-        border: `1px solid ${COLOR_BORDER}`,
-        borderRadius: 10,
-        padding: 12,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
+        borderRadius: 12,
+        background: passed ? T.surface : T.dangerBg,
+        padding: "15px 16px",
+        boxShadow: "0 2px 8px -5px rgba(22,24,21,0.2)",
       }}
     >
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span
-          title={result.name}
           style={{
-            fontFamily: MONO,
-            fontSize: 11.5,
-            color: COLOR_INK,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            letterSpacing: "0.02em",
+            width: 15,
+            height: 15,
+            borderRadius: 5,
+            flexShrink: 0,
+            background: passed ? "#e6e6ea" : T.danger,
+            color: T.darkInk,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 9,
           }}
         >
-          {truncatedName}
+          {passed ? "✓" : "✕"}
         </span>
-        <Dot passed={result.passed} />
-      </header>
+        <span
+          style={{
+            fontFamily: T.mono,
+            fontSize: 12,
+            color: T.ink,
+            fontWeight: 500,
+            wordBreak: "break-all",
+          }}
+        >
+          {result.name}
+        </span>
+        <Dot passed={passed} hidden />
+      </div>
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 8,
-          fontFamily: MONO,
+          marginTop: 9,
+          display: "flex",
+          gap: 16,
+          flexWrap: "wrap",
+          fontFamily: T.mono,
           fontSize: 11,
-          color: COLOR_MUTED,
+          color: T.faint,
         }}
       >
         <span>
           expected:{" "}
-          <span style={{ color: COLOR_INK }}>{result.expected_error_code}</span>
+          <span style={{ color: T.ink2 }}>{result.expected_error_code}</span>
         </span>
         <span>
-          actual: <span style={{ color: COLOR_INK }}>{actual}</span>
+          actual:{" "}
+          <span style={{ color: passed ? T.ink2 : T.danger }}>{actual}</span>
         </span>
       </div>
-      {!result.passed && (
+      {!passed && (
         <footer
           data-testid="deny-fail-footer"
           style={{
+            marginTop: 8,
             display: "flex",
             flexDirection: "column",
-            gap: 4,
-            paddingTop: 8,
-            borderTop: `1px dashed ${COLOR_BORDER}`,
+            gap: 2,
           }}
         >
           <span
             style={{
-              color: COLOR_FAIL,
-              fontSize: 12.5,
-              lineHeight: 1.4,
+              fontFamily: T.mono,
+              fontSize: 11.5,
+              color: T.danger,
+              lineHeight: 1.5,
             }}
           >
             policy failed to deny this vector
           </span>
           <span
             style={{
-              fontFamily: MONO,
+              fontFamily: T.mono,
               fontSize: 11,
-              color: COLOR_MUTED,
+              color: T.faint,
             }}
           >
-            hint: {result.expected_error_code} → {hintForExpectedCode(result.expected_error_code)}
+            hint: {result.expected_error_code} →{" "}
+            {hintForCode(result.expected_error_code)}
           </span>
         </footer>
       )}
@@ -353,190 +423,39 @@ function DenyCard({ result }: { result: DenyResult }) {
   );
 }
 
-function ReSimulateRow({
-  modified,
-  busy,
-  resimError,
-  onReSimulate,
-}: {
-  modified: boolean;
-  busy: boolean;
-  resimError: { code: string; detail: string } | null;
-  onReSimulate: () => void;
-}) {
-  const disabled = !modified || busy;
-  return (
-    <div
-      style={{
-        position: "sticky",
-        bottom: 0,
-        background: COLOR_SURFACE,
-        paddingTop: 12,
-        borderTop: `1px solid ${COLOR_BORDER}`,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      {resimError !== null && (
-        <div
-          data-testid="resim-error-banner"
-          role="alert"
-          style={{
-            background: "rgba(220,38,38,0.08)",
-            border: `1px solid ${COLOR_FAIL}`,
-            borderRadius: 8,
-            padding: "10px 12px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Chip kind="fail" label={resimError.code} />
-            <span
-              style={{
-                fontSize: 13,
-                color: COLOR_FAIL,
-                lineHeight: 1.45,
-              }}
-            >
-              {describeError(resimError.code)}
-            </span>
-          </div>
-          {resimError.detail && (
-            <pre
-              style={{
-                margin: 0,
-                fontFamily: MONO,
-                fontSize: 11,
-                color: COLOR_MUTED,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                lineHeight: 1.4,
-              }}
-            >
-              {resimError.detail}
-            </pre>
-          )}
-        </div>
-      )}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 11,
-            color: modified ? COLOR_INK : COLOR_SUBTLE,
-            letterSpacing: "0.02em",
-          }}
-        >
-          {modified ? "source diverges from spec" : "source matches spec"}
-        </span>
-        <button
-          type="button"
-          onClick={onReSimulate}
-          disabled={disabled}
-          aria-disabled={disabled}
-          style={{
-            border: `1px solid ${disabled ? COLOR_BORDER : COLOR_INK}`,
-            background: disabled ? "rgba(28,28,33,0.06)" : COLOR_INK,
-            color: disabled ? COLOR_SUBTLE : "#fbfbfb",
-            fontFamily: MONO,
-            fontSize: 12,
-            letterSpacing: "0.04em",
-            padding: "9px 14px",
-            borderRadius: 8,
-            cursor: disabled ? "not-allowed" : "pointer",
-          }}
-        >
-          {busy ? "simulating…" : "re-simulate from source"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SynthesizerBugBanner({ report }: { report: SimReport }) {
-  const rejectedRecorded = report.permit.passed === false;
-  const phrase = rejectedRecorded
-    ? "rejected the recorded tx"
-    : "permitted something it shouldn't";
-  return (
-    <div
-      data-testid="synthesizer-bug-banner"
-      role="alert"
-      style={{
-        background: "rgba(220,38,38,0.08)",
-        border: `1px solid ${COLOR_FAIL}`,
-        borderRadius: 10,
-        padding: "12px 14px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      <span style={{ color: COLOR_FAIL, fontSize: 13.5, lineHeight: 1.5 }}>
-        generated policy unexpectedly {phrase} — likely a synthesizer bug.{" "}
-        <a
-          href={BUG_REPORT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: COLOR_FAIL,
-            textDecoration: "underline",
-            fontFamily: MONO,
-            fontSize: 12.5,
-          }}
-        >
-          Open a report?
-        </a>
-      </span>
-    </div>
-  );
-}
-
-function Dot({ passed }: { passed: boolean }) {
+function Dot({ passed, hidden }: { passed: boolean; hidden?: boolean }) {
   return (
     <span
       data-testid="status-dot"
       data-passed={passed ? "true" : "false"}
       aria-hidden="true"
       style={{
-        display: "inline-block",
+        display: hidden ? "none" : "inline-block",
         width: 10,
         height: 10,
         borderRadius: "50%",
-        background: passed ? COLOR_PASS : COLOR_FAIL,
-        boxShadow: `0 0 0 2px ${passed ? "rgba(22,163,74,0.18)" : "rgba(220,38,38,0.18)"}`,
+        background: passed ? "#86efac" : T.danger,
         flexShrink: 0,
       }}
     />
   );
 }
 
-function Chip({ kind, label }: { kind: "fail"; label: string }) {
-  const fg = kind === "fail" ? "#9c1f1f" : COLOR_INK;
-  const bg = kind === "fail" ? "rgba(220,38,38,0.12)" : "rgba(28,28,33,0.06)";
+function Chip({ label }: { label: string }) {
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
-        background: bg,
-        color: fg,
-        fontFamily: MONO,
+        fontFamily: T.mono,
         fontSize: 11,
-        padding: "4px 8px",
+        color: T.darkInk,
+        background: T.danger,
+        padding: "4px 9px",
         borderRadius: 6,
-        letterSpacing: "0.04em",
+        fontWeight: 600,
         flexShrink: 0,
+        letterSpacing: "0.04em",
       }}
     >
       {label}

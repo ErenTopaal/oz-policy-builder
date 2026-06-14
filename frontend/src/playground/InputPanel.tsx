@@ -1,33 +1,27 @@
-// /playground InputPanel. left rail of the 2-pane shell. emits a single
-// SubmitIntent up to PlaygroundPage; this component owns no async work
-// and no MCP calls — it's a pure form. theme tokens match Synthesizer.tsx
-// per spec §8 (no Tailwind, no css modules; inline styles + JetBrains
-// Mono for labels/inputs, Hanken Grotesk body).
-//
-// honesty rules carried in: presets that fail to fetch arrive here as
-// `status: 'unavailable'` and render as disabled options with an explicit
-// tooltip. there is no in-component fallback hash anywhere.
-
 import type { Dispatch } from "react";
 import { useMemo, useState } from "react";
 import type { Action, PlaygroundState } from "./hooks/usePlaygroundState";
 import type { PresetKey, Presets } from "./hooks/usePresets";
 import type { Network, SynthesisMode, Tightness } from "../lib/types";
-import { Field, FieldHeader, FieldLabel } from "../sections/fields";
+import { T } from "./theme";
 
-// inline copy of Synthesizer.tsx's TIGHTNESS_HELP. duplicated rather than
-// imported so this panel doesn't reach into the landing-page module.
 const TIGHTNESS_HELP: Record<Tightness, string> = {
-  exact: "constraints pin observed values exactly. no slack.",
-  small_margin: "numeric ranges scale 1.1×. asset / function sets stay exact.",
-  loose: "numeric ranges scale 2×. more agent flexibility, less tight bound.",
+  exact: "permit only the exact values observed",
+  small_margin: "allow modest headroom above observed amounts",
+  loose: "permit the function family with relaxed bounds",
+};
+
+const MODE_HELP: Record<SynthesisMode, string> = {
+  auto: "auto · the synthesizer decides whether to compose an existing primitive or generate a new contract.",
+  compose_only: "compose · reuse an existing OZ primitive only; never generate a new contract.",
+  codegen_only: "codegen · always generate a fresh policy contract, even if a primitive would fit.",
 };
 
 const PRESET_LABELS: Record<PresetKey, string> = {
-  sample: "Current sample",
-  blend: "Blend yield-claim",
-  sep41: "SEP-41 transfer",
-  soroswap: "Soroswap swap",
+  sample: "sample · invoke_host_function",
+  blend: "blend · claim",
+  sep41: "sep41 · transfer",
+  soroswap: "soroswap · swap",
 };
 
 const PRESET_TIGHTNESS: Record<PresetKey, Tightness> = {
@@ -41,7 +35,6 @@ const PRESET_ORDER: PresetKey[] = ["sample", "blend", "sep41", "soroswap"];
 
 export type InputMode = "hash" | "envelope";
 
-/** the phase string PlaygroundPage tracks for the submit button label. */
 export type SubmitPhase = "idle" | "recording" | "synthesizing" | "simulating";
 
 export interface SubmitIntent {
@@ -59,11 +52,8 @@ export interface InputPanelProps {
   state: PlaygroundState;
   dispatch: Dispatch<Action>;
   presets: Presets;
-  /** PlaygroundPage's current phase, drives label + cancel affordance. */
   phase?: SubmitPhase;
-  /** true while an async flow is in flight. disables form + flips submit to cancel. */
   busy: boolean;
-  /** true when backend health check failed — disables submit honestly. */
   backendDown?: boolean;
   onSubmit: (intent: SubmitIntent) => void;
   onCancel: () => void;
@@ -83,14 +73,16 @@ export function InputPanel({
   const [inputMode, setInputMode] = useState<InputMode>("hash");
   const [hash, setHash] = useState("");
   const [xdr, setXdr] = useState("");
-  const [presetKey, setPresetKey] = useState<PresetKey | "">("");
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [pickedPreset, setPickedPreset] = useState<PresetKey | null>(null);
   const [network, setNetwork] = useState<Network>("testnet");
   const [tightness, setTightness] = useState<Tightness>("exact");
   const [mode, setMode] = useState<SynthesisMode>("auto");
   const [lifetime, setLifetime] = useState<number>(432000);
   const [ruleName, setRuleName] = useState("");
 
-  const hashValid = useMemo(() => HEX64.test(hash.trim()), [hash]);
+  const hashTrimmed = hash.trim();
+  const hashValid = useMemo(() => HEX64.test(hashTrimmed), [hashTrimmed]);
   const xdrTrimmed = xdr.trim();
   const xdrValid = xdrTrimmed.length > 80 && BASE64_CHARS.test(xdrTrimmed);
 
@@ -112,16 +104,15 @@ export function InputPanel({
     }
   })();
 
-  function handlePresetChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const key = e.target.value as PresetKey | "";
-    setPresetKey(key);
-    if (!key) return;
-    const entry = presets[key];
+  function pickPreset(k: PresetKey) {
+    const entry = presets[k];
     if (entry.status === "unavailable" || !entry.hash) return;
+    setPickedPreset(k);
     setInputMode("hash");
     setHash(entry.hash);
     setNetwork("testnet");
-    setTightness(PRESET_TIGHTNESS[key]);
+    setTightness(PRESET_TIGHTNESS[k]);
+    setPresetOpen(false);
   }
 
   function handleSubmit() {
@@ -135,7 +126,7 @@ export function InputPanel({
       ruleName: ruleName.trim() || undefined,
     };
     if (inputMode === "hash") {
-      intent.hash = hash.trim().toLowerCase();
+      intent.hash = hashTrimmed.toLowerCase();
     } else {
       intent.envelope_xdr_base64 = xdrTrimmed;
     }
@@ -143,17 +134,25 @@ export function InputPanel({
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 14,
-      }}
-    >
-      <PanelTitle>input</PanelTitle>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span
+          style={{
+            fontFamily: T.disp,
+            fontSize: 20,
+            fontWeight: 600,
+            letterSpacing: "-0.015em",
+            color: T.ink,
+          }}
+        >
+          Synthesize a policy
+        </span>
+        <span style={{ fontSize: 13, color: T.faint, lineHeight: 1.5 }}>
+          Turn a real Stellar transaction into a minimum-rights policy.
+        </span>
+      </div>
 
-      <Field>
-        <FieldLabel>input mode</FieldLabel>
+      <FieldGroup label="input">
         <Segments
           options={[
             { value: "hash", label: "hash" },
@@ -163,109 +162,78 @@ export function InputPanel({
           onChange={(v) => setInputMode(v as InputMode)}
           disabled={formDisabled}
         />
-      </Field>
+        <HelpText>
+          Start from a transaction already on chain (hash), or paste one you
+          built locally but haven't submitted (envelope XDR).
+        </HelpText>
+      </FieldGroup>
+
+      <PresetRow
+        presets={presets}
+        open={presetOpen}
+        onToggle={() => setPresetOpen((v) => !v)}
+        onPick={pickPreset}
+        picked={pickedPreset}
+        disabled={formDisabled}
+      />
 
       {inputMode === "hash" ? (
-        <Field>
-          <FieldHeader>
-            <FieldLabel>transaction hash</FieldLabel>
-            {hash.length > 0 && !hashValid && (
-              <span
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10,
-                  color: "#9c4a36",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                need 64 hex chars
-              </span>
-            )}
-          </FieldHeader>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <LabelMono>transaction hash</LabelMono>
+          <HelpText>
+            The 64-character hex id of the transaction whose permissions you
+            want to capture.
+          </HelpText>
           <input
             aria-label="transaction hash"
             value={hash}
             onChange={(e) => setHash(e.target.value)}
             disabled={formDisabled}
-            placeholder="64-char hex transaction hash"
+            placeholder="64-char hex"
             style={{
-              ...inputBig,
-              borderBottom: hash.length > 0 && !hashValid ? "2px solid #c0533a" : "2px solid transparent",
+              ...textInputStyle,
+              boxShadow:
+                hash.length > 0 && !hashValid
+                  ? `inset 0 0 0 1.5px ${T.danger}`
+                  : "none",
             }}
           />
-        </Field>
+          {hash.length > 0 && !hashValid && (
+            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.danger }}>
+              must be 64 hex characters
+            </span>
+          )}
+        </div>
       ) : (
-        <Field>
-          <FieldHeader>
-            <FieldLabel>envelope XDR</FieldLabel>
-            {xdrTrimmed.length > 0 && !xdrValid && (
-              <span
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10,
-                  color: "#9c4a36",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                invalid base64
-              </span>
-            )}
-          </FieldHeader>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <LabelMono>envelope xdr · base64</LabelMono>
+          <HelpText>
+            Paste a base64 TransactionEnvelope you built locally but have not
+            submitted yet.
+          </HelpText>
           <textarea
             aria-label="envelope XDR"
             value={xdr}
             onChange={(e) => setXdr(e.target.value)}
             disabled={formDisabled}
-            placeholder="base64-encoded transaction envelope XDR"
-            rows={5}
+            spellCheck={false}
+            placeholder="AAAAA… base64-encoded TransactionEnvelope"
             style={{
-              ...inputBig,
-              fontFamily: "'JetBrains Mono', monospace",
-              minHeight: 110,
+              ...textInputStyle,
+              minHeight: 92,
               resize: "vertical",
-              borderBottom:
-                xdrTrimmed.length > 0 && !xdrValid ? "2px solid #c0533a" : "2px solid transparent",
+              lineHeight: 1.5,
             }}
           />
-        </Field>
+          {xdrTrimmed.length > 0 && !xdrValid && (
+            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.danger }}>
+              invalid base64 envelope (need &gt; 80 chars)
+            </span>
+          )}
+        </div>
       )}
 
-      <Field>
-        <FieldLabel>preset</FieldLabel>
-        <select
-          aria-label="preset"
-          value={presetKey}
-          onChange={handlePresetChange}
-          disabled={formDisabled}
-          style={selectStyle}
-        >
-          <option value="">— choose preset —</option>
-          {PRESET_ORDER.map((k) => {
-            const entry = presets[k];
-            const base = PRESET_LABELS[k];
-            const label =
-              entry.status === "stale"
-                ? `${base} (stale)`
-                : entry.status === "unavailable"
-                ? `${base} (unavailable)`
-                : base;
-            const disabled = entry.status === "unavailable";
-            return (
-              <option
-                key={k}
-                value={k}
-                disabled={disabled}
-                title={disabled ? "preset unavailable — last refresh failed" : undefined}
-              >
-                {label}
-              </option>
-            );
-          })}
-        </select>
-      </Field>
-
-      <Field>
-        <FieldLabel>network</FieldLabel>
+      <FieldGroup label="network">
         <Segments
           options={[
             { value: "testnet", label: "testnet" },
@@ -275,113 +243,317 @@ export function InputPanel({
           onChange={(v) => setNetwork(v as Network)}
           disabled={formDisabled}
         />
-      </Field>
+        <HelpText>
+          Which Soroban RPC the recorder queries. Match the network the
+          transaction ran on.
+        </HelpText>
+      </FieldGroup>
 
-      <div style={{ height: 1, background: "rgba(28,28,33,0.08)" }} />
+      <div style={{ height: 1, background: T.line }} />
 
-      <Field>
-        <FieldLabel>
-          tightness
-          <span style={{ color: "#a0a0a6", textTransform: "none", letterSpacing: 0 }}>
-            {" "}
-            · how tightly to bound
-          </span>
-        </FieldLabel>
+      <FieldGroup label="tightness">
         <Segments
           options={[
             { value: "exact", label: "exact" },
-            { value: "small_margin", label: "small margin" },
+            { value: "small_margin", label: "margin" },
             { value: "loose", label: "loose" },
           ]}
           value={tightness}
           onChange={(v) => setTightness(v as Tightness)}
           disabled={formDisabled}
         />
-        <span
-          style={{
-            fontSize: 11.5,
-            color: "#797980",
-            lineHeight: 1.45,
-            fontFamily: "'JetBrains Mono', monospace",
-          }}
-        >
-          {TIGHTNESS_HELP[tightness]}
-        </span>
-      </Field>
+        <HelpText>
+          How tightly numeric constraints hug the observed values.{" "}
+          <span style={{ color: "#cfcfd6" }}>{TIGHTNESS_HELP[tightness]}</span>
+        </HelpText>
+      </FieldGroup>
 
-      <Field>
-        <FieldLabel>synthesis mode</FieldLabel>
+      <FieldGroup label="synthesis mode">
         <Segments
           options={[
             { value: "auto", label: "auto" },
-            { value: "compose_only", label: "compose only" },
-            { value: "codegen_only", label: "codegen only" },
+            { value: "compose_only", label: "compose" },
+            { value: "codegen_only", label: "codegen" },
           ]}
           value={mode}
           onChange={(v) => setMode(v as SynthesisMode)}
           disabled={formDisabled}
         />
-      </Field>
+        <HelpText>{MODE_HELP[mode]}</HelpText>
+      </FieldGroup>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <FieldLabel>lifetime · ledgers</FieldLabel>
+          <LabelMono>lifetime · ledgers</LabelMono>
           <input
             type="number"
             aria-label="lifetime ledgers"
             value={lifetime}
             onChange={(e) => setLifetime(Number(e.target.value) || 0)}
             disabled={formDisabled}
-            style={inputSmall}
+            style={smallInputStyle}
           />
+          <span
+            style={{ fontFamily: T.mono, fontSize: 10.5, color: T.faint, lineHeight: 1.4 }}
+          >
+            how long the rule stays valid · 432000 ≈ 30 days
+          </span>
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <FieldLabel>
-            rule name<span style={{ color: "#99999e", textTransform: "none" }}> · opt</span>
-          </FieldLabel>
+          <LabelMono>
+            rule name<span style={{ color: "#a0a0a6", textTransform: "none" }}> · opt</span>
+          </LabelMono>
           <input
             aria-label="rule name"
             value={ruleName}
             onChange={(e) => setRuleName(e.target.value)}
             disabled={formDisabled}
             placeholder="auto"
-            style={inputSmall}
+            style={smallInputStyle}
           />
+          <span
+            style={{ fontFamily: T.mono, fontSize: 10.5, color: T.faint, lineHeight: 1.4 }}
+          >
+            optional label · blank lets the server pick
+          </span>
         </label>
       </div>
 
-      {busy ? (
-        <button onClick={onCancel} style={submitBtn}>
-          cancel
-        </button>
-      ) : (
-        <button
-          onClick={handleSubmit}
-          disabled={submitDisabled}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {busy ? (
+          <>
+            <button
+              data-testid="synth-busy-label"
+              disabled
+              style={{
+                ...primaryBtn,
+                background: T.stone,
+                color: T.faint2,
+                cursor: "default",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  border: "2px solid rgba(255,255,255,0.18)",
+                  borderTopColor: T.ink,
+                  display: "inline-block",
+                  marginRight: 10,
+                  verticalAlign: "middle",
+                }}
+              />
+              {submitLabel}
+            </button>
+            <button
+              onClick={onCancel}
+              style={{
+                alignSelf: "center",
+                background: "transparent",
+                border: "none",
+                color: T.ink2,
+                fontFamily: T.mono,
+                fontSize: 12,
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              ✕ cancel
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={handleSubmit}
+            disabled={submitDisabled}
+            style={{
+              ...primaryBtn,
+              background: submitDisabled ? T.stone : T.dark,
+              color: submitDisabled ? T.faint2 : T.darkInk,
+              cursor: submitDisabled ? "default" : "pointer",
+            }}
+          >
+            {submitLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── preset row (custom collapsible dropdown) ────────────────────────────
+
+function PresetRow({
+  presets,
+  open,
+  onToggle,
+  onPick,
+  picked,
+  disabled,
+}: {
+  presets: Presets;
+  open: boolean;
+  onToggle: () => void;
+  onPick: (k: PresetKey) => void;
+  picked: PresetKey | null;
+  disabled: boolean;
+}) {
+  const triggerLabel = picked ? PRESET_LABELS[picked] : "choose a sample transaction";
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 9,
+        position: "relative",
+      }}
+    >
+      <LabelMono>preset · refreshed hourly</LabelMono>
+      <HelpText>
+        New to this? Pick a ready-made sample transaction to fill the form,
+        then hit synthesize.
+      </HelpText>
+      <button
+        data-testid="preset-trigger"
+        aria-label="preset"
+        aria-expanded={open}
+        onClick={onToggle}
+        disabled={disabled}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          background: T.stone,
+          border: "none",
+          borderRadius: 11,
+          padding: "12px 13px",
+          cursor: disabled ? "not-allowed" : "pointer",
+          fontFamily: T.mono,
+          fontSize: 12.5,
+          color: T.ink,
+          width: "100%",
+          opacity: disabled ? 0.6 : 1,
+        }}
+      >
+        <span>{triggerLabel}</span>
+        <span
           style={{
-            ...submitBtn,
-            opacity: submitDisabled ? 0.5 : 1,
-            cursor: submitDisabled ? "not-allowed" : "pointer",
+            color: T.faint,
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform .2s",
           }}
         >
-          {submitLabel}
-        </button>
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div
+          data-testid="preset-panel"
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            marginTop: 6,
+            zIndex: 20,
+            background: T.surface,
+            borderRadius: 12,
+            padding: 6,
+            boxShadow: "0 16px 40px -16px rgba(22,24,21,0.45)",
+          }}
+        >
+          {PRESET_ORDER.map((k) => {
+            const entry = presets[k];
+            const isUnavailable = entry.status === "unavailable";
+            const reason = isUnavailable
+              ? "no recent testnet activity on this contract"
+              : "";
+            return (
+              <button
+                key={k}
+                data-testid={`preset-row-${k}`}
+                disabled={isUnavailable}
+                title={reason}
+                onClick={() => onPick(k)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  borderRadius: 9,
+                  padding: "11px 12px",
+                  cursor: isUnavailable ? "not-allowed" : "pointer",
+                  textAlign: "left",
+                  opacity: isUnavailable ? 0.55 : 1,
+                }}
+              >
+                <span style={{ fontFamily: T.mono, fontSize: 12, color: T.ink }}>
+                  {PRESET_LABELS[k]}
+                </span>
+                <span
+                  data-testid={`preset-chip-${k}`}
+                  style={{
+                    fontFamily: T.mono,
+                    fontSize: 10,
+                    padding: "2px 7px",
+                    borderRadius: 20,
+                    background:
+                      entry.status === "fresh"
+                        ? T.okChip
+                        : entry.status === "stale"
+                        ? "rgba(255,255,255,0.1)"
+                        : T.dangerBg,
+                    color: entry.status === "unavailable" ? T.danger : T.ink2,
+                  }}
+                >
+                  {entry.status}
+                </span>
+              </button>
+            );
+          })}
+          <div
+            style={{
+              fontFamily: T.mono,
+              fontSize: 10.5,
+              color: T.faint2,
+              lineHeight: 1.5,
+              padding: "6px 8px 2px",
+            }}
+          >
+            unavailable = no recent testnet activity on that contract, not a
+            refresh failure
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-// ─── sub-components ────────────────────────────────────────────────────────────
+// ─── small primitives ────────────────────────────────────────────────────
 
-function PanelTitle({ children }: { children: React.ReactNode }) {
+function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <LabelMono>{label}</LabelMono>
+      {children}
+    </div>
+  );
+}
+
+function LabelMono({ children }: { children: React.ReactNode }) {
   return (
     <span
       style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: 11,
-        letterSpacing: "0.08em",
+        fontFamily: T.mono,
+        fontSize: 10.5,
+        letterSpacing: "0.05em",
+        color: T.faint,
         textTransform: "uppercase",
-        color: "#797980",
       }}
     >
       {children}
@@ -389,15 +561,30 @@ function PanelTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Segments<T extends string>({
+function HelpText({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        fontFamily: T.mono,
+        fontSize: 11,
+        color: T.faint,
+        lineHeight: 1.45,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Segments<TV extends string>({
   options,
   value,
   onChange,
   disabled,
 }: {
-  options: Array<{ value: T; label: string }>;
-  value: T;
-  onChange: (v: T) => void;
+  options: Array<{ value: TV; label: string }>;
+  value: TV;
+  onChange: (v: TV) => void;
   disabled?: boolean;
 }) {
   return (
@@ -405,10 +592,10 @@ function Segments<T extends string>({
       role="group"
       style={{
         display: "flex",
-        gap: 6,
-        background: "rgba(28,28,33,0.06)",
+        gap: 4,
+        background: T.stone,
+        borderRadius: 11,
         padding: 4,
-        borderRadius: 10,
       }}
     >
       {options.map((o) => {
@@ -421,17 +608,18 @@ function Segments<T extends string>({
             aria-pressed={active}
             style={{
               flex: 1,
+              background: active ? T.dark : "transparent",
+              color: active ? T.darkInk : T.ink2,
               border: "none",
-              background: active ? "#1c1c20" : "transparent",
-              color: active ? "#f4f4f5" : "#54545a",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 11.5,
-              padding: "9px 8px",
-              borderRadius: 7,
+              borderRadius: 8,
+              padding: "9px 6px",
               cursor: disabled ? "not-allowed" : "pointer",
-              opacity: disabled ? 0.55 : 1,
-              transition: "background 0.15s, color 0.15s",
-              letterSpacing: "0.02em",
+              fontFamily: T.mono,
+              fontSize: 12,
+              fontWeight: active ? 600 : 500,
+              transition: "background .2s, color .2s",
+              whiteSpace: "nowrap",
+              opacity: disabled ? 0.5 : 1,
             }}
           >
             {o.label}
@@ -442,59 +630,43 @@ function Segments<T extends string>({
   );
 }
 
-// ─── style objects (mirrors Synthesizer.tsx) ───────────────────────────────────
-
-const inputBig: React.CSSProperties = {
-  background: "#ebebec",
+const textInputStyle: React.CSSProperties = {
+  background: T.stone,
   border: "none",
   borderRadius: 11,
-  padding: 12,
-  color: "#1d1d1e",
-  fontFamily: "'JetBrains Mono', monospace",
+  padding: 13,
+  color: T.ink,
+  fontFamily: T.mono,
   fontSize: 12.5,
   outline: "none",
   width: "100%",
   boxSizing: "border-box",
 };
 
-const inputSmall: React.CSSProperties = {
-  background: "#ebebec",
-  border: "none",
-  borderRadius: 10,
-  padding: "10px 11px",
-  color: "#1d1d1e",
-  fontFamily: "'JetBrains Mono', monospace",
-  fontSize: 12,
-  outline: "none",
-  width: "100%",
-  boxSizing: "border-box",
-};
-
-const selectStyle: React.CSSProperties = {
-  background: "#ebebec",
+const smallInputStyle: React.CSSProperties = {
+  background: T.stone,
   border: "none",
   borderRadius: 10,
   padding: "11px 12px",
-  color: "#1d1d1e",
-  fontFamily: "'JetBrains Mono', monospace",
+  color: T.ink,
+  fontFamily: T.mono,
   fontSize: 12.5,
   outline: "none",
   width: "100%",
-  appearance: "none",
-  cursor: "pointer",
+  boxSizing: "border-box",
 };
 
-const submitBtn: React.CSSProperties = {
-  marginTop: 2,
+const primaryBtn: React.CSSProperties = {
   width: "100%",
-  background: "#1c1c20",
-  color: "#f4f4f5",
-  fontFamily: "'JetBrains Mono', monospace",
+  fontFamily: T.mono,
   fontWeight: 600,
-  fontSize: 13.5,
+  fontSize: 14,
   border: "none",
-  borderRadius: 11,
-  padding: 14,
+  borderRadius: 12,
+  padding: 15,
   letterSpacing: "0.02em",
-  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 10,
 };

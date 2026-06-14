@@ -190,8 +190,12 @@ export interface SnapshotRef {
 // the in-memory recorder cache has GC'd the originating recording_id.
 export interface Snapshot {
   snapshot_id: string;
-  created_at: string; // RFC3339 UTC
-  expires_at: string; // RFC3339 UTC
+  // canonical id strings — populated by the backend so the share URL can
+  // re-fetch artifacts and re-run simulation without re-recording.
+  recording_id?: string;
+  spec_id?: string;
+  created_at?: string; // RFC3339 UTC
+  expires_at?: string; // RFC3339 UTC
   recording: Recording;
   spec: PolicySpec;
   modified_lib_rs?: string;

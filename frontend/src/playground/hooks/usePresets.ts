@@ -1,21 +1,3 @@
-// fetches the four hash presets that seed the InputPanel preset dropdown.
-//
-// each preset file lives in `frontend/public/` and is refreshed by a
-// server-side job. we hit them with `cache: 'no-store'` so we never serve
-// a stale hash from the browser cache. honesty rules:
-//   - if the fetch fails (404, network error, etc.) the entry is
-//     `unavailable` — never a placeholder hash, never a synthetic value.
-//   - if the body isn't a 64-char hex string, the entry is `unavailable`
-//     (treated as invalid the same way as a missing file).
-//   - if the `Last-Modified` header is missing OR older than 6h, the entry
-//     is `stale`: the hash is still surfaced so users can pick it, but the
-//     dropdown will annotate it so they understand the freshness signal.
-//   - otherwise the entry is `fresh`.
-//
-// no in-memory fallback, no synthesized hash — the production code path
-// here is the only source of truth. tests stub `fetch` to simulate network
-// outcomes; nothing inside this module fabricates data.
-
 import { useEffect, useState } from "react";
 
 export type PresetKey = "sample" | "blend" | "sep41" | "soroswap";
