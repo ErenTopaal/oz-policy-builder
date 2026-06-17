@@ -105,7 +105,9 @@ export function Nav() {
             Architecture
           </a>
           <a
-            href="#"
+            href="https://github.com/ErenTopaal/oz-policy-builder"
+            target="_blank"
+            rel="noreferrer"
             className="btn-dark"
             style={{
               textDecoration: "none",

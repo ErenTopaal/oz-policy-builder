@@ -67,7 +67,9 @@ export function Hero() {
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 11, marginTop: 32 }}>
             <a
-              href="#"
+              href="https://github.com/ErenTopaal/oz-policy-builder"
+              target="_blank"
+              rel="noreferrer"
               className="btn-dark"
               style={{
                 display: "inline-flex",

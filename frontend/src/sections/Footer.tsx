@@ -81,7 +81,9 @@ export function Footer() {
               project
             </span>
             <a
-              href="#"
+              href="https://github.com/ErenTopaal/oz-policy-builder"
+              target="_blank"
+              rel="noreferrer"
               className="footer-link"
               style={{ textDecoration: "none", color: "#cfcfd1", fontSize: 13.5 }}
             >
