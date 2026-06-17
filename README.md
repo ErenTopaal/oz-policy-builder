@@ -1,50 +1,51 @@
 # oz-policy-builder
 
-records a stellar transaction and synthesizes the minimum openzeppelin
+Records a Stellar transaction and synthesizes the minimum OpenZeppelin
 smart-account policy that would permit exactly that transaction.
 
-ships as a rust cli + mcp server + typescript wallet adapter + a hosted
-playground.
+Ships as a Rust CLI, an MCP server, a TypeScript wallet adapter, and a
+hosted playground.
 
-## live
+## Live
 
-- landing — <https://policy.erentopal.xyz>
-- playground — <https://policy.erentopal.xyz/playground>
-- mcp endpoint — <https://mcp.erentopal.xyz/mcp>
+- Landing — <https://policy.erentopal.xyz>
+- Playground — <https://policy.erentopal.xyz/playground>
+- MCP endpoint — <https://mcp.erentopal.xyz/mcp>
 
-## build
+## Build
 
 ```bash
 cargo build --release
 ```
 
-requires rust 1.89, stellar-cli 25. for the wallet adapter and frontend: node 22 + pnpm 10.
+Requires Rust 1.89, stellar-cli 25. For the wallet adapter and frontend:
+Node 22 and pnpm 10.
 
-## cli
+## CLI
 
 ```bash
-# record a testnet tx
+# Record a testnet tx
 cargo run -p oz-policy-cli -- record \
   --hash <tx-hash> \
   --rpc https://soroban-testnet.stellar.org \
   --network "Test SDF Network ; September 2015" \
   > recording.json
 
-# synthesize the minimum policy
+# Synthesize the minimum policy
 cargo run -p oz-policy-cli -- synthesize recording.json \
   --mode auto --tightness exact --lifetime 432000 > spec.json
 
-# generate the soroban contract source + wasm
+# Generate the Soroban contract source and wasm
 cargo run -p oz-policy-cli -- codegen spec.json --out ./out
 
-# simulate permit + deny
+# Simulate permit and deny
 cargo run -p oz-policy-cli -- simulate spec.json recording.json \
   --wasm-dir ./out --out report.json
 ```
 
-## mcp server
+## MCP server
 
-9 tools (`record_transaction`, `synthesize_policy`, `simulate_policy`,
+Nine tools (`record_transaction`, `synthesize_policy`, `simulate_policy`,
 `export_policy`, `verify_install`, `get_policy_artifacts`,
 `simulate_custom_source`, `create_snapshot`, `get_snapshot`).
 
@@ -53,27 +54,27 @@ cargo run -p oz-policy-cli -- simulate spec.json recording.json \
 ./target/release/oz-policy-mcp --http 8080 --token "$TOKEN"     # hosted
 ```
 
-## playground
+## Playground
 
-interactive `/playground` route — record → synthesize → inspect generated
-rust → edit → re-simulate → share as a stable url.
+Interactive `/playground` route. Record, synthesize, inspect the generated
+Rust, edit, re-simulate, and share as a stable URL.
 
-## layout
+## Layout
 
 ```
 crates/
-  oz-policy-core/        policy ir, decision tree, errors
-  oz-policy-recorder/    soroban rpc + xdr decoder
-  oz-policy-codegen/     askama templates + sandbox build
+  oz-policy-core/        policy IR, decision tree, errors
+  oz-policy-recorder/    Soroban RPC and XDR decoder
+  oz-policy-codegen/     askama templates and sandbox build
   oz-policy-simhost/     in-process soroban-env-host harness
   oz-policy-installer/   install envelope builder
-  oz-policy-mcp/         rmcp server (stdio + http)
-  oz-policy-cli/         thin cli over the above
-wallet-adapter/          typescript sep-43 adapter
-frontend/                vite + react landing + /playground
+  oz-policy-mcp/         rmcp server (stdio and http)
+  oz-policy-cli/         thin CLI over the above
+wallet-adapter/          TypeScript SEP-43 adapter
+frontend/                Vite + React landing and /playground
 skills/oz-policy-builder/  agent skill
 ```
 
-## license
+## License
 
-apache-2.0
+Apache-2.0
