@@ -93,28 +93,50 @@ export function Docs() {
               Reference docs for the CLI, the MCP server, the synthesizer IR, the constraint
               primitives, and the wallet adapter. Verified against the source at every release.
             </p>
-            <a
-              href="https://docs.policy.erentopal.xyz"
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 9,
-                alignSelf: "flex-start",
-                textDecoration: "none",
-                background: "#f4f4f5",
-                color: "#1c1c20",
-                fontFamily: "'JetBrains Mono',monospace",
-                fontWeight: 500,
-                fontSize: 14,
-                padding: "13px 22px",
-                borderRadius: 11,
-                boxShadow: "0 14px 28px -16px rgba(0,0,0,0.6)",
-              }}
-            >
-              Open the docs ↗
-            </a>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <a
+                href="https://docs.policy.erentopal.xyz"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  textDecoration: "none",
+                  background: "#f4f4f5",
+                  color: "#1c1c20",
+                  fontFamily: "'JetBrains Mono',monospace",
+                  fontWeight: 500,
+                  fontSize: 13.5,
+                  padding: "11px 16px",
+                  borderRadius: 10,
+                  boxShadow: "0 14px 28px -16px rgba(0,0,0,0.6)",
+                }}
+              >
+                Open the docs ↗
+              </a>
+              <a
+                href="https://youtu.be/FzT2JJzqbK0"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  textDecoration: "none",
+                  background: "transparent",
+                  color: "#f4f4f5",
+                  fontFamily: "'JetBrains Mono',monospace",
+                  fontWeight: 500,
+                  fontSize: 13.5,
+                  padding: "11px 16px",
+                  borderRadius: 10,
+                  boxShadow: "inset 0 0 0 1.5px rgba(255,255,255,0.35)",
+                }}
+              >
+                Demo video ↗
+              </a>
+            </div>
           </div>
         </div>
 
