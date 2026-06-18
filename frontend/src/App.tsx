@@ -10,6 +10,7 @@ import { Stats } from "./sections/Stats";
 import { QuickStart } from "./sections/QuickStart";
 import { Architecture } from "./sections/Architecture";
 import { Faq } from "./sections/Faq";
+import { Docs } from "./sections/Docs";
 import { Footer } from "./sections/Footer";
 import { PlaygroundPage } from "./playground/PlaygroundPage";
 
@@ -27,6 +28,7 @@ function Landing() {
       <QuickStart />
       <Architecture />
       <Faq />
+      <Docs />
       <Footer />
     </>
   );

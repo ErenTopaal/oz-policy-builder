@@ -111,19 +111,20 @@ export function Hero() {
               href="https://docs.policy.erentopal.xyz"
               target="_blank"
               rel="noreferrer"
-              className="btn-light"
+              className="btn-docs"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 9,
                 textDecoration: "none",
-                background: "transparent",
+                background: "rgba(28,28,33,0.04)",
                 color: "#1c1c20",
                 fontFamily: "'JetBrains Mono',monospace",
+                fontWeight: 500,
                 fontSize: 14,
-                padding: "14px 23px",
+                padding: "14px 30px",
                 borderRadius: 11,
-                boxShadow: "inset 0 0 0 1.5px rgba(28,28,33,0.18)",
+                boxShadow: "inset 0 0 0 2px rgba(28,28,33,0.55)",
               }}
             >
               Read the docs ↗
