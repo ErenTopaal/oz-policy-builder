@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh the sample testnet tx hash served at /sample-hash.txt
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/refresh-sample-hash.sh
