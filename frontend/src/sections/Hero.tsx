@@ -107,6 +107,27 @@ export function Hero() {
             >
               Open playground ↗
             </a>
+            <a
+              href="https://docs.policy.erentopal.xyz"
+              target="_blank"
+              rel="noreferrer"
+              className="btn-light"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 9,
+                textDecoration: "none",
+                background: "transparent",
+                color: "#1c1c20",
+                fontFamily: "'JetBrains Mono',monospace",
+                fontSize: 14,
+                padding: "14px 23px",
+                borderRadius: 11,
+                boxShadow: "inset 0 0 0 1.5px rgba(28,28,33,0.18)",
+              }}
+            >
+              Read the docs ↗
+            </a>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 36 }}>
             {["Rust CLI", "MCP server", "TS wallet adapter", "deterministic output"].map(

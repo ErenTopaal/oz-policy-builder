@@ -105,6 +105,15 @@ export function Nav() {
             Architecture
           </a>
           <a
+            href="https://docs.policy.erentopal.xyz"
+            target="_blank"
+            rel="noreferrer"
+            className="nav-link"
+            style={{ textDecoration: "none", color: "#55555b", fontSize: 14.5, fontWeight: 500 }}
+          >
+            Docs ↗
+          </a>
+          <a
             href="https://github.com/ErenTopaal/oz-policy-builder"
             target="_blank"
             rel="noreferrer"

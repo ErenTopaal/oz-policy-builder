@@ -90,14 +90,18 @@ export function Footer() {
               GitHub ↗
             </a>
             <a
-              href="#"
+              href="https://docs.policy.erentopal.xyz"
+              target="_blank"
+              rel="noreferrer"
               className="footer-link"
               style={{ textDecoration: "none", color: "#cfcfd1", fontSize: 13.5 }}
             >
               Documentation ↗
             </a>
             <a
-              href="#"
+              href="https://github.com/ErenTopaal/oz-policy-builder/blob/main/LICENSE-APACHE"
+              target="_blank"
+              rel="noreferrer"
               className="footer-link"
               style={{ textDecoration: "none", color: "#cfcfd1", fontSize: 13.5 }}
             >
