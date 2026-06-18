@@ -113,9 +113,12 @@ export function Hero() {
               rel="noreferrer"
               className="btn-docs"
               style={{
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: 9,
+                width: "100%",
+                flexBasis: "100%",
                 textDecoration: "none",
                 background: "rgba(28,28,33,0.04)",
                 color: "#1c1c20",
@@ -125,6 +128,7 @@ export function Hero() {
                 padding: "14px 30px",
                 borderRadius: 11,
                 boxShadow: "inset 0 0 0 2px rgba(28,28,33,0.55)",
+                boxSizing: "border-box",
               }}
             >
               Read the docs ↗
