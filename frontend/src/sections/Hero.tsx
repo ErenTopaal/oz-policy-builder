@@ -65,48 +65,59 @@ export function Hero() {
             minimum OpenZeppelin smart-account policy that would authorize it. Scoped,
             time-bounded authority for agents and dapps, without handing over your keys.
           </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 11, marginTop: 32 }}>
-            <a
-              href="https://github.com/ErenTopaal/oz-policy-builder"
-              target="_blank"
-              rel="noreferrer"
-              className="btn-dark"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 9,
-                textDecoration: "none",
-                background: "#1c1c20",
-                color: "#f4f4f5",
-                fontFamily: "'JetBrains Mono',monospace",
-                fontWeight: 500,
-                fontSize: 14,
-                padding: "14px 23px",
-                borderRadius: 11,
-                boxShadow: "0 16px 30px -16px rgba(28,28,33,0.7)",
-              }}
-            >
-              View on GitHub ↗
-            </a>
-            <a
-              href="/playground"
-              className="btn-light"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 9,
-                textDecoration: "none",
-                background: "#fbfbfb",
-                color: "#1c1c20",
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 14,
-                padding: "14px 23px",
-                borderRadius: 11,
-                boxShadow: "0 2px 8px -3px rgba(22,24,21,0.18)",
-              }}
-            >
-              Open playground ↗
-            </a>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 11,
+              marginTop: 32,
+              width: "fit-content",
+              maxWidth: "100%",
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 11 }}>
+              <a
+                href="https://github.com/ErenTopaal/oz-policy-builder"
+                target="_blank"
+                rel="noreferrer"
+                className="btn-dark"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 9,
+                  textDecoration: "none",
+                  background: "#1c1c20",
+                  color: "#f4f4f5",
+                  fontFamily: "'JetBrains Mono',monospace",
+                  fontWeight: 500,
+                  fontSize: 14,
+                  padding: "14px 23px",
+                  borderRadius: 11,
+                  boxShadow: "0 16px 30px -16px rgba(28,28,33,0.7)",
+                }}
+              >
+                View on GitHub ↗
+              </a>
+              <a
+                href="/playground"
+                className="btn-light"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 9,
+                  textDecoration: "none",
+                  background: "#fbfbfb",
+                  color: "#1c1c20",
+                  fontFamily: "'JetBrains Mono',monospace",
+                  fontSize: 14,
+                  padding: "14px 23px",
+                  borderRadius: 11,
+                  boxShadow: "0 2px 8px -3px rgba(22,24,21,0.18)",
+                }}
+              >
+                Open playground ↗
+              </a>
+            </div>
             <a
               href="https://docs.policy.erentopal.xyz"
               target="_blank"
@@ -118,7 +129,6 @@ export function Hero() {
                 justifyContent: "center",
                 gap: 9,
                 width: "100%",
-                flexBasis: "100%",
                 textDecoration: "none",
                 background: "rgba(28,28,33,0.04)",
                 color: "#1c1c20",
