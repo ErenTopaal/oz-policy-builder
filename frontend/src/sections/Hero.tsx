@@ -143,6 +143,31 @@ export function Hero() {
             >
               Read the docs ↗
             </a>
+            <a
+              href="https://youtu.be/FzT2JJzqbK0"
+              target="_blank"
+              rel="noreferrer"
+              className="btn-demo"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                width: "100%",
+                textDecoration: "none",
+                background: "#1c1c20",
+                color: "#f4f4f5",
+                fontFamily: "'JetBrains Mono',monospace",
+                fontWeight: 500,
+                fontSize: 14,
+                padding: "14px 30px",
+                borderRadius: 11,
+                boxShadow: "0 16px 30px -16px rgba(28,28,33,0.7)",
+                boxSizing: "border-box",
+              }}
+            >
+              ▶ Watch the demo
+            </a>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 36 }}>
             {["Rust CLI", "MCP server", "TS wallet adapter", "deterministic output"].map(
