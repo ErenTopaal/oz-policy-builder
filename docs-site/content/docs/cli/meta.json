@@ -1,0 +1,4 @@
+{
+  "title": "CLI",
+  "pages": ["index", "record", "synthesize", "codegen", "simulate", "prepare-install"]
+}

@@ -1,0 +1,91 @@
+---
+title: OZ auth payload encoder
+description: Two-stage SHA-256 digest, signers sorted by XDR byte order, context rule ids bound into the signature.
+---
+
+The OpenZeppelin smart-account contract's `__check_auth` expects a specific `AuthPayload` shape on every entry that carries `SorobanCredentials::Address(<smartAccount>)`. The wallet adapter exposes the encoder primitives directly and ships a factory that produces the callback `installPolicy` consumes.
+
+## The shapes
+
+```ts
+type OzSigner =
+  | { kind: 'delegated', address: string }                                    // G- or C-address
+  | { kind: 'external_ed25519', verifier: string, publicKeyHex: string }      // verifier contract + 32-byte key
+  | { kind: 'external_webauthn', verifier: string, publicKeyHex: string };    // verifier contract + 65-byte P-256 key
+
+interface OzAuthPayload {
+  signers: Map<OzSigner, Uint8Array>;                  // signer -> 64-byte signature
+  contextRuleIds: number[];                            // the u32 rule ids this signature covers
+}
+```
+
+`Signer::Delegated(Address)` uses the SA's built-in ed25519 verifier. `Signer::External(verifier, public_key_bytes)` routes to whichever verifier contract the OZ project deploys for that kind.
+
+## Functions
+
+| Function | Returns |
+|---|---|
+| `encodeSignerScVal(signer)` | `ScVal` Vec-encoded enum matching the on-chain `#[contracttype]` layout. |
+| `encodeContextRuleIdsScVal(ids)` | `ScVal::Vec` of `u32` values. |
+| `encodeAuthPayload(payload)` | `ScVal::Map` with sorted field keys `["context_rule_ids", "signers"]`. Signers within the map are sorted by their ScVal XDR byte order to satisfy the Soroban map invariant. |
+| `computeSignaturePayload(params)` | `sha256(HashIdPreimageSorobanAuthorization.toXDR())`. The standard Soroban auth payload. |
+| `computeAuthDigest(signaturePayload, contextRuleIds)` | Two-stage hash: `sha256(signature_payload \|\| xdr(context_rule_ids))`. **Signers must sign this**, not the raw `signaturePayload`. |
+| `buildOzAuthEntry(params)` | Builds the full `SorobanAuthorizationEntry` with rewritten credentials and the encoded signature. |
+| `makeOzSmartAccountAuthEncoder(args)` | Returns the `(xdr: string) => Promise<string>` encoder callback for `installPolicy`. |
+
+## Two-stage digest
+
+Signers must sign:
+
+```
+sha256(
+  sha256(HashIdPreimageSorobanAuthorization)
+  ||
+  xdr(Vec<u32> context_rule_ids)
+)
+```
+
+The first hash is the standard Soroban auth payload. The second hash binds the signature to a specific set of context rule ids, so a captured signature cannot be replayed against a different rule id. The OZ contract's `__check_auth` recomputes the inner and outer hash and verifies the signature against the result.
+
+This is **not** the same as signing the raw envelope payload. If you sign the wrong digest, `__check_auth` rejects.
+
+## Using the factory
+
+```ts
+import { Keypair, Networks } from '@stellar/stellar-sdk';
+import {
+  installPolicy,
+  makeOzSmartAccountAuthEncoder,
+  PasskeyWallet,
+} from '@oz-policy-builder/wallet-adapter';
+
+const signerKeypair = Keypair.fromSecret(process.env.SECRET!);
+const adapter = new PasskeyWallet({ signerSecretKey: process.env.SECRET! });
+
+const encoder = makeOzSmartAccountAuthEncoder({
+  smartAccount: 'C...',
+  contextRuleIds: [4],
+  networkPassphrase: Networks.TESTNET,
+  signers: [
+    {
+      signer: {
+        kind: 'delegated',
+        address: signerKeypair.publicKey(),
+      },
+      // either supply a `Keypair` directly...
+      keypair: signerKeypair,
+      // ...or pass a `signEd25519: (digest) => Uint8Array` callback for the
+      // 64-byte raw ed25519 signature over the two-stage digest.
+    },
+  ],
+});
+
+await installPolicy({
+  adapter,
+  envelopeXdrBase64,
+  ozAuthPayloadEncoder: encoder,
+  confirmMainnet: false,
+});
+```
+
+The encoder is run after the V4-meta fallback re-simulates the envelope, so the encoder sees the fully-simulated auth tree with the SA's nested entries and any zero-expiry credentials already stamped.

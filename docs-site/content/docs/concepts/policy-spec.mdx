@@ -1,0 +1,120 @@
+---
+title: PolicySpec
+description: The intermediate representation. Everything serializes to and from this.
+---
+
+`PolicySpec` is the toolkit's intermediate representation. The synthesizer produces it from a `Recording`. The code generator, the simulator, and the installer all consume it. The wire schema URI is `oz-policy-builder/v1`.
+
+## Top-level shape
+
+```rust
+pub struct PolicySpec {
+    pub schema: String,                       // always "oz-policy-builder/v1"
+    pub synthesis_mode: SynthesisMode,
+    pub context_rule: ContextRuleSpec,
+    pub signers: Vec<SignerSpec>,
+    pub policies: Vec<PolicySlot>,
+    pub lifetime_ledgers: Option<u32>,
+    pub recording_ref: RecordingRef,
+}
+```
+
+## `synthesis_mode`
+
+```rust
+pub enum SynthesisMode {
+    Auto,         // JSON: "auto"
+    ComposeOnly,  // JSON: "compose_only"
+    CodegenOnly,  // JSON: "codegen_only"
+}
+```
+
+See [Synthesis modes](/docs/concepts/synthesis-modes) for what each does.
+
+## `context_rule.context_type`
+
+A context rule applies either to every invocation of the smart account or to a specific target contract.
+
+```rust
+pub enum ContextType {
+    Default,                                  // matches every invocation
+    CallContract { address: String },         // matches calls to this C-address
+}
+```
+
+JSON shape:
+
+```json
+{ "kind": "default" }
+{ "kind": "call_contract", "address": "C..." }
+```
+
+## `signers`
+
+A vector of `SignerSpec`. Each is one of:
+
+```rust
+pub enum SignerSpec {
+    ExternalEd25519 { public_key_hex: String },   // 64 hex chars (32-byte ed25519 key)
+    ExternalWebAuthn { public_key_hex: String },  // 130 hex chars (65-byte uncompressed P-256)
+    Delegated { address: String },                // C-address of a contract that takes over auth
+}
+```
+
+JSON shape (`#[serde(tag = "kind", rename_all = "snake_case")]`):
+
+```json
+{ "kind": "external_ed25519", "public_key_hex": "..." }
+{ "kind": "external_webauthn", "public_key_hex": "..." }
+{ "kind": "delegated", "address": "C..." }
+```
+
+When `--delegated-signer` is passed to `synthesize`, the synthesizer emits exactly one `Delegated` signer instead of the recording's observed signers.
+
+## `policies`
+
+A vector of `PolicySlot`. The OZ framework caps this at five (`MAX_POLICIES = 5`).
+
+```rust
+pub enum PolicySlot {
+    Existing {
+        primitive: ExistingPrimitive,
+        params: ExistingPrimitiveParams,
+    },
+    Generated {
+        template_family: TemplateFamily,
+        constraints: Vec<Constraint>,
+    },
+}
+```
+
+- **`Existing`** — Track A composition. References a pre-deployed OZ primitive. See [Primitives](/docs/concepts/primitives).
+- **`Generated`** — Track B codegen. The synthesizer emits a fresh contract whose enforce logic is the AND of its constraints. See [Constraints](/docs/concepts/constraints).
+
+## Hard limits
+
+These come from the OZ smart-account contract; the synthesizer refuses to emit specs that violate them.
+
+| Constant | Value |
+|---|---|
+| `MAX_POLICIES` | 5 |
+| `MAX_SIGNERS` | 15 |
+| `MAX_NAME_SIZE` | 20 (bytes) |
+| `MAX_EXTERNAL_KEY_SIZE` | 256 (bytes) |
+
+## `lifetime_ledgers`
+
+Optional `u32`. When set, becomes the context rule's expiration ledger sequence (relative to the install ledger). When the matched primitive is `spending_limit`, it also becomes the spending limit's rolling window in ledgers.
+
+The default value passed by the CLI's `--lifetime 432000` is ~30 days at testnet pace.
+
+## `recording_ref`
+
+```rust
+pub struct RecordingRef {
+    pub hash: Option<String>,                 // when the recording came from --hash
+    pub schema: String,                       // always "oz-policy-builder/recording/v1"
+}
+```
+
+A back-reference to the recording that produced this spec. Lets a consumer of the spec re-fetch and re-derive deterministically.

@@ -1,0 +1,80 @@
+---
+title: Soroswap bounded
+description: Track B. Function allowlist plus asset allowlist, two constraints AND-composed in one generated slot.
+---
+
+The recorded transaction is a single `swap_exact_tokens_for_tokens` call against the Soroswap v1 router, swapping XLM to USDC. The synthesizer picks Track B and emits a generated policy with two constraints AND-composed: the function name plus the pair of SAC addresses involved.
+
+## Source transaction
+
+| Field | Value |
+|---|---|
+| Hash | `7475b1690d155f114129e193503fef8a529e6c492f65c835a3a49a0242abf382` |
+| Network | testnet |
+| Contract | Soroswap v1 router |
+| Function | `swap_exact_tokens_for_tokens` |
+| Path | `[XLM SAC, USDC SAC]` |
+
+## Synthesized spec
+
+```json
+{
+  "schema": "oz-policy-builder/v1",
+  "synthesis_mode": "auto",
+  "context_rule": {
+    "name": "rule",
+    "context_type": { "kind": "call_contract", "address": "C..." },
+    "valid_until": null
+  },
+  "signers": [/* observed ed25519 signer */],
+  "policies": [
+    {
+      "kind": "generated",
+      "template_family": "function_allowlist",
+      "constraints": [
+        { "kind": "function_allowlist", "functions": ["swap_exact_tokens_for_tokens"] },
+        { "kind": "asset_allowlist", "assets": ["<XLM SAC>", "<USDC SAC>"] }
+      ]
+    }
+  ],
+  "lifetime_ledgers": null,
+  "recording_ref": { "hash": "7475b169...", "schema": "oz-policy-builder/recording/v1" }
+}
+```
+
+## Artifacts on disk
+
+```
+walkthroughs/03-soroswap-bounded/
+├── source.json
+├── recording.json
+├── expected-spec-auto.json
+├── expected-sim-report.json
+├── expected-install-envelope.xdr
+└── wasm/
+    └── slot_0/
+        ├── source.rs
+        ├── policy.wasm
+        └── wasm_hash.txt
+```
+
+The pinned WASM hash is `4e488f545daf1efd951bfbb787bbbee167f0d83b2e9c5b09ca06b8d4ace35f75`.
+
+## What the simulation proves
+
+- **Permit replay passes.** The recorded `swap_exact_tokens_for_tokens` is admitted.
+- **Function deny.** Calls to any other Soroswap function (e.g. `swap_tokens_for_exact_tokens`) are rejected with error code `1010` (`FunctionNotAllowed`).
+- **Asset deny.** Calls to the right function but with a path containing a third token are rejected with error code `1040` (`AssetNotAllowed`).
+- **AND-composition.** A call that fails any single constraint fails the whole policy; the first failing constraint's error code is the one observed.
+
+## Reproduce
+
+```bash
+oz-policy-cli synthesize \
+  walkthroughs/03-soroswap-bounded/recording.json \
+  --mode auto --tightness exact \
+  > /tmp/spec.json
+
+oz-policy-cli codegen /tmp/spec.json --out /tmp/out
+diff /tmp/out/slot_0/wasm_hash.txt walkthroughs/03-soroswap-bounded/wasm/slot_0/wasm_hash.txt
+```

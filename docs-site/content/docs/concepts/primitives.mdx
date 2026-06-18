@@ -1,0 +1,73 @@
+---
+title: OZ primitives (Track A)
+description: The three pre-deployed primitives the synthesizer composes when their shape fits.
+---
+
+OpenZeppelin's smart-account framework ships three audited policy primitives. The synthesizer prefers Track A composition (referencing these by deployer address) over Track B codegen when one of them fits the recording's shape.
+
+This produces a `PolicySlot::Existing { primitive, params }`. No Rust source, no WASM. The framework's audited primitive binary is reused at install time.
+
+Signer lists live on the parent `PolicySpec.signers`. The per-primitive `params` carry only the install-time scalars; the matching `ExistingPrimitiveParams` enum is tagged with `{ "kind": "simple_threshold" | "weighted_threshold" | "spending_limit", ... }`.
+
+## `simple_threshold`
+
+K-of-N threshold over the spec's external signers.
+
+| Field | Type |
+|---|---|
+| `threshold` | `u32` |
+
+JSON:
+
+```json
+{ "kind": "simple_threshold", "threshold": 1 }
+```
+
+The synthesizer picks this when every observed signer is `ExternalEd25519` or `ExternalWebAuthn` (no `Delegated`), and a single threshold value covers the observed quorum.
+
+## `weighted_threshold`
+
+Weighted K-of-N. Each signer carries an explicit weight; the threshold is a sum.
+
+| Field | Type |
+|---|---|
+| `weights` | `Vec<WeightedSigner>` (order preserved) |
+| `threshold` | `u32` |
+
+Where:
+
+```rust
+pub struct WeightedSigner {
+    pub signer: SignerSpec,
+    pub weight: u32,
+}
+```
+
+## `spending_limit`
+
+A rolling spending cap in stroops over a fixed ledger period. Selected when the recording is a SEP-41 transfer that the synthesizer's heuristic recognizes as a subscription-style flow.
+
+| Field | Type |
+|---|---|
+| `period_ledgers` | `u32` |
+| `limit_stroops_string` | `String` (i128 stroops as decimal string) |
+
+The limit is serialized as a JSON string because stroops are i128 and overflow JSON number precision.
+
+## Selection heuristic
+
+In `auto` mode the synthesizer's decision tree:
+
+1. Checks if the recording is a SEP-41 transfer that fits `spending_limit`. If yes, emits Track A with `spending_limit`.
+2. Otherwise checks if the signer configuration fits `simple_threshold` or `weighted_threshold`. If yes, emits Track A with the matching primitive.
+3. Otherwise falls back to Track B and emits a `Generated` slot built from one or more [constraints](/docs/concepts/constraints).
+
+In `compose_only` mode the third step is replaced with `E_SYNTH_NOT_EXPRESSIBLE`.
+
+In `codegen_only` mode the first two steps are skipped.
+
+## Installer caveat
+
+Track A install requires looking up the deployer-published address for the primitive. As of v1, no testnet primitive addresses are published in the registry. `oz-policy-cli prepare-install` returns `E_INSTALL_PREFLIGHT_FAILED("primitive_address_unknown")` for Track A specs on testnet. The SEP-41 walkthrough emits `expected-install-envelope-error.txt` for this reason.
+
+Track B install works end to end. The Blend yield-claim and Soroswap bounded walkthroughs both ship `expected-install-envelope.xdr`.

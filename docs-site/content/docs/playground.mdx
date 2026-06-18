@@ -1,0 +1,36 @@
+---
+title: Playground
+description: Inspect and modify the generated Rust in a hosted editor. Re-simulate. Share the session as a stable URL.
+---
+
+The hosted playground at [policy.erentopal.xyz/playground](https://policy.erentopal.xyz/playground) is the inspect-and-modify surface. It runs the full pipeline in the browser against the hosted MCP endpoint.
+
+## Flow
+
+1. **Pick a preset.** The dropdown lists ready-made testnet transaction hashes refreshed by a cron. Pick one and the form fills with its hash plus a suggested tightness.
+2. **Synthesize.** The synthesize button calls `record_transaction`, then `synthesize_policy`, then `simulate_policy`, then `get_policy_artifacts`. The four tabs (Spec, Source, Simulate, Bundle) populate.
+3. **Inspect the source.** The Source tab opens the generated Rust in a Monaco editor (read-only by default; click into the editor to enable editing).
+4. **Edit.** Change anything. The diverged badge appears at the top of the editor.
+5. **Preflight.** A client-side scanner runs on every edit. It mirrors the backend's [forbidden-pattern set](/docs/mcp/tools#simulate_custom_source) exactly. Offending lines are flagged inline before any network call. The single source of truth is the regex set on the backend; the frontend imports the same labels for parity.
+6. **Re-simulate.** When the source is clean and diverged, the Re-simulate button is enabled. It calls `simulate_custom_source` with your edited `lib.rs`. The backend compiles in a `bwrap --unshare-net --ro-bind /` sandbox and runs the full deny suite.
+7. **Bundle.** Once the simulation passes, the Bundle tab can download a `.zip` containing the cargo manifest, the edited source, the spec, a markdown sim report, and an install snippet.
+8. **Share.** The Share button persists the session (recording, spec, edited source, sim report) via `create_snapshot` and updates the URL to `/playground/s/<id>`. Anyone with the link opens the exact same session via `get_snapshot`.
+
+## Tabs
+
+| Tab | Content |
+|---|---|
+| Spec | Rule name, context type, signers, policy slots, rendered as expandable cards. |
+| Source | Monaco editor over the generated `lib.rs`. The cargo manifest is shown in a sidebar. |
+| Simulate | Permit row plus per-deny vector cards. The hint table maps the known constraint error codes (1010, 1020, 1030, 1040, 1050, 1060, 1070) and the OZ primitive codes (3202, 3213, 3221, 3223) to plain-English descriptions. |
+| Bundle | File-tree preview of the downloadable zip. |
+
+## Snapshot URLs
+
+Snapshot IDs are 8-character Crockford base32. Snapshots persist for 30 days from creation. They survive a browser refresh and a different machine; they do not survive backend redeploys that wipe `/var/lib/oz-policy-mcp/snapshots/`.
+
+## Limits
+
+- The hosted MCP endpoint runs in a single daemon. A cold codegen compile for an unseen spec can take 30 to 60 seconds. Once compiled, the spec's WASM is cached and subsequent simulates return in under a second.
+- Preset chips are backed by hash files refreshed on a host-side systemd timer. When a chip turns gray (`unavailable`), the timer has not refreshed the underlying hash yet, or the upstream transaction has aged out of testnet RPC retention.
+- The playground does not currently expose a manual hash field with auto-discovery. Paste a known 64-character testnet hash into the Hash field to use a transaction not covered by a preset.

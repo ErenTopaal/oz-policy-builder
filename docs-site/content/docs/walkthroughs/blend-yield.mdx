@@ -1,0 +1,83 @@
+---
+title: Blend yield-claim
+description: Track B. A function allowlist with one entry, generated as fresh Soroban code.
+---
+
+The recorded transaction is a single `claim` call against a Blend pool contract on Stellar testnet. The synthesizer picks Track B and emits a generated policy whose `enforce` accepts only the `claim` symbol.
+
+## Source transaction
+
+| Field | Value |
+|---|---|
+| Hash | `5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e` |
+| Network | testnet |
+| Contract | Blend pool (`CCEBVDYM...`) |
+| Function | `claim` |
+| Arguments | (none captured in the recording shape) |
+
+## Synthesized spec
+
+```json
+{
+  "schema": "oz-policy-builder/v1",
+  "synthesis_mode": "auto",
+  "context_rule": {
+    "name": "rule",
+    "context_type": { "kind": "call_contract", "address": "CCEBVDYM..." },
+    "valid_until": null
+  },
+  "signers": [/* observed ed25519 signer */],
+  "policies": [
+    {
+      "kind": "generated",
+      "template_family": "function_allowlist",
+      "constraints": [
+        { "kind": "function_allowlist", "functions": ["claim"] }
+      ]
+    }
+  ],
+  "lifetime_ledgers": null,
+  "recording_ref": { "hash": "5a0ccffe...", "schema": "oz-policy-builder/recording/v1" }
+}
+```
+
+## Artifacts on disk
+
+```
+walkthroughs/01-blend-yield/
+├── source.json                          (recording metadata)
+├── expected-recording.json              (frozen recording, schema oz-policy-builder/recording/v1)
+├── expected-spec-auto.json              (frozen spec)
+├── expected-sim-report.json             (frozen sim report)
+├── expected-install-envelope.xdr        (base64 XDR, wallet-signable)
+└── wasm/
+    └── slot_0/
+        ├── source.rs                    (generated Rust)
+        ├── policy.wasm                  (compiled WASM)
+        └── wasm_hash.txt                (lowercase hex SHA-256)
+```
+
+The pinned WASM hash is `c9b915b11beeece4c7439f4a81452c72550c3d40b788f82d97e0eef955b700b7`.
+
+## What the simulation proves
+
+The frozen `expected-sim-report.json` shows:
+
+- **Permit replay passes.** The recorded `claim` call is admitted by the policy.
+- **Per-primitive deny vectors pass.** Calls to other functions on the same contract are rejected with error code `1010` (`FunctionNotAllowed`).
+
+## Reproduce
+
+```bash
+oz-policy-cli synthesize \
+  walkthroughs/01-blend-yield/expected-recording.json \
+  --mode auto --tightness exact \
+  > /tmp/spec.json
+
+diff /tmp/spec.json walkthroughs/01-blend-yield/expected-spec-auto.json
+# (no output: byte-equal)
+```
+
+## What is closed end to end
+
+This walkthrough is the install proof for the toolkit. The wallet adapter signs `expected-install-envelope.xdr`, submits it, and the resulting on-chain context rule's `verifyInstall.matches` returns `true`. The transaction hash that closed the loop is `038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb`, ledger `2617998`, context rule id `4`.

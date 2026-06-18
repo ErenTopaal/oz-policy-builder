@@ -1,0 +1,40 @@
+---
+title: Install
+description: Build the toolkit from source.
+---
+
+## Requirements
+
+- Rust `1.89.0` stable, with the `wasm32-unknown-unknown` target.
+- `stellar-cli` `25.1.0` (provides `wasm-opt 0.116.1`).
+- Node `22` and `pnpm` `10` if you also want the wallet adapter or the frontend.
+
+## Clone and build
+
+```bash
+git clone https://github.com/ErenTopaal/oz-policy-builder.git
+cd oz-policy-builder
+cargo build --release
+```
+
+The release build produces:
+
+- `target/release/oz-policy-cli` — the CLI binary.
+- `target/release/oz-policy-mcp` — the MCP server binary.
+
+## Verify
+
+```bash
+./target/release/oz-policy-cli --help
+./target/release/oz-policy-mcp --help
+```
+
+Both should print their subcommand surfaces. Continue with [Quickstart](/docs/getting-started/quickstart).
+
+## Test suite
+
+```bash
+cargo nextest run --workspace
+```
+
+443 tests passing (307 Rust, 78 wallet-adapter, 58 frontend) at HEAD.

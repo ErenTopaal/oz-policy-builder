@@ -1,0 +1,62 @@
+---
+title: installPolicy
+description: Sign the install envelope, submit it, poll until landed, extract the assigned context_rule_id.
+---
+
+```ts
+import { Networks } from '@stellar/stellar-sdk';
+import { installPolicy, FreighterWallet } from '@oz-policy-builder/wallet-adapter';
+
+const adapter = new FreighterWallet();
+const result = await installPolicy({
+  adapter,
+  envelopeXdrBase64,
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+  network: 'testnet',
+  networkPassphrase: Networks.TESTNET,
+  ozAuthPayloadEncoder,  // optional, see below
+  pollIntervalMs: 1000,
+  pollTimeoutMs: 60000,
+  confirmMainnet: false,
+});
+
+console.log(result.contextRuleId, result.txHash, result.ledger);
+```
+
+## Params
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `adapter` | `WalletAdapter` | yes | An adapter that implements the SEP-43 interface. |
+| `envelopeXdrBase64` | `string` | yes | The install envelope XDR. Produced by `prepare-install` or the `export_policy` MCP tool. |
+| `rpcUrl` | `string` | yes | Soroban RPC URL used for re-simulation, submit, and poll. |
+| `network` | `'testnet' \| 'mainnet'` | yes | Network discriminant. |
+| `networkPassphrase` | `string` | yes | Network passphrase the wallet must sign against. |
+| `ozAuthPayloadEncoder` | `(unsignedEnvelopeXdrBase64: string) => Promise<string>` | no | Pre-sign encoder. When set, the helper wipes the envelope's existing auth entries for record mode, re-simulates via RPC to fill in the SA's nested entries, stamps `sigExpLedger` on zero-expiry Address-credential entries, runs the encoder, then has the wallet sign the rewritten XDR. See [Auth encoder](/docs/wallet-adapter/auth-encoder). |
+| `pollIntervalMs` | `number` | no (default `1000`) | Poll interval. |
+| `pollTimeoutMs` | `number` | no (default `60000`) | Poll timeout. |
+| `confirmMainnet` | `boolean` | required when `network === "mainnet"` | Mainnet consent gate. Calling on mainnet without `true` returns `E_MAINNET_REQUIRES_CONSENT`. |
+
+## Result
+
+| Field | Type | Description |
+|---|---|---|
+| `txHash` | `string` | Settled transaction hash (lowercase hex, 64 chars). |
+| `contextRuleId` | `number` | The `u32` context-rule id assigned by the smart account. |
+| `ledger` | `number` | The ledger sequence the transaction landed at. |
+
+## Flow
+
+1. If `ozAuthPayloadEncoder` is set, the V4-meta fallback path runs: wipe `op.auth[]`, re-simulate, stamp expirations, encode.
+2. The wallet adapter is asked to sign the envelope.
+3. The signed XDR is submitted via the standard Stellar RPC `sendTransaction`.
+4. The helper polls `getTransaction` every `pollIntervalMs` until status is not `NOT_FOUND`.
+5. On `SUCCESS`, the helper parses the result XDR via the `stellar-sdk` 12.3.0 result-meta decoder, with a hand-rolled `V4` fallback for Protocol-23 result-meta XDR. The `context_rule_id` is extracted from the smart account's emitted event.
+
+## Mainnet consent
+
+The mainnet consent gate is a hard refusal, not a confirmation prompt. Pass `confirmMainnet: true` only when the caller has already obtained explicit user consent. Calling without it on mainnet returns `E_MAINNET_REQUIRES_CONSENT` immediately, before any sign request reaches the adapter.
+
+## V4-meta fallback
+
+`stellar-sdk 12.3.0` throws `"Bad union switch: 4"` when decoding Protocol-23 result-meta XDR (`TransactionMetaV4`). The helper detects this case and falls back to a hand-rolled `ScVal` scanner that extracts the `context_rule_id` directly. This fallback closes when `stellar-sdk` ships a fixed decoder upstream.

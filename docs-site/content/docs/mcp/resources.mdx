@@ -1,0 +1,18 @@
+---
+title: Resources
+description: Five resource URI families for stored recordings, specs, and artifacts.
+---
+
+The MCP server exposes stored entities as resources. Clients can subscribe to a URI and stream its contents without re-running the producing tool.
+
+| URI scheme | MIME type | Returned content |
+|---|---|---|
+| `recording://<id>` | `application/json` | The `Recording` JSON document. |
+| `spec://<id>` | `application/json` | The `PolicySpec` JSON document. |
+| `artifact://<id>/source.rs` | `text/plain` | Rendered Rust source for the first `Generated` slot. |
+| `artifact://<id>/policy.wasm` | `application/wasm` | Compiled WASM bytes, base64-encoded inside the resource envelope. |
+| `artifact://<id>/install_envelope.xdr` | `text/plain` | Install envelope XDR, base64-encoded. |
+
+`<id>` is the `recording_id`, `spec_id`, or `artifact_id` returned by the producing tool.
+
+Resource handlers run against the same in-memory store as tool handlers, so a resource URI is valid as long as the parent process is alive (recordings, specs) or as long as the snapshot is on disk (snapshots are a separate store with 30-day retention).

@@ -1,0 +1,40 @@
+---
+title: synthesize
+description: Run the decision tree on a Recording, emit a PolicySpec.
+---
+
+```bash
+oz-policy-cli synthesize <RECORDING_FILE> [OPTIONS]
+```
+
+Reads a `Recording` JSON document from disk, runs the decision tree, and emits the resulting `PolicySpec` JSON to stdout. Pure in-process, no network calls. The schema is `oz-policy-builder/v1`.
+
+## Flags
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `RECORDING_FILE` | `PathBuf` (positional) | required | Path to a `Recording` JSON document. |
+| `--mode` | `auto` \| `compose-only` \| `codegen-only` | `auto` | Synthesis mode. `auto` permits both Track A composition and Track B generated slots. `compose-only` requires every constraint to fit an existing OZ primitive. `codegen-only` forces every constraint into a `Generated` slot. |
+| `--tightness` | `exact` \| `small-margin` \| `loose` | `exact` | Numeric tightness applied to observed `i128` constraints. |
+| `--lifetime` | `u32` | — | Lifetime in ledgers emitted as `PolicySpec.lifetime_ledgers` and (when applicable) `SpendingLimit.period_ledgers`. |
+| `--delegated-signer` | `String` (StrKey C-address) | — | Contract address that takes over auth. When provided, the synthesizer emits exactly one `Delegated` signer instead of the per-recording observed signers. |
+| `--rule-name` | `String` | `rule` | Human-readable name for the emitted `ContextRuleSpec`. Must be 20 UTF-8 bytes or fewer. |
+
+See [Synthesis modes](/docs/concepts/synthesis-modes) for what `mode` and `tightness` actually do.
+
+## Example
+
+```bash
+oz-policy-cli synthesize recording.json \
+  --mode auto \
+  --tightness exact \
+  --lifetime 432000 \
+  --rule-name "blend-claim" \
+  > spec.json
+```
+
+## Errors
+
+| Exit code | Variant |
+|---|---|
+| `13` | `E_SYNTH_NOT_EXPRESSIBLE` (the decision tree cannot represent the recording within the framework's hard limits) |

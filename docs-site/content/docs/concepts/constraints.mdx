@@ -1,0 +1,157 @@
+---
+title: Constraint primitives
+description: The seven Track-B constraints. JSON shape, what each one bounds, what error code it emits when violated.
+---
+
+A `PolicySlot::Generated` carries one or more constraints. The rendered contract's `enforce` function is the conjunction (AND) of every constraint in the slot. Each constraint emits a distinct `PolicyError` variant when its check fails.
+
+## `function_allowlist`
+
+Whitelist of function names. Allowed function symbols are matched with `symbol_short!` (when the name is at most nine ASCII characters) or `Symbol::new(env, "...")`.
+
+```json
+{ "kind": "function_allowlist", "functions": ["claim"] }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `functions` | `Vec<String>` | One or more allowed function names. |
+
+**Error code** `1010` (`FunctionNotAllowed`).
+
+## `argument_pattern`
+
+Typed match on a single argument slot. The matcher discriminates by argument type and accepts one of four shapes.
+
+```json
+{
+  "kind": "argument_pattern",
+  "fn_name": "claim",
+  "arg_index": 0,
+  "matcher": { "kind": "exact", "value": { "kind": "address", "value": "G..." } }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `fn_name` | `String` | The function whose argument is constrained. |
+| `arg_index` | `u32` | Zero-based index of the argument slot. |
+| `matcher` | `ArgMatcher` | One of `Exact`, `Range`, `Allowlist`, `Blocklist`. |
+
+`ArgMatcher`:
+
+```rust
+pub enum ArgMatcher {
+    Exact { value: ArgValue },
+    Range { min_string: Option<String>, max_string: Option<String> },
+    Allowlist { values: Vec<ArgValue> },
+    Blocklist { values: Vec<ArgValue> },
+}
+```
+
+**Error code** `1020` (`ArgumentMismatch`).
+
+## `amount_range`
+
+Inclusive `[min, max]` clamp on a named `i128` argument. At least one of `min_string` and `max_string` must be set; an open-ended bound is valid.
+
+```json
+{
+  "kind": "amount_range",
+  "fn_name": "transfer",
+  "arg_index": 2,
+  "min_string": "0",
+  "max_string": "50000000"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `fn_name` | `String` | The function whose argument is bounded. |
+| `arg_index` | `u32` | Zero-based index of the `i128` slot. |
+| `min_string` | `Option<String>` | Optional lower bound (inclusive). Serialized as JSON string for precision. |
+| `max_string` | `Option<String>` | Optional upper bound (inclusive). |
+
+**Error code** `1030` (`AmountOutOfRange`).
+
+## `asset_allowlist`
+
+Whitelist of target contract addresses. Restricts which contracts may be invoked under this policy slot.
+
+```json
+{ "kind": "asset_allowlist", "assets": ["CCEBVDYM...", "CC72F57Y..."] }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `assets` | `Vec<String>` | One or more C-addresses. |
+
+**Error code** `1040` (`AssetNotAllowed`).
+
+## `time_window`
+
+Ledger-sequence window. Inclusive on both ends.
+
+```json
+{ "kind": "time_window", "start_ledger": 2572326, "end_ledger": 3004326 }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `start_ledger` | `u32` | First permitted ledger sequence. |
+| `end_ledger` | `u32` | Last permitted ledger sequence. |
+
+**Error code** `1050` (`TimeWindowViolated`).
+
+## `call_frequency`
+
+Stateful rate limit. At most `max_calls` calls per rolling window of `window_ledgers`.
+
+```json
+{ "kind": "call_frequency", "max_calls": 1, "window_ledgers": 17280 }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `max_calls` | `u32` | Cap. |
+| `window_ledgers` | `u32` | Rolling window size in ledger sequences. |
+
+The contract stores a `FreqLedgers` Vec of recent call timestamps under a `(smart_account, context_rule_id)`-keyed storage entry. Old entries are evicted at enforce time.
+
+**Error code** `1060` (`CallFrequencyExceeded`).
+
+## `sequence_ordering`
+
+Phase-ordered state machine. Calls must follow the declared phase order, wrapping after the last phase.
+
+```json
+{ "kind": "sequence_ordering", "phases": ["claim", "swap", "transfer"] }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `phases` | `Vec<String>` | Ordered list of function names. |
+
+The contract stores a `PhaseIndex` under a `(smart_account, context_rule_id)`-keyed storage entry. Each successful enforce increments the index modulo `phases.len()`.
+
+**Error code** `1070` (`SequenceOrderingViolated`).
+
+## Error code map
+
+| Code | Constraint |
+|---|---|
+| `1010` | `function_allowlist` |
+| `1020` | `argument_pattern` |
+| `1030` | `amount_range` |
+| `1040` | `asset_allowlist` |
+| `1050` | `time_window` |
+| `1060` | `call_frequency` |
+| `1070` | `sequence_ordering` |
+
+These are the codes the rendered Rust panics with via `panic_with_error!(env, PolicyError::Variant)`. The simulator asserts each deny vector against its expected code.
+
+## Composition
+
+Multiple constraints in the same `PolicySlot::Generated` are AND-composed in the rendered `enforce`. The contract checks each in declaration order; the first one to reject panics with its own error code.
+
+The audit-lint gate verifies that every match arm has an explicit reject branch (no silent passthroughs) and that storage is keyed by `(smart_account, context_rule_id)` so two slots sharing a contract binary cannot leak state across rules.

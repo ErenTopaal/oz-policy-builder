@@ -1,0 +1,61 @@
+---
+title: Overview
+description: TypeScript SEP-43 adapter that closes the record → synthesize → simulate → sign → install loop.
+---
+
+The wallet adapter is the TypeScript layer that signs and installs a generated policy on a real Stellar smart account, then verifies the on-chain rule matches the synthesized spec.
+
+It ships two adapter implementations and three orchestration helpers.
+
+## Adapters
+
+| Adapter | Use |
+|---|---|
+| `FreighterWallet` | Browser-extension wallet via `@stellar/freighter-api`. |
+| `PasskeyWallet` | Two paths: a headless `Keypair.fromSecret` for testnet automation, and a passkey-kit hook for WebAuthn-backed signing. |
+
+Both implement the same `WalletAdapter` interface, which conforms to SEP-43:
+
+```ts
+interface WalletAdapter {
+  isAvailable(): Promise<boolean>;
+  getAddress(): Promise<string>;
+  signTransaction(envelopeXdr: string, params: SignTransactionParams): Promise<SignTransactionResult>;
+  signAuthEntry(authEntryXdr: string, params: SignAuthEntryParams): Promise<SignAuthEntryResult>;
+}
+```
+
+`SignTransactionParams.submit` is restricted to `false` — submission is owned by `installPolicy`, never the wallet, so the simulate → sign → submit sequence stays auditable.
+
+## Orchestration helpers
+
+- [`installPolicy`](/docs/wallet-adapter/install-policy) — sign the install envelope, submit it, poll until landed, extract the assigned `context_rule_id`.
+- [`verifyInstall`](/docs/wallet-adapter/verify-install) — spawn the `oz-policy-mcp` subprocess and call `verify_install`. Returns drift items if the on-chain rule does not match the expected spec.
+- [`makeOzSmartAccountAuthEncoder`](/docs/wallet-adapter/auth-encoder) — produces the encoder callback that `installPolicy` uses to construct the OZ `AuthPayload` and bind context-rule ids into the signature.
+
+## Pinned versions
+
+| Dep | Pin |
+|---|---|
+| `@stellar/freighter-api` | `=6.0.1` |
+| `passkey-kit` | `=0.12.0` |
+| `@stellar/stellar-sdk` | `=12.3.0` (dev) |
+| `typescript` | `=5.6.3` (dev) |
+| `vitest` | `=2.1.9` (dev) |
+
+## Errors
+
+All adapter and orchestration errors implement a discriminated `code: string` field plus a `detail: string`. The codes are stable and documented per function.
+
+| Code | Function | Meaning |
+|---|---|---|
+| `E_WALLET_REJECTED` | adapter | User rejected the sign request. |
+| `E_INSTALL_SUBMIT_FAILED` | `installPolicy` | The submit RPC call failed. |
+| `E_INSTALL_POLL_TIMEOUT` | `installPolicy` | The poll timed out before the transaction left `NOT_FOUND`. |
+| `E_INSTALL_RESULT_DECODE_FAILED` | `installPolicy` | The `context_rule_id` could not be extracted from the result. |
+| `E_MAINNET_REQUIRES_CONSENT` | `installPolicy` | Called against mainnet without `confirmMainnet: true`. |
+| `E_VERIFY_SUBPROCESS_SPAWN_FAILED` | `verifyInstall` | The MCP subprocess could not be spawned. |
+| `E_VERIFY_SUBPROCESS_TIMEOUT` | `verifyInstall` | The MCP subprocess did not reply within the timeout. |
+| `E_VERIFY_SUBPROCESS_CRASHED` | `verifyInstall` | The MCP subprocess exited before replying. |
+| `E_VERIFY_PROTOCOL_ERROR` | `verifyInstall` | The JSON-RPC handshake or response shape was malformed. |
+| `E_VERIFY_TOOL_ERROR` | `verifyInstall` | The `verify_install` tool itself returned a typed error. |

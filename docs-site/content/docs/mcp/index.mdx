@@ -1,0 +1,52 @@
+---
+title: Overview
+description: rmcp Model Context Protocol server. Nine tools, five resource URI families, three prompt templates.
+---
+
+`oz-policy-mcp` is a single binary that exposes the toolkit to AI agents via the Model Context Protocol. It supports two transports and ships nine tools, five resource URI families, and three prompt templates.
+
+## Transports
+
+| Transport | Flag | Use case |
+|---|---|---|
+| STDIO | `--stdio` (default) | Local Claude Desktop, Cursor, Cline, Continue. Process is spawned per session. |
+| Streamable HTTP | `--http <PORT>` | Hosted endpoint. Single long-running daemon. CORS open. Sessions tracked via `Mcp-Session-Id` header. |
+
+The HTTP transport mounts at `/mcp` and exposes a `GET /healthz` endpoint that returns `{"status":"ok","version":"<workspace-version>"}`.
+
+## Auth
+
+Bearer token on HTTP, set via `--token <T>` or the `OZ_POLICY_MCP_TOKEN` environment variable. When set, every request must carry `Authorization: Bearer <token>`. Token comparison is constant-time.
+
+STDIO has no auth surface; the transport itself is the trust boundary.
+
+## Protocol version
+
+`2025-11-25`.
+
+## Live endpoint
+
+[`mcp.erentopal.xyz/mcp`](https://mcp.erentopal.xyz/mcp), reverse-proxied to a systemd-managed daemon, fronted by Caddy with Let's Encrypt automatic TLS.
+
+`GET /healthz` is open without auth. Tool calls require the bearer token.
+
+## Run locally
+
+```bash
+# STDIO (for Claude Desktop and other local clients)
+./target/release/oz-policy-mcp --stdio
+
+# Streamable HTTP
+./target/release/oz-policy-mcp --http 8080 --token "$OZ_POLICY_MCP_TOKEN"
+```
+
+## Surfaces
+
+- [Tools](/docs/mcp/tools) — nine tools, each with input and output schema.
+- [Resources](/docs/mcp/resources) — five resource URI families for stored recordings, specs, and artifacts.
+- [Prompts](/docs/mcp/prompts) — three prompt templates for the common flows.
+- [Clients](/docs/mcp/clients) — example configs for Claude Desktop, Cursor, Cline, Continue, mcp-cli.
+
+## Store
+
+Recordings, specs, and artifacts are stored in an in-memory `DashMap` keyed by short IDs (`rec_<uuid>`, `spec_<uuid>`, `art_<uuid>`). Snapshots, which bundle recording, spec, source, and report for the playground share-URL feature, are persisted on disk at `$OZ_POLICY_SNAPSHOT_DIR` (default `/var/lib/oz-policy-mcp/snapshots/`). Snapshot IDs are 8-character Crockford base32. Retention is 30 days from creation.

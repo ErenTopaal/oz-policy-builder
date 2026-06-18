@@ -1,0 +1,47 @@
+---
+title: Synthesis modes
+description: auto, compose-only, codegen-only, and how tightness scales numeric constraints.
+---
+
+The synthesizer has two paths: Track A (compose existing primitives) and Track B (generate fresh code). Mode selects which paths are eligible.
+
+## Modes
+
+| Mode | What it does |
+|---|---|
+| `auto` | Try Track A first. If no existing primitive fits the recording's shape, fall back to Track B. This is the default and matches the recommended workflow. |
+| `compose_only` | Refuse to fall back to Track B. Errors with `E_SYNTH_NOT_EXPRESSIBLE` if no primitive matches. Use this when you want a guarantee that the spec only references audited code. |
+| `codegen_only` | Skip Track A entirely. Every constraint is encoded as a `Generated` slot. Use this when you want maximum expressiveness or when you need shapes Track A cannot represent. |
+
+## Track A: compose
+
+Track A picks one of the three pre-deployed OZ primitives (`simple_threshold`, `weighted_threshold`, `spending_limit`) and parameterizes it from the recording. The resulting `PolicySlot::Existing` references the primitive by address at install time.
+
+This path produces no Rust code and no WASM. The framework's audited primitive binary is reused. See [Primitives](/docs/concepts/primitives).
+
+The toolkit currently picks Track A automatically when:
+
+- The recording is a SEP-41 transfer that fits a recurring spending limit, and `--mode` is `auto` or `compose_only`.
+- The signer configuration matches `simple_threshold` or `weighted_threshold` shape.
+
+## Track B: codegen
+
+Track B emits a fresh Soroban contract. The contract's `enforce` function is the conjunction of one or more [constraint primitives](/docs/concepts/constraints). The code generator renders askama templates, runs the audit-lint gate, and produces byte-deterministic WASM.
+
+This path lets the toolkit express any combination of constraints, including ones no shipped primitive covers (e.g. a function allowlist plus an argument pattern plus a daily call frequency cap).
+
+## Tightness
+
+`--tightness` controls how numeric `i128` constraints (currently the bounds on `amount_range`) hug the observed values.
+
+| Tightness | Scaling on observed amount `x` |
+|---|---|
+| `exact` | Permit `min = max = x`. Any deviation rejected. |
+| `small_margin` | Permit a small headroom band around `x`. Default headroom is small enough that a meaningful flow change still triggers rejection. |
+| `loose` | Permit a wider band. Use for noisy inputs (e.g. swap quotes whose slippage you expect to vary). |
+
+Tightness is only consulted when the synthesizer is emitting a numeric range. For non-numeric constraints (function allowlists, asset allowlists, time windows) it has no effect.
+
+## Determinism
+
+The synthesizer is a pure function from `(Recording, SynthesisOptions) -> Result<PolicySpec, Error>`. Same recording plus same options always produces the same spec, byte-equal. The walkthroughs ship frozen `expected-spec-auto.json` fixtures the CI gate compares against.

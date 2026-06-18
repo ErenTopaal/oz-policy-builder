@@ -1,0 +1,44 @@
+---
+title: record
+description: Fetch a transaction by hash or simulate an envelope, emit a typed Recording.
+---
+
+```bash
+oz-policy-cli record <--hash <HASH> | --envelope-xdr <ENVELOPE_XDR>> [OPTIONS]
+```
+
+Writes the resulting `Recording` JSON document to stdout. The schema is `oz-policy-builder/recording/v1`.
+
+## Flags
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--hash` | `String` (hex) | — | On-chain transaction hash, 64-character hex. Fetched via `getTransaction`. |
+| `--envelope-xdr` | `String` (base64) | — | Base64-encoded `TransactionEnvelope` XDR. Sent to `simulateTransaction`. Not submitted on chain. |
+| `--rpc` | `String` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint. |
+| `--network` | `String` | `Test SDF Network ; September 2015` | Stellar network passphrase. |
+| `--instruction-leeway` | `u64` | — | `simulateTransaction` resource budget leeway. Only consulted on the `--envelope-xdr` path. No-op for the current stable RPC client API; preserved for forward compatibility. |
+
+`--hash` and `--envelope-xdr` are mutually exclusive; exactly one is required.
+
+## Behavior
+
+- A 30-second timeout is applied to every RPC await.
+- The recorder verifies that the RPC's reported network passphrase matches `--network`. Mismatch is a hard error.
+- All `ScVal` values are decoded into the typed `ArgValue` enum. `i128` is serialized as a JSON string for precision.
+
+## Example
+
+```bash
+oz-policy-cli record \
+  --hash 5a0ccffed7aa586fe5f2763f1f85869c349a1ddff6edb21e4d76bf087a42db4e \
+  > recording.json
+```
+
+## Errors
+
+| Exit code | Variant |
+|---|---|
+| `10` | `E_RECORDER_HASH_NOT_FOUND` (hash not in retention) |
+| `11` | `E_RECORDER_SIM_FAILED` (`simulateTransaction` failure) |
+| `12` | `E_RECORDER_XDR_DECODE_FAILED` (envelope or meta XDR parse failure) |

@@ -1,0 +1,39 @@
+---
+title: Overview
+description: A toolkit that records a Stellar transaction and synthesizes the smallest OpenZeppelin smart-account policy that permits exactly that transaction.
+---
+
+`oz-policy-builder` records one Stellar transaction and generates the smallest OpenZeppelin smart-account policy that would permit exactly that transaction. Any deviation, a different asset, a larger amount, a call outside the time window, is rejected.
+
+The toolkit is delivered as five surfaces over one Rust core:
+
+<Cards>
+  <Card title="Rust CLI" href="/docs/cli" description="record, synthesize, codegen, simulate, prepare-install" />
+  <Card title="MCP server" href="/docs/mcp" description="Nine tools over STDIO and Streamable HTTP" />
+  <Card title="Wallet adapter" href="/docs/wallet-adapter" description="TypeScript SEP-43 adapter, installPolicy, verifyInstall" />
+  <Card title="Playground" href="/docs/playground" description="Hosted browser app for inspect-and-modify of the generated code" />
+  <Card title="Walkthroughs" href="/docs/walkthroughs" description="Three end-to-end Stellar testnet examples" />
+</Cards>
+
+## Live
+
+- Landing — [policy.erentopal.xyz](https://policy.erentopal.xyz)
+- Playground — [policy.erentopal.xyz/playground](https://policy.erentopal.xyz/playground)
+- MCP endpoint — [mcp.erentopal.xyz/mcp](https://mcp.erentopal.xyz/mcp)
+- Source — [github.com/ErenTopaal/oz-policy-builder](https://github.com/ErenTopaal/oz-policy-builder)
+
+## Status
+
+Working proof of concept. End to end on Stellar testnet. Apache-2.0.
+
+The real testnet install proof: transaction `038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb`, ledger `2617998`, context rule id `4`, `verifyInstall.matches = true`.
+
+## Why this exists
+
+OpenZeppelin's smart-account framework for Soroban decomposes on-chain authorization into context rules, signers, and policies. The expressiveness covers subscription billing, agent delegation, social recovery, and treasury controls. But authoring a custom policy is expert-level Rust: the author has to implement the `Policy` trait correctly, keep stateful data segregated by both the smart-account address and the context rule id, reject by default any call not explicitly allowed, and compose within the five-policy limit, all before any external audit.
+
+The practical consequence is that delegation falls back to handing an agent a full account key or an over-broad wallet, the exact failure mode smart accounts were meant to prevent.
+
+This toolkit inverts the problem from "enumerate every permission up front" to "demonstrate the flow once". A user or agent records one representative transaction. The toolkit derives the minimal context rule plus the smallest set of policies that permit exactly that flow.
+
+Least privilege, by demonstration.

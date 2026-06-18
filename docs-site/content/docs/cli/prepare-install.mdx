@@ -1,0 +1,46 @@
+---
+title: prepare-install
+description: Build a wallet-signable install envelope XDR. Does not submit.
+---
+
+```bash
+oz-policy-cli prepare-install <SPEC_FILE> \
+  --smart-account <C-ADDR> \
+  --source <G-ADDR> \
+  --account-revision <REVISION> \
+  [OPTIONS]
+```
+
+Reads a `PolicySpec` JSON document, calls `oz_policy_installer::build_install_envelope`, and emits the resulting `EnvelopeArtifact` JSON to stdout. The artifact contains a base64-encoded `TransactionEnvelope` XDR ready for the wallet to sign.
+
+Calls `simulateTransaction` and `getLedgerEntries` on the configured RPC to fill in `transactionData` and the auth vector. Never auto-submits.
+
+## Flags
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `SPEC_FILE` | `PathBuf` (positional) | required | Path to a `PolicySpec` JSON document. |
+| `--smart-account` | `String` (StrKey C-address) | required | Target smart-account contract. |
+| `--source` | `String` (StrKey G-address) | required | Funding source account. Pays fees and signs the outer envelope. |
+| `--rpc` | `String` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint. |
+| `--network` | `String` | `Test SDF Network ; September 2015` | Stellar network passphrase. |
+| `--account-revision` | `post-pr-655` \| `pre-pr-655` \| `unknown` | required | Caller-asserted smart-account release vintage. `unknown` and `pre-pr-655` are hard refusals in v1. |
+
+## Preflight gates
+
+The installer rejects malformed or unsafe envelopes before assembly:
+
+- **Smart-account vintage.** Only `post-pr-655` smart accounts are accepted in v1.
+- **`SpendingLimit` under `Default` context type.** The OZ framework rejects this combination. The installer refuses it locally before incurring an RPC round-trip.
+- **StrKey shape.** Both `--smart-account` and `--source` must round-trip through the StrKey codec.
+- **Network passphrase match.** The RPC's reported passphrase must match `--network`.
+
+## Caveat for Track A
+
+For `PolicySlot::Existing` slots that reference an OZ primitive (`simple_threshold`, `weighted_threshold`, `spending_limit`), the installer must look up the deployer-published primitive address. As of v1, no testnet primitive addresses are published in the registry. The SEP-41 subscription walkthrough currently emits `expected-install-envelope-error.txt` instead of an envelope XDR for this reason.
+
+## Errors
+
+| Exit code | Variant |
+|---|---|
+| `14` | `E_INSTALL_PREFLIGHT_FAILED` (any preflight gate fails) |

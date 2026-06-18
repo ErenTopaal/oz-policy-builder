@@ -1,0 +1,53 @@
+---
+title: codegen
+description: Render Track-B sources for every Generated slot and sandbox-compile each to WASM.
+---
+
+```bash
+oz-policy-cli codegen <SPEC_FILE> --out <OUT_DIR>
+```
+
+Reads a `PolicySpec` JSON document from disk, runs Track-B code generation for every `PolicySlot::Generated`, and writes the rendered source, optimized WASM, and lowercase-hex SHA-256 hash for each slot.
+
+`PolicySlot::Existing` entries (Track A composition) are silently skipped, since they reference pre-deployed OZ primitives and produce no new WASM.
+
+## Flags
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `SPEC_FILE` | `PathBuf` (positional) | required | Path to a `PolicySpec` JSON document. |
+| `--out` | `PathBuf` | required | Output directory. One subdirectory `slot_<i>/` is written per `Generated` policy slot. |
+
+## Output layout
+
+```
+out/
+  slot_0/
+    source.rs
+    policy.wasm
+    wasm_hash.txt
+  slot_1/
+    ...
+```
+
+Each WASM is byte-deterministic for a given spec and toolchain (Rust 1.89.0 + stellar-cli 25.1.0 + wasm-opt 0.116.1). The `wasm_hash.txt` is a lowercase hex SHA-256 of the optimized WASM.
+
+## Behavior
+
+- Source is rendered via [askama templates](https://github.com/djc/askama). See [Constraint primitives](/docs/concepts/constraints) for the seven shipped templates.
+- Compile runs `cargo build --target wasm32-unknown-unknown` inside a sandbox: `bwrap --unshare-net --ro-bind /` on Linux, `sandbox-exec` on macOS.
+- The optimized WASM is produced by `stellar contract optimize`, which embeds `wasm-opt`.
+- A five-rule audit lint gate runs over the rendered source before compile: `require_auth_first`, `storage_keyed_by_pair`, `no_unsafe`, `panic_uses_policy_error`, `no_floats_on_amounts`. The full source is parsed via `syn` and walked.
+
+## Example
+
+```bash
+oz-policy-cli codegen spec.json --out ./out
+cat ./out/slot_0/wasm_hash.txt
+```
+
+## Errors
+
+| Exit code | Variant |
+|---|---|
+| `15` | `E_CODEGEN_COMPILE_FAILED` (template render failure, audit-lint rejection, or cargo / wasm-opt failure) |

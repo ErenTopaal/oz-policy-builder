@@ -1,0 +1,63 @@
+---
+title: Architecture
+description: Seven Rust crates, one TypeScript wallet adapter, a Vite SPA, and an agent skill.
+---
+
+## Layers
+
+```
+Consumer layer
+  Claude / Cursor / Cline / Continue  -> agent skill (SKILL.md)
+  Browser dapp / Node CLI              -> wallet-adapter (TypeScript)
+  Hosted playground                    -> frontend (Vite + React)
+  Direct user                          -> oz-policy-cli
+
+                  |  MCP, STDIO or Streamable HTTP, bearer auth
+                  v
+
+oz-policy-mcp
+  9 tools, 5 resource URI families, 3 prompt templates, /healthz, on-disk snapshots
+
+                  |
+                  v
+
+oz-policy-recorder    oz-policy-core      oz-policy-codegen   oz-policy-simhost   oz-policy-installer
+RPC + XDR decoder     PolicySpec IR       askama templates     soroban-env-host    install envelope
+                      decision tree       + sandbox            + proptest deny     + preflight gates
+```
+
+## Rust workspace
+
+Seven crates. Pinned dependencies, `overflow-checks = true` in both `release` and `dev` profiles.
+
+| Crate | Responsibility |
+|---|---|
+| `oz-policy-core` | `PolicySpec` IR, decision tree, SEP-41 detection, `ArgValue` (22 variants covering every `ScVal` shape, i128 serialized as JSON string), `Recording` IR, canonical `Error` enum |
+| `oz-policy-recorder` | Soroban RPC client and XDR decoder, 30-second timeout on every RPC await, network passphrase cross-check |
+| `oz-policy-codegen` | Seven askama constraint templates plus base skeleton, sandbox `cargo build --target wasm32-unknown-unknown`, `stellar contract optimize`, five-rule audit-lint pre-compile gate |
+| `oz-policy-simhost` | In-process `soroban-env-host` harness, vendored minimal smart-account WASM, proptest deny-vector generator, deterministic for a fixed seed |
+| `oz-policy-installer` | Builds the wallet-signable install envelope XDR, preflight gates for smart-account vintage, StrKey shape, network match. Does not submit. |
+| `oz-policy-mcp` | rmcp Model Context Protocol server, STDIO and Streamable HTTP, nine tool handlers, on-chain `verify_install` readback, in-memory store plus on-disk snapshot store, bearer-token auth |
+| `oz-policy-cli` | Thin CLI wrapping the above |
+
+## TypeScript packages
+
+| Package | Responsibility |
+|---|---|
+| `wallet-adapter/` | SEP-43 types, Freighter adapter, headless or passkey-kit adapter, `installPolicy` (sign, submit, poll, extract `context_rule_id`), `verifyInstall` (spawns the MCP subprocess), OZ smart-account `AuthPayload` encoder with two-stage SHA-256 digest, V4-meta fallback for Protocol-23 result-meta |
+| `frontend/` | Vite 8, React 19, react-router-dom 7, Monaco. Landing page plus `/playground` route plus `/playground/s/:snapshotId` share-URL route. Four playground tabs, three controller hooks, client-side preflight that mirrors the backend's regex set, URL sync, JSZip bundle export. |
+
+## Skill package
+
+`skills/oz-policy-builder/SKILL.md` is an Anthropic Agent Skills package. It declares five MCP tools (the original Phase 5 surface) and ships three YAML evals (Blend, subscription, Soroswap). A flat-file twin in `skills/oz-policy-builder/flat/` exposes `prompt.md` and `tools.json` for non-Claude frameworks.
+
+## Hosting
+
+- **Caddy 2** reverse proxy, Let's Encrypt automatic TLS, HTTP/2 and HTTP/3.
+- **`policy.erentopal.xyz`** serves the Vite build via Caddy's `file_server`.
+- **`mcp.erentopal.xyz`** reverse-proxies to a systemd-managed `oz-policy-mcp --http` daemon. Hardened unit (`StateDirectory`, `ProtectSystem=strict`, `ProtectHome=read-only`). Codegen invocations from the daemon run under `bwrap --unshare-net --ro-bind /`.
+- **`docs.policy.erentopal.xyz`** serves this docs site via Caddy's `file_server`.
+
+## License
+
+Apache-2.0. See [LICENSE-APACHE](https://github.com/ErenTopaal/oz-policy-builder/blob/main/LICENSE-APACHE) in the repo.

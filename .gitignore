@@ -54,6 +54,10 @@ CHANGELOG.md
 NOTICE
 completion.md
 
+# allow everything under docs-site/ (Fumadocs source). overrides *.md, docs/,
+# and *.mdx-as-md ignore rules above so the content directory is tracked.
+!docs-site/**
+
 # personal scratch / probes
 _probe*.mjs
 _probe*.ts

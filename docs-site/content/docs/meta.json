@@ -1,0 +1,14 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "architecture",
+    "getting-started",
+    "concepts",
+    "cli",
+    "mcp",
+    "wallet-adapter",
+    "walkthroughs",
+    "playground"
+  ]
+}

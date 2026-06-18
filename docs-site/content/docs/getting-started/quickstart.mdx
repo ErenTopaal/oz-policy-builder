@@ -1,0 +1,61 @@
+---
+title: Quickstart
+description: Record one Stellar testnet transaction and produce a compiled policy in under a minute.
+---
+
+This walks the full pipeline against a real testnet transaction. No accounts or keys required.
+
+## Pick a transaction
+
+You need a 64-character hex hash of a recent Soroban contract invocation on testnet. The public Soroban RPC retains transactions for roughly twenty four hours.
+
+You can find one via the [Stellar testnet horizon](https://horizon-testnet.stellar.org/operations?order=desc&limit=200), or use a recent one of your own.
+
+## Run the four commands
+
+```bash title="record"
+oz-policy-cli record \
+  --hash <tx-hash> \
+  > recording.json
+```
+
+`record` fetches the transaction over the Soroban RPC, decodes the XDR, and writes a typed `Recording` to stdout.
+
+```bash title="synthesize"
+oz-policy-cli synthesize recording.json \
+  --mode auto \
+  --tightness exact \
+  --lifetime 432000 \
+  --rule-name "claim" \
+  > spec.json
+```
+
+`synthesize` reads the recording and emits a `PolicySpec` JSON document. Track A composition is preferred when an existing OZ primitive fits; otherwise Track B codegen is selected.
+
+```bash title="codegen"
+oz-policy-cli codegen spec.json --out out/
+```
+
+`codegen` renders one Rust crate per `Generated` policy slot, compiles each to `wasm32-unknown-unknown` inside a sandbox, and writes `slot_<i>/source.rs`, `slot_<i>/policy.wasm`, `slot_<i>/wasm_hash.txt`.
+
+```bash title="simulate"
+oz-policy-cli simulate spec.json recording.json \
+  --wasm-dir out/ \
+  --out report.json
+```
+
+`simulate` replays the recording through the real `soroban-env-host` and runs the proptest-generated deny suite. Exit code is zero only when the permit replay passes and every deny vector is rejected with the expected error code.
+
+## Inspect the output
+
+```bash
+cat report.json | python3 -m json.tool
+```
+
+You will see `permit.passed: true` and a `deny_results` array with one entry per deny vector.
+
+## Next
+
+- [CLI reference](/docs/cli)
+- [Inspect and modify in the playground](/docs/playground)
+- [Three documented walkthroughs](/docs/walkthroughs)

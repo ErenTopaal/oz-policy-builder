@@ -1,0 +1,4 @@
+{
+  "title": "Wallet adapter",
+  "pages": ["index", "install-policy", "verify-install", "auth-encoder"]
+}

@@ -1,0 +1,86 @@
+---
+title: SEP-41 subscription
+description: Track A. A spending limit primitive composed from an observed SEP-41 transfer.
+---
+
+The recorded transaction is a single SEP-41 `transfer` against a USDC-style SAC on Stellar testnet. The synthesizer's heuristic recognizes the recurring-payment shape and emits Track A composition with the `spending_limit` primitive.
+
+This walkthrough has no generated Rust and no WASM. The framework's audited `spending_limit` primitive binary is reused at install time.
+
+## Source transaction
+
+| Field | Value |
+|---|---|
+| Hash | `52b86b5393b9ee936aa7b62638fb9d40fdbbed93ea6ac685e925205f52d50fcf` |
+| Network | testnet |
+| Contract | USDC-style SAC |
+| Function | `transfer` |
+| Observed amount | `51613347` stroops |
+
+## Synthesized spec
+
+```json
+{
+  "schema": "oz-policy-builder/v1",
+  "synthesis_mode": "auto",
+  "context_rule": {
+    "name": "rule",
+    "context_type": { "kind": "call_contract", "address": "C..." },
+    "valid_until": null
+  },
+  "signers": [/* observed ed25519 signer */],
+  "policies": [
+    {
+      "kind": "existing",
+      "primitive": "spending_limit",
+      "params": {
+        "kind": "spending_limit",
+        "period_ledgers": 432000,
+        "limit_stroops_string": "51613347"
+      }
+    }
+  ],
+  "lifetime_ledgers": 432000,
+  "recording_ref": { "hash": "52b86b53...", "schema": "oz-policy-builder/recording/v1" }
+}
+```
+
+The `limit_stroops_string` is the i128 stroops cap, serialized as a JSON string for precision.
+
+## Artifacts on disk
+
+```
+walkthroughs/02-sep41-subscription/
+├── source.json
+├── recording.json
+├── expected-spec-auto.json
+├── expected-spec-track-a.json           (explicit Track-A only)
+├── expected-sim-report.json
+└── expected-install-envelope-error.txt  (envelope build BLOCKED, see below)
+```
+
+No `wasm/` directory: Track A produces no fresh WASM.
+
+## Install caveat
+
+The `expected-install-envelope.xdr` file is intentionally absent. Track A install requires the deployer-published primitive address for `spending_limit`. As of v1, no testnet primitive addresses are published in the registry. The installer returns `E_INSTALL_PREFLIGHT_FAILED("primitive_address_unknown")`, captured in `expected-install-envelope-error.txt`.
+
+This is a registry gap, not a synthesizer bug. The matching ignored test in `oz-policy-installer` (`envelope_against_testnet`) is `#[ignore]`d with this exact reason. When deployer registry addresses are published, this walkthrough will produce a valid envelope without any spec change.
+
+## What the simulation proves
+
+The frozen `expected-sim-report.json` shows:
+
+- **Permit replay passes.** The recorded `transfer` is admitted by the composed `spending_limit`.
+- **Deny vectors pass.** A transfer over the limit is rejected with the spending-limit error code; a transfer outside the period window is rejected; a non-`transfer` call fails the context rule's function filter.
+
+## Reproduce
+
+```bash
+oz-policy-cli synthesize \
+  walkthroughs/02-sep41-subscription/recording.json \
+  --mode auto --tightness exact --lifetime 432000 \
+  > /tmp/spec.json
+
+diff /tmp/spec.json walkthroughs/02-sep41-subscription/expected-spec-auto.json
+```

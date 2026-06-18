@@ -1,0 +1,36 @@
+---
+title: Overview
+description: Thin terminal wrapper over the Rust crates. Five subcommands.
+---
+
+`oz-policy-cli` is a single binary that wraps the recorder, synthesizer, code generator, simulator, and installer. It has no business logic of its own; all logic lives in the underlying crates.
+
+| Subcommand | Purpose |
+|---|---|
+| [`record`](/docs/cli/record) | Fetch a transaction by hash or simulate an envelope; emit a typed `Recording` to stdout. |
+| [`synthesize`](/docs/cli/synthesize) | Read a `Recording`, run the decision tree, emit a `PolicySpec` to stdout. |
+| [`codegen`](/docs/cli/codegen) | Read a `PolicySpec`, render Track-B sources, sandbox-compile each to WASM. |
+| [`simulate`](/docs/cli/simulate) | Replay the recording, run the deny suite, emit a `SimReport`. |
+| [`prepare-install`](/docs/cli/prepare-install) | Build a wallet-signable install envelope XDR. Does not submit. |
+
+A sixth `verify-install` step exists, but only as an [MCP tool](/docs/mcp/tools#verify_install), not as a CLI subcommand.
+
+## Exit codes
+
+`oz-policy-cli` maps the canonical `Error` enum to distinct non-zero exit codes via `exit_code_for`:
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `2` | clap validation error (unknown flag, missing required arg) |
+| `10` | `E_RECORDER_HASH_NOT_FOUND` |
+| `11` | `E_RECORDER_SIM_FAILED` |
+| `12` | `E_RECORDER_XDR_DECODE_FAILED` |
+| `13` | `E_SYNTH_NOT_EXPRESSIBLE` |
+| `14` | `E_INSTALL_PREFLIGHT_FAILED` |
+| `15` | `E_CODEGEN_COMPILE_FAILED` |
+| `16` | `E_SIM_PERMIT_DENIED` |
+| `17` | `E_SIM_DENY_PASSED` |
+| `20` | Any other `E_*` variant (e.g. `E_VERIFY_DRIFT`) |
+| `30` | `E_CLI_RUNTIME_FAILED` (tokio runtime build failure) |
+| `31` | `E_CLI_SERIALIZE_FAILED` (JSON serialization failure) |

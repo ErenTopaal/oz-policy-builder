@@ -1,0 +1,226 @@
+---
+title: Tools
+description: Nine tools. Five record-and-synthesize core tools, four playground extensions.
+---
+
+Every tool's input and output is a typed Rust struct with full `schemars::JsonSchema` derives. Fields with `Option<T>` are optional; all others are required.
+
+## `record_transaction`
+
+Fetch a transaction by hash or simulate a base64-encoded envelope XDR. Returns a typed `Recording`.
+
+**Input**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `network` | `"testnet"` \| `"mainnet"` | yes | Network discriminant. |
+| `rpc_url` | `String` | no | Override the default RPC URL for the chosen network. |
+| `hash` | `String` (hex) | one of | 64-character hex transaction hash. Mutually exclusive with `envelope_xdr_base64`. |
+| `envelope_xdr_base64` | `String` (base64) | one of | Base64 `TransactionEnvelope` XDR. Mutually exclusive with `hash`. Not submitted on chain. |
+| `instruction_leeway` | `u64` | no | `simulateTransaction` resource budget leeway. |
+
+**Output**
+
+| Field | Type | Description |
+|---|---|---|
+| `recording_id` | `String` | Fresh store ID, `rec_<uuid>`. |
+| `recording` | `Recording` | Decoded recording. |
+| `retention_warning` | `Option<String>` | Soft warning when the source transaction is near retention horizon. |
+
+## `synthesize_policy`
+
+Run the decision tree on a stored recording. Returns a `PolicySpec`.
+
+**Input**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `recording_id` | `String` | yes | Recording ID from `record_transaction`. |
+| `tightness` | `"exact"` \| `"small_margin"` \| `"loose"` | yes | Numeric scaling for i128 constraints. |
+| `mode` | `"auto"` \| `"compose_only"` \| `"codegen_only"` | yes | Synthesis path selection. |
+| `lifetime_ledgers` | `u32` | no | Emitted as `PolicySpec.lifetime_ledgers`. |
+| `delegated_signer` | `String` (C-address) | no | Override signer with a contract address. |
+| `rule_name` | `String` | no | Context rule name. Defaults to `rule-<first-8-of-id>`. |
+
+**Output**
+
+| Field | Type | Description |
+|---|---|---|
+| `spec_id` | `String` | Fresh store ID, `spec_<uuid>`. |
+| `spec` | `PolicySpec` | Deterministic synthesized spec. |
+| `generated_count` | `u32` | Number of `PolicySlot::Generated` entries. |
+| `composed_count` | `u32` | Number of `PolicySlot::Existing` entries. |
+
+## `simulate_policy`
+
+Replay the recording and run the deny suite. Returns the `SimReport`.
+
+**Input**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `spec_id` | `String` | yes | Spec ID from `synthesize_policy`. |
+| `recording_id` | `String` | yes | Recording ID for replay. |
+| `extra_deny_vectors` | `Vec<DenyVector>` | no | Extra deny vectors appended to the auto-generated suite. |
+
+**Output**
+
+The raw `SimReport`:
+
+```json
+{
+  "spec_id": "spec_...",
+  "permit": { "passed": true, "error": null },
+  "deny_results": [
+    { "name": "...", "passed": true, "expected_error_code": 1010, "actual_error_code": 1010 }
+  ],
+  "total_vectors": 5,
+  "passed": 5,
+  "timestamp_ledger": 2572326
+}
+```
+
+## `export_policy`
+
+Materialize artifacts (Rust source, WASM, install envelope XDR) for a spec.
+
+**Input**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `spec_id` | `String` | yes | Spec ID. |
+| `smart_account` | `String` (C-addr) | yes | Target smart account. |
+| `source_account` | `String` (G-addr) | yes | Funding source account. |
+| `rpc_url` | `String` | yes | Soroban RPC URL. |
+| `network_passphrase` | `String` | yes | Network passphrase the RPC serves. |
+| `account_revision` | `"post_pr_655"` \| `"pre_pr_655"` \| `"unknown"` | yes | Smart-account release vintage. `pre_pr_655` and `unknown` are hard refusals in v1. |
+| `format` | `"rust_source"` \| `"wasm"` \| `"install_envelope"` \| `"all"` | yes | Artifact selector. |
+
+**Output**
+
+| Field | Type | Description |
+|---|---|---|
+| `artifact_id` | `String` | Fresh store ID, `art_<uuid>`. |
+| `rust_source` | `Option<String>` | Rendered Track-B source for first `Generated` slot. |
+| `wasm_base64` | `Option<String>` | Compiled WASM bytes, base64-encoded. |
+| `install_envelope_xdr_base64` | `Option<String>` | Install envelope XDR, base64-encoded. |
+| `wasm_hash_hex` | `Option<String>` | Lowercase hex SHA-256 of the compiled WASM. |
+| `resource_uris` | `Vec<String>` | Resource URIs for the produced artifacts. |
+
+## `verify_install`
+
+On-chain readback. Calls `simulateTransaction(SmartAccount::get_context_rule(id))`, decodes the result, diffs against the spec.
+
+**Input**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `smart_account` | `String` (C-addr) | yes | Smart account whose on-chain context rule is inspected. |
+| `context_rule_id` | `u32` | yes | Context rule ID assigned at install time. |
+| `network` | `"testnet"` \| `"mainnet"` | yes | Network discriminant. |
+| `rpc_url` | `String` | no | Override the default RPC URL. |
+| `source_account` | `String` (G-addr) | no | Funded source account for the simulation. Defaults to `smart_account`. |
+| `expected_spec_id` | `String` | no | Spec ID to compare against (looked up in store). |
+| `expected_spec` | `PolicySpec` | no | Inline expected `PolicySpec`. Takes precedence over `expected_spec_id`. |
+
+**Output**
+
+| Field | Type | Description |
+|---|---|---|
+| `matches` | `bool` | `true` iff every field matches. |
+| `drift` | `Vec<DriftItem>` | Per-field drift report. Empty when `matches` is `true`. Each item: `{ field: String, expected: Value, actual: Value }`. |
+
+## `get_policy_artifacts`
+
+Return rendered Rust source and WASM hashes for a stored spec. Powers the playground Source tab.
+
+**Input**
+
+| Field | Type | Required |
+|---|---|---|
+| `spec_id` | `String` | yes |
+
+**Output**
+
+| Field | Type | Description |
+|---|---|---|
+| `spec_id` | `String` | Echo of input. |
+| `generated_sources` | `Vec<GeneratedSource>` | Each `{ slot_index, cargo_toml, lib_rs }`. |
+| `composed_count` | `u32` | Count of `PolicySlot::Existing`. |
+| `generated_count` | `u32` | Count of `PolicySlot::Generated`. |
+| `wasm_sha256` | `Option<String>` | Pre-optimize WASM hash, hex. |
+| `optimized_wasm_sha256` | `Option<String>` | Post-optimize WASM hash, hex. |
+
+## `simulate_custom_source`
+
+Compile and simulate a user-edited `lib.rs`. The playground's inspect-and-modify backend.
+
+**Input**
+
+| Field | Type | Required |
+|---|---|---|
+| `recording_id` | `String` | yes |
+| `spec_id` | `String` | yes |
+| `modified_lib_rs` | `String` | yes |
+| `extra_deny_vectors` | `Vec<DenyVector>` | no |
+
+**Output**
+
+`SimReport`, same shape as `simulate_policy`.
+
+**Tool-local error codes**
+
+| JSON-RPC code | Symbol |
+|---|---|
+| `-32112` | `E_PREFLIGHT_FORBIDDEN_PATTERN` |
+| `-32113` | `E_CARGO_BUILD_FAILED` |
+
+The preflight regex set is the single source of truth for forbidden patterns: `unsafe` blocks/fns/impls/traits, `extern "C"`, proc-macro attributes, `#[link]`, `include_bytes!` and `include_str!`, and the literal string `"build.rs"`. The frontend mirrors this exact regex set client-side, so most rejections never round-trip.
+
+## `create_snapshot`
+
+Persist a session for the share-URL feature.
+
+**Input**
+
+| Field | Type | Required |
+|---|---|---|
+| `recording_id` | `String` | yes |
+| `spec_id` | `String` | yes |
+| `modified_lib_rs` | `String` | no (set on a custom-source snapshot) |
+| `report` | `SimReport` | yes |
+
+**Output**
+
+| Field | Type | Description |
+|---|---|---|
+| `snapshot_id` | `String` | 8-character Crockford base32 (40 bits of entropy). |
+| `expires_at` | `DateTime<Utc>` | Creation time plus 30 days. |
+
+## `get_snapshot`
+
+Retrieve a persisted snapshot.
+
+**Input**
+
+| Field | Type | Required |
+|---|---|---|
+| `snapshot_id` | `String` | yes |
+
+**Output**
+
+The full `SnapshotRecord`:
+
+```json
+{
+  "snapshot_id": "...",
+  "created_at": "...",
+  "expires_at": "...",
+  "recording_id": "...",
+  "spec_id": "...",
+  "recording": { /* Recording */ },
+  "spec": { /* PolicySpec */ },
+  "modified_lib_rs": null,
+  "report": { /* SimReport */ }
+}
+```

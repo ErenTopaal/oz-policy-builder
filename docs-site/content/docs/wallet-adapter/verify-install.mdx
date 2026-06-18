@@ -1,0 +1,61 @@
+---
+title: verifyInstall
+description: Compare the on-chain context rule against the synthesized spec.
+---
+
+```ts
+import { verifyInstall } from '@oz-policy-builder/wallet-adapter';
+
+const report = await verifyInstall({
+  smartAccount: 'C...',
+  contextRuleId: 4,
+  network: 'testnet',
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+  expectedSpec,
+  // mcpServerCmd defaults to ["cargo", "run", "-p", "oz-policy-mcp", "--", "--stdio"]
+});
+
+if (!report.matches) {
+  console.error('drift:', report.drift);
+}
+```
+
+## Params
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `smartAccount` | `string` | yes | C-address of the smart account whose on-chain rule is inspected. |
+| `contextRuleId` | `number` | yes | The `u32` context-rule id assigned at install time. |
+| `network` | `'testnet' \| 'mainnet'` | yes | Network discriminant. |
+| `rpcUrl` | `string` | yes | Soroban RPC URL. |
+| `expectedSpec` | `PolicySpec` | no | The spec to compare on-chain state against. When omitted, the helper checks only that a rule exists at `contextRuleId`. |
+| `sourceAccount` | `string` (G-addr) | no | Funded source account for the simulation. Defaults to `smartAccount`. |
+| `mcpServerCmd` | `string[]` | no | Command to spawn the MCP server. Defaults to `['cargo', 'run', '-p', 'oz-policy-mcp', '--', '--stdio']`. Override when you have a pre-built binary on PATH. |
+| `timeoutMs` | `number` | no (default `60_000`) | Subprocess timeout. |
+
+## Result
+
+```ts
+interface VerifyInstallReport {
+  matches: boolean;
+  drift: VerifyInstallDriftItem[];
+}
+
+interface VerifyInstallDriftItem {
+  field: string;       // dotted path, e.g. "policies.0.constraints.0.functions"
+  expected: unknown;   // expected value from the spec
+  actual: unknown;     // actual value from on-chain
+}
+```
+
+`drift` is empty when `matches` is `true`.
+
+## Flow
+
+1. Spawns the MCP server as a subprocess. The child inherits the parent's environment unless `mcpServerCmd` overrides it.
+2. JSON-RPC `initialize` is sent, then the `verify_install` tool is called with the params.
+3. The MCP server calls `simulateTransaction(SmartAccount::get_context_rule(<id>))` on the configured RPC, decodes the result, and diffs against the expected spec.
+4. Result is parsed from `structuredContent` when present, with a text fallback.
+5. The subprocess is gracefully terminated.
+
+If the subprocess does not reply within `timeoutMs`, the helper kills the child and rejects with `E_VERIFY_SUBPROCESS_TIMEOUT`.

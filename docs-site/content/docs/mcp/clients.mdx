@@ -1,0 +1,76 @@
+---
+title: Client setup
+description: Example configurations for Claude Desktop, Cursor, Cline, Continue, and mcp-cli.
+---
+
+The repo ships example configurations at `tests/mcp-clients/`. The snippets below cover STDIO mode against a locally built binary. For the hosted endpoint, point your client at `https://mcp.erentopal.xyz/mcp` with the bearer token you have been issued.
+
+## Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%/Claude/claude_desktop_config.json` on Windows.
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "oz-policy-builder": {
+      "command": "/absolute/path/to/target/release/oz-policy-mcp",
+      "args": ["--stdio"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The tools surface as `record_transaction`, `synthesize_policy`, etc.
+
+## Cursor
+
+Cursor reads MCP configuration from its settings UI or from a `.cursor/mcp.json` file at the repository root.
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "oz-policy-builder": {
+      "command": "/absolute/path/to/target/release/oz-policy-mcp",
+      "args": ["--stdio"]
+    }
+  }
+}
+```
+
+## Cline
+
+Cline (VS Code extension) reads MCP servers from its settings UI. Use the same `command` and `args` shape.
+
+## Continue
+
+Continue uses a YAML or JSON config. Add to your `config.json`:
+
+```json title="continue config"
+{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "transport": {
+          "type": "stdio",
+          "command": "/absolute/path/to/target/release/oz-policy-mcp",
+          "args": ["--stdio"]
+        }
+      }
+    ]
+  }
+}
+```
+
+## mcp-cli
+
+For terminal probing:
+
+```bash
+mcp-cli --command "./target/release/oz-policy-mcp --stdio" tools/list
+```
+
+## Hosted endpoint
+
+For Streamable HTTP, point the client at `https://mcp.erentopal.xyz/mcp`. Send the bearer token in the `Authorization: Bearer <token>` header. The endpoint accepts `POST`, `GET`, and `DELETE`. Sessions are tracked via the `Mcp-Session-Id` header.
+
+`GET https://mcp.erentopal.xyz/healthz` is open without auth and returns `{"status":"ok","version":"..."}`.

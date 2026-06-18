@@ -1,0 +1,29 @@
+---
+title: Overview
+description: Three end-to-end Stellar testnet walkthroughs, frozen as reproducibility fixtures.
+---
+
+Each walkthrough is a real testnet transaction whose recording, spec, simulation report, and (where applicable) WASM and install envelope are committed to the repo under `walkthroughs/`. A CI gate re-derives spec and sim-report byte-equally from the recording on every change.
+
+| Walkthrough | Transaction | Track | Constraint |
+|---|---|---|---|
+| [Blend yield-claim](/docs/walkthroughs/blend-yield) | `5a0ccffe...` | B (codegen) | `function_allowlist: ["claim"]` on Blend pool |
+| [SEP-41 subscription](/docs/walkthroughs/sep41-subscription) | `52b86b53...` | A (composed) | `spending_limit { period_ledgers: 432000, limit_stroops: "51613347" }` |
+| [Soroswap bounded](/docs/walkthroughs/soroswap-bounded) | `7475b169...` | B (codegen) | `function_allowlist: ["swap_exact_tokens_for_tokens"]` + `asset_allowlist: [XLM SAC, USDC SAC]` |
+
+## Reproducibility
+
+The toolkit ships a `scripts/reproducible-build.sh` that:
+
+1. Validates the pinned toolchain (`rustc 1.89.0`, `stellar-cli 25.1.0`).
+2. Captures an env fingerprint as SHA-256 over `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, and supporting config.
+3. Re-derives every committed WASM and verifies the hash matches `wasm_hash.txt`.
+4. Emits a `reproducible-build-manifest-<tag>.json`.
+
+The current manifest at `reproducible-build-manifest-final-check.json` shows all three pinned WASMs reproduce byte-equally:
+
+| Walkthrough | WASM SHA-256 |
+|---|---|
+| `01-blend-yield/wasm/slot_0` | `c9b915b11beeece4c7439f4a81452c72550c3d40b788f82d97e0eef955b700b7` |
+| `03-soroswap-bounded/wasm/slot_0` | `4e488f545daf1efd951bfbb787bbbee167f0d83b2e9c5b09ca06b8d4ace35f75` |
+| `phase3-codegen-fixture/expected/slot_0` | `cb2a8736040711ff831346b20912fc1fe54a9bc096f9dab288014940d72b6fd4` |

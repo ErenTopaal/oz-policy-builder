@@ -1,0 +1,14 @@
+---
+title: Prompts
+description: Three prompt templates for the common flows.
+---
+
+The MCP server ships three prompt templates. An agent can invoke them by name to get a primed conversation for a common flow.
+
+| Prompt name | Flow |
+|---|---|
+| `record_and_explain` | Walks the user from a transaction hash through `record_transaction` and an explanation of the resulting `Recording`. |
+| `synthesize_subscription` | Walks the user through synthesizing a subscription-style policy. Composes the OZ `spending_limit` primitive over the recording's observed cap and period. |
+| `synthesize_delegated_trading` | Walks the user through synthesizing a delegated-trading policy with an explicit `delegated_signer` and an `asset_allowlist` plus `function_allowlist`. |
+
+Prompts are listed at the MCP `prompts/list` method; a client invokes them at `prompts/get`. The result is a sequence of `Message`s the agent can replay into its own context.
