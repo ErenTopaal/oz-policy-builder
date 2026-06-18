@@ -1,0 +1,11 @@
+{
+  "title": "Guides",
+  "pages": [
+    "index",
+    "synthesize-from-your-transaction",
+    "install-on-smart-account",
+    "integrate-in-a-dapp",
+    "host-your-own-mcp",
+    "troubleshooting"
+  ]
+}

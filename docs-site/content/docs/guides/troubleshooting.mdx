@@ -1,0 +1,156 @@
+---
+title: Troubleshooting
+description: Common errors across the CLI, the MCP server, the wallet adapter, and the playground. What each one means and how to recover.
+---
+
+Every error in the toolkit maps to a canonical `E_*` code. The same code shows up in the CLI exit code (modulo the `exit_code_for` mapping), in the MCP tool result, and in the wallet adapter's thrown errors. This page lists the ones most likely to bite a new user.
+
+## Recorder
+
+### `E_RECORDER_HASH_NOT_FOUND`
+
+The Soroban RPC could not find your transaction by hash.
+
+| Cause | Fix |
+|---|---|
+| Hash is older than RPC retention (about 24 hours on public testnet) | Re-submit the same envelope, use the new hash. |
+| Wrong network | Use `--rpc` and `--network` to point at the network the transaction actually ran on. |
+| Typo in the hash | The recorder validates 64-character hex strictly. Check for a stray space or trailing newline. |
+
+### `E_RECORDER_XDR_DECODE_FAILED`
+
+The transaction was found but the envelope or meta XDR failed to parse.
+
+| Cause | Fix |
+|---|---|
+| Protocol mismatch between your `stellar-xdr` version and the upstream meta version | Update the toolkit to the latest pinned `stellar-xdr`. The known Protocol-23 V4 meta gap is handled in the wallet adapter's install path. |
+| Truncated envelope (paste error) | Re-fetch from the RPC; do not edit XDR by hand. |
+
+## Synthesizer
+
+### `E_SYNTH_NOT_EXPRESSIBLE`
+
+The decision tree could not fit the recording within OZ's hard limits.
+
+| Cause | Fix |
+|---|---|
+| More than 15 signers | Use `--delegated-signer` to collapse to one delegated contract. |
+| More than 5 distinct policy slots needed | Split into two context rules, or relax `--tightness` so the synthesizer can merge constraints. |
+| Recording covers multiple distinct contracts that cannot be one `CallContract` rule | Re-record with one contract per policy. |
+
+## Codegen
+
+### `E_CODEGEN_COMPILE_FAILED`
+
+The rendered Rust failed an audit lint or the sandbox build.
+
+| Cause | Fix |
+|---|---|
+| An audit lint rejected the source | The lint name appears on stderr. The five gates are `require_auth_first`, `storage_keyed_by_pair`, `no_unsafe`, `panic_uses_policy_error`, `no_floats_on_amounts`. A failure here is usually a template bug; file an issue with the spec that triggered it. |
+| `cargo build --target wasm32-unknown-unknown` failed | The compiler output is on stderr. Confirm `wasm32-unknown-unknown` is installed: `rustup target add wasm32-unknown-unknown`. |
+| `stellar` not on `$PATH` | Codegen shells out to `stellar contract optimize`. Install `stellar-cli` 25.1.0 and make sure `stellar` is reachable on `$PATH` for whichever user runs the daemon (or your shell, for the CLI path). |
+| Sandbox refused (network leak detection) | The sandbox blocks any network access by design. If you see this, codegen is not the culprit; something is reaching out. |
+
+## Simulator
+
+### `E_SIM_PERMIT_DENIED`
+
+Your policy rejected its own demonstration transaction.
+
+| Cause | Fix |
+|---|---|
+| `--tightness exact` plus a noisy real amount that does not match the spec by zero-margin | Widen with `--tightness small_margin` and re-synthesize. |
+| The recording was simulated from a different envelope than the one being replayed | Use the same `recording.json` for synthesize and simulate. |
+
+### `E_SIM_DENY_PASSED`
+
+A deny vector was incorrectly admitted. Your spec is too loose.
+
+| Cause | Fix |
+|---|---|
+| `--tightness loose` on a value that should be strict | Re-synthesize with `exact`. |
+| `function_allowlist` over-broad (multiple functions listed when only one was observed) | Edit the spec by hand to drop the extras and re-run codegen + simulate. |
+
+## Installer
+
+### `E_INSTALL_PREFLIGHT_FAILED`
+
+The installer refused before assembling the envelope.
+
+| Sub-message | Cause | Fix |
+|---|---|---|
+| `primitive_address_unknown for <primitive> on <network>` | Track A install needs a published deployer address for the matched primitive on this network; none is registered. | Wait for the deployer registry to publish, or pass `--mode codegen-only` to `synthesize` so the spec emits a Track B slot instead. |
+| `PR-#649: spending_limit requires CallContract context_type, not Default` | OZ rejects `SpendingLimit` under the catch-all `Default` context type. | Re-synthesize so the context becomes `call_contract(<address>)`. |
+| `smart_account is not a valid C-address StrKey` / `source_account is not a valid G-address StrKey` | One of `--smart-account` or `--source` is malformed (length, prefix, or checksum). | Re-check the input verbatim. StrKeys are case-sensitive. |
+| `smart account is pre-PR-#655` / `account revision unknown` | The caller asserted a revision the preflight refuses. | Pass `--account-revision post-pr-655` — pre-#655 and unknown are hard refusals in v1. |
+| `MAX_POLICIES (5) exceeded` / `MAX_SIGNERS (15) exceeded` / `MAX_NAME_SIZE (20) exceeded ...` | The spec breaches an on-chain `SmartAccount` hard limit. | Split the rule, collapse signers, or shorten the rule name. |
+
+## Wallet adapter
+
+### `E_WALLET_REJECTED`
+
+The user dismissed the sign request inside their wallet.
+
+This is normal in interactive flows. Surface a retry path in your UI. Never assume rejection means "permanently no" without asking again.
+
+### `E_INSTALL_POLL_TIMEOUT`
+
+The transaction did not leave `NOT_FOUND` within `pollTimeoutMs`.
+
+| Cause | Fix |
+|---|---|
+| Slow network or congested ledger | Bump `pollTimeoutMs` to 120000 and retry. |
+| Submission failed silently (e.g. RPC returned an error you did not surface) | Re-check the `sendTransaction` response before polling. |
+
+### `E_INSTALL_RESULT_DECODE_FAILED`
+
+The transaction landed but the `context_rule_id` could not be extracted from the result.
+
+| Cause | Fix |
+|---|---|
+| Smart account contract version is older than the wallet adapter expects | Confirm the SA is `post-pr-655`. Earlier vintages do not emit a context-rule-id event. |
+| `stellar-sdk` cannot decode Protocol-23 V4 result-meta | The adapter ships a V4 fallback path; if that also fails, file the offending tx hash. |
+
+### `E_MAINNET_REQUIRES_CONSENT`
+
+You called `installPolicy` against mainnet without `confirmMainnet: true`.
+
+This is intentional. Mainnet writes must be gated behind explicit user confirmation in your dapp UI. Pass `confirmMainnet: true` only after the user has clicked through a confirmation that names the smart account and the policy.
+
+### `E_VERIFY_DRIFT` (or `report.matches === false`)
+
+The on-chain context rule does not match your expected spec.
+
+For each `drift` item, read `field`, `expected`, and `actual`:
+
+- `policies.N.constraints.M.functions` mismatch — your spec lists different functions than what was installed. Usually means you re-synthesized after install.
+- `context_rule.context_type` mismatch — same.
+- `signers.N.public_key_hex` mismatch — a different signer is on chain than what you expected. Possibly the wallet signed with a different key than your encoder declared.
+
+The recovery is almost always "re-derive your `expectedSpec` from the same `recording.json` you used at install time, then re-run verify."
+
+## Playground
+
+### "Synthesize is stuck"
+
+Most likely you are seeing a first-time cold compile. The hosted server runs codegen in a sandbox; the first call for a given spec takes thirty to sixty seconds. Subsequent calls hit the cache and return in under a second.
+
+If it has been more than two minutes, check the network panel. A 401 means the bearer token is wrong. A 503 means the daemon is restarting; retry in ten seconds. A CORS error means your origin is not in the server's allowlist.
+
+### Source tab is empty
+
+Either the spec is Track A (no generated Rust to show) or `get_policy_artifacts` did not run after synthesize. Refresh the page and re-pick the preset.
+
+### Re-simulate fails immediately with a forbidden-pattern error
+
+You wrote something the [forbidden-pattern preflight](/docs/mcp/tools#simulate_custom_source) rejects (`unsafe`, `extern`, proc-macro attrs, `#[link]`, `include_bytes!`/`include_str!`, the literal `"build.rs"`). Remove it; these are hard refusals.
+
+### Snapshot link returns "snapshot not found"
+
+Snapshots live thirty days from creation. After that, the on-disk record is GC'd. Links sent more than thirty days ago will 404. If you control the server, you can extend retention by editing the const.
+
+## When all else fails
+
+The MCP server, the CLI, and the wallet adapter all surface a machine-readable error code plus a human-readable detail. Always read both. The code tells you which family the error belongs to; the detail tells you what specifically went wrong.
+
+If you find a case this page does not cover, file an issue with the exact code, the detail, the input that triggered it, and the version of the toolkit you are running.

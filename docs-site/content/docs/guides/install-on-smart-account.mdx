@@ -1,0 +1,128 @@
+---
+title: Install on a smart account
+description: From a signed install envelope to a verified on-chain context rule, in TypeScript.
+---
+
+This continues from [Synthesize from your own transaction](/docs/guides/synthesize-from-your-transaction). You have an `envelope.json` produced by `prepare-install`. Now you sign it, submit it, and verify the on-chain rule matches your spec.
+
+## What you need
+
+- The `envelope.json` from the previous guide.
+- A TypeScript project with the wallet adapter installed. The adapter is published at `wallet-adapter/` in the repo; consume it via local path until npm publish.
+- One of: a Freighter extension on the same browser, or an ed25519 secret you control on testnet.
+
+## Pick an adapter
+
+```ts title="adapter.ts"
+import { FreighterWallet, PasskeyWallet } from '@oz-policy-builder/wallet-adapter';
+
+// In a browser dapp:
+export const adapter = new FreighterWallet();
+
+// In a headless Node script (testnet automation):
+export const adapter = new PasskeyWallet({
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+  networkPassphrase: 'Test SDF Network ; September 2015',
+  signerSecretKey: process.env.STELLAR_TESTNET_SECRET!,
+});
+```
+
+The `WalletAdapter` interface is identical across both. See [adapters](/docs/wallet-adapter).
+
+## Build the OZ auth encoder
+
+The OZ smart-account `__check_auth` expects a two-stage SHA-256 digest. The wallet adapter ships a factory:
+
+```ts title="encoder.ts"
+import {
+  makeOzSmartAccountAuthEncoder,
+  type OzSignerWithKey,
+} from '@oz-policy-builder/wallet-adapter';
+
+const signer: OzSignerWithKey = {
+  signer: {
+    kind: 'delegated',
+    address: yourKeypair.publicKey(),  // G-address whose ed25519 key signs
+  },
+  keypair: yourKeypair,                // from `@stellar/stellar-sdk`
+};
+
+export const encoder = makeOzSmartAccountAuthEncoder({
+  smartAccount: 'C...',
+  contextRuleIds: [0],   // bootstrap rule — what authorises the install itself
+  signers: [signer],
+  networkPassphrase: 'Test SDF Network ; September 2015',
+});
+```
+
+See [Auth encoder](/docs/wallet-adapter/auth-encoder) for the digest mechanics.
+
+## Sign, submit, poll, extract `context_rule_id`
+
+```ts title="install.ts"
+import { installPolicy } from '@oz-policy-builder/wallet-adapter';
+import { readFileSync } from 'node:fs';
+import { adapter } from './adapter';
+import { encoder } from './encoder';
+
+const envelope = JSON.parse(readFileSync('envelope.json', 'utf8'));
+
+const result = await installPolicy({
+  adapter,
+  envelopeXdrBase64: envelope.envelope_xdr_base64,
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+  network: 'testnet',
+  networkPassphrase: 'Test SDF Network ; September 2015',
+  ozAuthPayloadEncoder: encoder,
+  pollIntervalMs: 1000,
+  pollTimeoutMs: 60_000,
+  confirmMainnet: false,
+});
+
+console.log('tx:', result.txHash);
+console.log('context rule id:', result.contextRuleId);
+console.log('ledger:', result.ledger);
+```
+
+Calling on mainnet without `confirmMainnet: true` is a hard refusal (`E_MAINNET_REQUIRES_CONSENT`). Mainnet consent is per-call and must come from a real user confirmation in your dapp UI.
+
+## Verify the rule matches your spec
+
+```ts title="verify.ts"
+import { verifyInstall } from '@oz-policy-builder/wallet-adapter';
+import { readFileSync } from 'node:fs';
+
+const expectedSpec = JSON.parse(readFileSync('spec.json', 'utf8'));
+
+const report = await verifyInstall({
+  smartAccount: 'C...',
+  contextRuleId: result.contextRuleId,
+  network: 'testnet',
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+  expectedSpec,
+});
+
+if (!report.matches) {
+  console.error('drift:', report.drift);
+  process.exit(1);
+}
+
+console.log('verified: matches=true');
+```
+
+`verifyInstall` spawns the `oz-policy-mcp` subprocess by default. Override `mcpServerCmd` to point at a pre-built binary on `$PATH` if you do not want a `cargo run` each time.
+
+## What can go wrong
+
+| Error | Meaning | Recovery |
+|---|---|---|
+| `E_WALLET_REJECTED` | The user dismissed the sign request. | Show your UI's retry path. |
+| `E_INSTALL_POLL_TIMEOUT` | The transaction did not leave `NOT_FOUND` within sixty seconds. | Increase `pollTimeoutMs`. Check RPC health. |
+| `E_INSTALL_RESULT_DECODE_FAILED` | The `context_rule_id` could not be extracted from the result. | This usually means the on-chain SA contract version does not match what the adapter expects. Re-check `account-revision`. |
+| `E_VERIFY_DRIFT` (from the MCP tool) or `report.matches === false` | The on-chain rule does not match your spec. | Compare each `drift` item's `expected` vs `actual`. The most common cause is a stale `expected_spec` after a re-synthesize. |
+
+## You now have
+
+A real context rule installed on a real smart account, with a programmatic proof that the on-chain shape matches the `PolicySpec` you started from.
+
+The full closed loop in this codebase landed at tx `038583fa4c95654c9a26323702b86729e084357d47ab169fa22a77d821ce90bb`, ledger `2617998`, context rule id `4`.

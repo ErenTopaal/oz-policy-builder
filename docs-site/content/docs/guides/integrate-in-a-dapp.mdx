@@ -1,0 +1,159 @@
+---
+title: Integrate the playground flow into a dapp
+description: A browser-side recipe for record, synthesize, install, all inside your own UI, calling the hosted MCP server.
+---
+
+This is the path for a dapp that wants the toolkit's pipeline available to its users without sending them to the hosted playground.
+
+You will talk to the MCP server over Streamable HTTP, sign with Freighter (or another SEP-43 wallet), and install on a smart account you control.
+
+## What you need
+
+- A Vite, Next, or any modern React app.
+- `@stellar/freighter-api`, the wallet-adapter package, and a fetch client.
+- An MCP endpoint plus bearer token. You can use the hosted one for testnet experimentation; for production, [host your own](/docs/guides/host-your-own-mcp).
+
+## Configure the endpoint
+
+```ts title="src/lib/mcp.ts"
+const MCP_ENDPOINT = import.meta.env.VITE_MCP_ENDPOINT
+  ?? 'https://mcp.erentopal.xyz/mcp';
+const MCP_TOKEN = import.meta.env.VITE_MCP_TOKEN
+  ?? '';  // empty = no bearer (only works against an unauthenticated server)
+```
+
+For a hosted endpoint with auth, set both variables in your `.env.production`.
+
+## Call MCP tools over fetch
+
+The MCP Streamable HTTP transport accepts JSON-RPC over POST with `Accept: application/json, text/event-stream`. The server returns either application/json or SSE. After `initialize` you get a session ID in the `Mcp-Session-Id` response header that you must echo on every subsequent call.
+
+```ts title="src/lib/mcp.ts"
+let session: string | null = null;
+
+async function rpc<T>(method: string, params: unknown): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+  };
+  if (MCP_TOKEN) headers.Authorization = `Bearer ${MCP_TOKEN}`;
+  if (session) headers['Mcp-Session-Id'] = session;
+
+  const res = await fetch(MCP_ENDPOINT, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
+  });
+
+  const newSession = res.headers.get('Mcp-Session-Id');
+  if (newSession) session = newSession;
+
+  const text = await res.text();
+  // Handle either JSON or SSE; SSE is "data: {...}\n\n" frames.
+  const last = text.trim().split('\n').reverse()
+    .find(l => l.startsWith('data: '))?.slice(6) ?? text;
+  const json = JSON.parse(last);
+  if (json.error) throw new Error(`${json.error.code}: ${json.error.message}`);
+  return json.result as T;
+}
+
+export async function initSession() {
+  await rpc('initialize', {
+    protocolVersion: '2025-11-25',
+    capabilities: {},
+    clientInfo: { name: 'my-dapp', version: '0.0.0' },
+  });
+  await fetch(MCP_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Mcp-Session-Id': session! },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+  });
+}
+
+export async function callTool<T>(name: string, args: unknown): Promise<T> {
+  return rpc<{ structuredContent: T }>('tools/call', { name, arguments: args })
+    .then(r => r.structuredContent);
+}
+```
+
+For a production client see `frontend/src/lib/mcp.ts` in the repo, which adds timeout, error mapping, and CORS-friendly retries.
+
+## Drive the pipeline from your UI
+
+```tsx title="src/components/PolicyBuilder.tsx"
+import { useState } from 'react';
+import { initSession, callTool } from '../lib/mcp';
+
+export function PolicyBuilder({ txHash }: { txHash: string }) {
+  const [report, setReport] = useState<unknown | null>(null);
+
+  async function run() {
+    await initSession();
+
+    const rec = await callTool<{ recording_id: string }>('record_transaction', {
+      hash: txHash,
+      network: 'testnet',
+    });
+
+    const spec = await callTool<{ spec_id: string }>('synthesize_policy', {
+      recording_id: rec.recording_id,
+      mode: 'auto',
+      tightness: 'exact',
+      lifetime_ledgers: 432000,
+    });
+
+    const sim = await callTool('simulate_policy', {
+      spec_id: spec.spec_id,
+      recording_id: rec.recording_id,
+    });
+
+    setReport(sim);
+  }
+
+  return (
+    <div>
+      <button onClick={run}>synthesize</button>
+      {report && <pre>{JSON.stringify(report, null, 2)}</pre>}
+    </div>
+  );
+}
+```
+
+That gives you `record_transaction` → `synthesize_policy` → `simulate_policy`. To show the generated Rust, add a `get_policy_artifacts` call.
+
+## Inspect-and-modify in your UI
+
+If you want the playground's edit-and-resimulate flow:
+
+1. After `synthesize_policy`, call `get_policy_artifacts({ spec_id })` to receive `generated_sources[].lib_rs`.
+2. Render the source in a Monaco editor or any text area.
+3. On user edits, send the edited source to `simulate_custom_source({ recording_id, spec_id, modified_lib_rs })`. The hosted server compiles in a sandbox and returns a fresh `SimReport`.
+4. Run a client-side preflight that mirrors the [forbidden-pattern set](/docs/mcp/tools#simulate_custom_source) so common mistakes never round-trip.
+
+The reference implementation is at `frontend/src/playground/` in the repo.
+
+## Hand off to install
+
+When the spec is accepted, build the install envelope server-side or via the CLI. For browser-side install:
+
+```tsx
+import { FreighterWallet, installPolicy, makeOzSmartAccountAuthEncoder } from '@oz-policy-builder/wallet-adapter';
+
+const adapter = new FreighterWallet();
+const envelopeXdrBase64 = /* from export_policy with format: 'install_envelope' */ '';
+
+const result = await installPolicy({
+  adapter,
+  envelopeXdrBase64,
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+  network: 'testnet',
+  networkPassphrase: 'Test SDF Network ; September 2015',
+  ozAuthPayloadEncoder: makeOzSmartAccountAuthEncoder({/* ... */}),
+});
+```
+
+See [Install on a smart account](/docs/guides/install-on-smart-account) for the full closure.
+
+## CORS
+
+The hosted endpoint allows any origin and exposes `Mcp-Session-Id` so a browser dapp can read it. If you host your own MCP server, replicate these headers (see `Access-Control-Allow-Origin` and `Access-Control-Expose-Headers` in the [server overview](/docs/mcp)).

@@ -1,0 +1,165 @@
+---
+title: Host your own MCP server
+description: Build the release binary, run it under systemd, front it with Caddy plus Let's Encrypt, hand the bearer token to your clients.
+---
+
+The hosted endpoint at `mcp.erentopal.xyz/mcp` is a single Linux box running `oz-policy-mcp` under systemd, with Caddy doing TLS termination and reverse-proxying. This guide replicates that setup on a fresh VPS.
+
+## What you need
+
+- A Linux server with `sudo`. The reference deployment uses a 2 vCPU / 4 GB box. The codegen sandbox is the heaviest workload; less than 4 GB makes large compiles flaky.
+- A domain name pointed at the server. The example uses `mcp.example.com`.
+- Caddy 2 installed. The repo's daemon assumes Caddy fronts it and provides TLS via Let's Encrypt.
+- `bwrap` for the codegen sandbox (`bubblewrap` package on Debian-family).
+- A clone of the repo and a working Rust 1.89 toolchain (or you can build elsewhere and rsync the binary).
+
+## Build the release binary
+
+On the build host:
+
+```bash
+git clone https://github.com/ErenTopaal/oz-policy-builder
+cd oz-policy-builder
+cargo build --release -p oz-policy-mcp
+```
+
+The binary lands at `target/release/oz-policy-mcp`. Copy it to the deploy server:
+
+```bash
+scp target/release/oz-policy-mcp deploy@your-server:/usr/local/bin/oz-policy-mcp
+ssh deploy@your-server "sudo chown root:root /usr/local/bin/oz-policy-mcp && sudo chmod 755 /usr/local/bin/oz-policy-mcp"
+```
+
+## Generate a bearer token
+
+```bash
+openssl rand -hex 32
+```
+
+Store this in a root-owned file the systemd unit reads from:
+
+```bash
+sudo install -m 600 -o root -g root /dev/stdin /etc/oz-policy-mcp.env <<EOF
+OZ_POLICY_MCP_TOKEN=$(openssl rand -hex 32)
+EOF
+```
+
+Hand the token to every client (Claude Desktop, Cursor, your dapp) as the bearer.
+
+## systemd unit
+
+```ini title="/etc/systemd/system/oz-policy-mcp.service"
+[Unit]
+Description=oz-policy-builder MCP server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/oz-policy-mcp --http 8080 --token ${OZ_POLICY_MCP_TOKEN}
+EnvironmentFile=/etc/oz-policy-mcp.env
+Restart=on-failure
+RestartSec=3
+
+# Hardening
+DynamicUser=true
+StateDirectory=oz-policy-mcp
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/oz-policy-mcp
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now oz-policy-mcp
+sudo systemctl status oz-policy-mcp
+```
+
+The snapshot store lives at `/var/lib/oz-policy-mcp/snapshots/` thanks to `StateDirectory`.
+
+## Caddy reverse proxy
+
+```text title="/etc/caddy/Caddyfile (excerpt)"
+mcp.example.com {
+    encode zstd gzip
+
+    @cors_preflight method OPTIONS
+    header @cors_preflight {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "POST, GET, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, Accept, Mcp-Session-Id, Mcp-Protocol-Version"
+        Access-Control-Max-Age "86400"
+    }
+    respond @cors_preflight 204
+
+    header {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Expose-Headers "Mcp-Session-Id"
+    }
+
+    reverse_proxy 127.0.0.1:8080 {
+        header_up Host "127.0.0.1:8080"
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+```
+
+Reload Caddy:
+
+```bash
+sudo systemctl reload caddy
+```
+
+TLS is automatic via Let's Encrypt once your domain points at the server.
+
+## Verify
+
+```bash
+curl https://mcp.example.com/healthz
+# {"status":"ok","version":"0.0.0"}
+
+curl -X POST https://mcp.example.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}'
+```
+
+You should see a JSON-RPC result with the server name and protocol version.
+
+## Operating notes
+
+- **Logs.** `journalctl -u oz-policy-mcp -f` streams stdout. Set `RUST_LOG=oz_policy=info,rmcp=warn` in the EnvironmentFile to control verbosity.
+- **Restarts.** `sudo systemctl restart oz-policy-mcp` cycles the daemon. In-flight tool calls fail. Schedule restarts during low-use windows.
+- **Snapshot retention.** Snapshots live thirty days from creation. Background GC runs every six hours inside the daemon. Free disk regularly.
+- **Token rotation.** Change `/etc/oz-policy-mcp.env`, `systemctl restart oz-policy-mcp`, and roll the token in every client. There is no token versioning; rotation is atomic.
+- **Codegen sandbox.** Each `simulate_custom_source` call runs `cargo build --target wasm32-unknown-unknown` inside `bwrap --unshare-net --ro-bind /`. The first compile for a given spec takes thirty to sixty seconds; subsequent compiles hit the on-disk cache and return in under a second.
+
+## Updating
+
+Pull the repo, rebuild, replace the binary, restart:
+
+```bash
+ssh deploy@your-server "
+  cd /home/deploy/oz-policy-builder
+  git pull
+  cargo build --release -p oz-policy-mcp
+  sudo install -m 755 target/release/oz-policy-mcp /usr/local/bin/oz-policy-mcp
+  sudo systemctl restart oz-policy-mcp
+  sudo systemctl status oz-policy-mcp
+"
+```
+
+The repo ships `scripts/deploy-mcp.sh` for this exact dance; adapt the SSH target.

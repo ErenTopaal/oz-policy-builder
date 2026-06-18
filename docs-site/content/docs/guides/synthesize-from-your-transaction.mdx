@@ -1,0 +1,110 @@
+---
+title: Synthesize from your own transaction
+description: End-to-end recipe. Take one testnet transaction you control, produce an installable policy plus a simulation report.
+---
+
+This is the path for a developer who has just deployed a Soroban contract and wants to give an agent narrow permission to call one specific function on it.
+
+## What you need
+
+- A Stellar testnet account funded by [Friendbot](https://friendbot.stellar.org/?addr=YOUR_ADDR).
+- A built `oz-policy-cli` on `$PATH`. See [Install](/docs/getting-started/install).
+- One transaction hash that you (or your wallet) already submitted to testnet within the last twenty four hours. Soroban RPC retention is short. If your transaction is older, re-submit it or simulate from envelope XDR.
+
+## Step 1 — Record the transaction
+
+```bash
+oz-policy-cli record --hash <your-tx-hash> > recording.json
+```
+
+If you do not have an on-chain hash but you have a signed envelope, use the simulation path instead:
+
+```bash
+oz-policy-cli record \
+  --envelope-xdr <base64-envelope> \
+  > recording.json
+```
+
+Open `recording.json` and confirm the `contracts` array lists the contract address you expect and the function name matches what you intended. If the recorder writes nothing, your hash is out of retention or the network passphrase is wrong (testnet by default).
+
+## Step 2 — Synthesize the policy
+
+Decide how strict you want the policy to be. For most cases the default `auto` mode with `exact` tightness is what you want.
+
+```bash
+oz-policy-cli synthesize recording.json \
+  --mode auto \
+  --tightness exact \
+  --lifetime 432000 \
+  --rule-name "agent-allow" \
+  > spec.json
+```
+
+- `--mode auto` lets the synthesizer compose existing OZ primitives where they fit, and fall back to fresh code where they do not. See [Synthesis modes](/docs/concepts/synthesis-modes).
+- `--tightness exact` makes numeric constraints (`amount_range`) hug the observed value exactly. Use `small_margin` or `loose` when you expect realistic variation.
+- `--lifetime 432000` is approximately thirty days at testnet pace. Drop it or shrink it for short-lived delegations.
+
+If synthesize exits with `E_SYNTH_NOT_EXPRESSIBLE`, the recording has a shape the toolkit cannot encode within OZ's hard limits (five policies, fifteen signers). Re-record a simpler transaction.
+
+## Step 3 — Generate the Soroban contract
+
+```bash
+oz-policy-cli codegen spec.json --out out/
+cat out/slot_0/wasm_hash.txt
+```
+
+For Track A specs (where the synthesizer composed an existing primitive), codegen silently skips and writes nothing. That is expected. The primitive WASM is reused at install time.
+
+For Track B specs, you will see one `slot_<i>/` per generated policy slot, each with `source.rs`, `policy.wasm`, and the lowercase hex SHA-256.
+
+If codegen fails, the audit-lint gate has likely rejected the rendered source. See the lint report on stderr.
+
+## Step 4 — Simulate
+
+```bash
+oz-policy-cli simulate spec.json recording.json \
+  --wasm-dir out/ \
+  --out report.json
+```
+
+`simulate` exits zero only when both:
+
+1. The recorded transaction is admitted by the policy.
+2. Every auto-generated deny vector is rejected with its expected error code.
+
+If the permit case fails, your spec rejects its own demonstration transaction. Re-check `--mode` and `--tightness`. If a deny vector fails (an out-of-bounds call was incorrectly admitted), the spec is too loose. Tighten it.
+
+```bash
+cat report.json | python3 -c \
+  'import json,sys; r=json.load(sys.stdin); print("permit:",r["permit"]["passed"]); print("deny:",r["passed"],"/",r["total_vectors"])'
+```
+
+## Step 5 — Build the install envelope
+
+You need the smart-account contract address (`C-` strkey) the policy will be installed on, and a funded `G-` source account.
+
+```bash
+oz-policy-cli prepare-install spec.json \
+  --smart-account <C-address> \
+  --source <G-address> \
+  --account-revision post-pr-655 \
+  > envelope.json
+```
+
+The envelope is base64 XDR inside the `envelope_xdr_base64` field. This is what your wallet will sign next.
+
+If you see `E_INSTALL_PREFLIGHT_FAILED("primitive_address_unknown")`, your spec is Track A and there is no published deployer registry address for the primitive on this network yet. See the [SEP-41 walkthrough](/docs/walkthroughs/sep41-subscription) for the same blocker.
+
+## Step 6 — Sign and submit
+
+If you only need the CLI flow, hand `envelope.json` off to whatever wallet workflow you use. If you want to do it programmatically from TypeScript, see [Install on a smart account](/docs/guides/install-on-smart-account).
+
+## You now have
+
+- `recording.json` — typed Soroban call trace.
+- `spec.json` — minimal PolicySpec.
+- `out/slot_*/` — generated Rust + WASM + hash per slot (Track B only).
+- `report.json` — permit + deny simulation results.
+- `envelope.json` — wallet-signable install XDR.
+
+The whole set is reproducible. Same recording, same flags, same outputs byte-equal.
